@@ -1,0 +1,21 @@
+/* circuit logo (200M) */
+.circuit-word { width: 100%; height: auto; overflow: visible; color: var(--signal-blue); filter: drop-shadow(0 0 18px var(--scene-glow)); }
+.circuit-line { stroke-dasharray: 1; stroke-dashoffset: 1; animation: circuit-write 2300ms cubic-bezier(0.4, 0, 0.15, 1) forwards; }
+.circuit-delay-one { animation-delay: 120ms; } .circuit-delay-two { animation-delay: 240ms; } .circuit-delay-three { animation-delay: 360ms; }
+.circuit-nodes { fill: var(--signal-blue); stroke: var(--canvas); animation: circuit-nodes-in 1100ms 1500ms both; }
+.circuit-static .circuit-line { animation: none; stroke-dashoffset: 0; } .circuit-static .circuit-nodes { animation: none; opacity: 1; }
+@keyframes circuit-write { to { stroke-dashoffset: 0; } }
+@keyframes circuit-nodes-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes halo-arrive { from { opacity: 0; transform: scale(0.5) rotate(-30deg); } to { opacity: 1; transform: scale(1.2) rotate(20deg); } }
+@keyframes intro-depart { to { opacity: 0; visibility: hidden; } }
+@keyframes intro-track { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.company-intro { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; background: var(--canvas); color: var(--text); animation: intro-depart 400ms 3000ms ease forwards; }
+.company-intro.leaving { animation: intro-depart 250ms ease forwards; }
+.intro-coordinate { position: absolute; top: 7%; left: 6%; font: 500 0.75rem var(--font-mono); letter-spacing: 0.22em; color: var(--muted); }
+.intro-matter { position: relative; width: min(850px, 88vw); aspect-ratio: 540 / 220; display: grid; place-items: center; }
+.intro-halo { width: min(75vw, 800px); aspect-ratio: 1; position: absolute; background: radial-gradient(ellipse, var(--scene-glow), transparent 65%); filter: blur(30px); animation: halo-arrive 2600ms both; }
+.intro-caption { font: 500 0.75rem var(--font-mono); letter-spacing: 0.24em; color: var(--muted); margin-top: 8px; }
+.intro-skip { position: absolute; bottom: 7%; left: 6%; padding: 12px 20px; border: 1px solid var(--control-border); color: var(--text); background: transparent; border-radius: 4px; }
+.intro-skip span { margin-left: 32px; color: var(--accent); }
+.intro-track { position: absolute; bottom: 0; left: 0; height: 2px; width: 100%; background: var(--signal-blue); transform-origin: left; animation: intro-track 3.4s linear both; }
+@media (prefers-reduced-motion: reduce) { .company-intro { display: none; } .circuit-line { animation: none; stroke-dashoffset: 0; } .circuit-nodes { animation: none; } }

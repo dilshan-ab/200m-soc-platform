@@ -1,0 +1,237 @@
+{
+  "realm": "soc",
+  "displayName": "200M Security Operations Center",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "bruteForceProtected": true,
+  "failureFactor": 5,
+  "maxFailureWaitSeconds": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 28800,
+  "accessTokenLifespan": 300,
+  "accessCodeLifespan": 300,
+  "accessCodeLifespanUserAction": 300,
+  "passwordPolicy": "length(12) and notUsername and notEmail",
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyDigits": 6,
+  "otpPolicyPeriod": 30,
+  "browserFlow": "soc-browser",
+  "attributes": {
+    "frontendUrl": "${KC_PUBLIC_URL:http://localhost:8081}",
+    "acr.loa.map": "{\"mfa-webauthn\": \"1\"}"
+  },
+  "roles": {
+    "realm": [
+      {
+        "name": "superadmin",
+        "description": "Super admin: the only role that can create users and admins"
+      },
+      {
+        "name": "admin",
+        "description": "SOC administrator"
+      },
+      {
+        "name": "l2",
+        "description": "L2 / incident response"
+      },
+      {
+        "name": "l1",
+        "description": "L1 analyst"
+      },
+      {
+        "name": "viewer",
+        "description": "Read-only"
+      }
+    ]
+  },
+  "authenticationFlows": [
+    {
+      "alias": "soc-browser",
+      "description": "SSO cookie, or password + TOTP (MFA always required)",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "authenticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "flowAlias": "soc-forms",
+          "authenticatorFlow": true,
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "soc-forms",
+      "description": "Level 1 = password then TOTP",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-level-of-authentication",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "authenticatorConfig": "soc-loa1",
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "auth-username-password-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 30,
+          "userSetupAllowed": false
+        }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    {
+      "alias": "soc-loa1",
+      "config": {
+        "loa-condition-level": "1",
+        "loa-max-age": "36000"
+      }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "soc-platform",
+      "name": "200M SOC platform (BFF)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_CLIENT_SECRET:change-me-dev-secret}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "rootUrl": "${SOC_PUBLIC_URL:http://localhost:8080}",
+      "baseUrl": "/",
+      "redirectUris": [
+        "${SOC_PUBLIC_URL:http://localhost:8080}/api/auth/oidc/callback"
+      ],
+      "webOrigins": [
+        "${SOC_PUBLIC_URL:http://localhost:8080}"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${SOC_PUBLIC_URL:http://localhost:8080}/*",
+        "use.refresh.tokens": "false",
+        "client.session.idle.timeout": "1800"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email",
+        "acr"
+      ],
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "soc_role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "soc_role",
+            "multivalued": "true",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "auth_time",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usersessionmodel-note-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.session.note": "AUTH_TIME",
+            "claim.name": "auth_time",
+            "jsonType.label": "long",
+            "id.token.claim": "true",
+            "access.token.claim": "false",
+            "introspection.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "soc-admin",
+      "name": "200M SOC platform: user provisioning (service account)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_ADMIN_CLIENT_SECRET:change-me-dev-admin-secret}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "defaultClientScopes": [],
+      "optionalClientScopes": []
+    }
+  ],
+  "users": [
+    {
+      "username": "${KC_SUPERADMIN_EMAIL:superadmin@200m.local}",
+      "email": "${KC_SUPERADMIN_EMAIL:superadmin@200m.local}",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Super",
+      "lastName": "Admin",
+      "realmRoles": [
+        "superadmin"
+      ],
+      "requiredActions": [
+        "UPDATE_PASSWORD",
+        "CONFIGURE_TOTP"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_SUPERADMIN_PASSWORD:Change-Me-Now-1!}",
+          "temporary": true
+        }
+      ]
+    },
+    {
+      "username": "service-account-soc-admin",
+      "enabled": true,
+      "serviceAccountClientId": "soc-admin",
+      "clientRoles": {
+        "realm-management": [
+          "view-users",
+          "manage-users",
+          "view-realm",
+          "query-users"
+        ]
+      }
+    }
+  ]
+}

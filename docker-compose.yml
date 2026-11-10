@@ -1,0 +1,139 @@
+# 200M Security Operations Center: full stack (PostgreSQL, Redis, Keycloak SSO, API, web UI).
+#
+#   sh scripts/setup.sh            # generates .env with random secrets (once)
+#   docker compose up --build   # then open http://localhost:8080
+#
+# Web UI -> http://localhost:8080   Keycloak -> http://localhost:8081
+# For production put your TLS reverse proxy in front of `web` and `keycloak`, and set the
+# public URLs in .env (see .env.example).
+name: soc
+
+x-hardening: &hardening
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: soc
+      POSTGRES_USER: soc
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run sh scripts/setup.sh to create .env}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U soc -d soc"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  keycloak-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${KC_DB_PASSWORD:?run sh scripts/setup.sh to create .env}
+    volumes: [kcdata:/var/lib/postgresql/data]
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?run sh scripts/setup.sh to create .env}", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+    networks: [internal]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    restart: unless-stopped
+    command: ["start", "--import-realm"]
+    depends_on:
+      keycloak-db: { condition: service_healthy }
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER:-kcadmin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:?run sh scripts/setup.sh to create .env}
+      KC_HOSTNAME: ${KC_PUBLIC_URL:-http://localhost:8081}   # browser-facing URL (the token issuer)
+      KC_HTTP_ENABLED: "true"                                 # TLS is terminated by your reverse proxy
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      # values substituted into the realm import (deploy/keycloak/soc-realm.json)
+      KC_PUBLIC_URL: ${KC_PUBLIC_URL:-http://localhost:8081}
+      SOC_PUBLIC_URL: ${SOC_PUBLIC_URL:-http://localhost:8080}
+      KC_CLIENT_SECRET: ${KC_CLIENT_SECRET:?run sh scripts/setup.sh to create .env}
+      KC_SUPERADMIN_EMAIL: ${KC_SUPERADMIN_EMAIL:?run sh scripts/setup.sh to create .env}
+      KC_SUPERADMIN_PASSWORD: ${KC_SUPERADMIN_PASSWORD:?run sh scripts/setup.sh to create .env}
+      KC_ADMIN_CLIENT_SECRET: ${KC_ADMIN_CLIENT_SECRET:?run sh scripts/setup.sh to create .env}
+    volumes:
+      - ./deploy/keycloak/soc-realm.json:/opt/keycloak/data/import/soc-realm.json:ro
+    ports: ["127.0.0.1:8081:8080"]
+    networks: [internal, edge]
+    <<: *hardening
+
+  backend:
+    image: ${BACKEND_IMAGE:-soc-backend:local}
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      keycloak: { condition: service_started }
+    env_file: .env
+    environment:
+      SOC_DATABASE_URL: postgresql+psycopg://soc:${POSTGRES_PASSWORD}@postgres:5432/soc
+      SOC_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      SOC_ENVIRONMENT: ${SOC_ENVIRONMENT:-development}   # "production" additionally requires HTTPS cookies
+      SOC_AUTH_MODE: oidc
+      SOC_REPORT_DIR: /srv/reports
+      SOC_PUBLIC_BASE_URL: ${SOC_PUBLIC_URL:-http://localhost:8080}
+      SOC_ALLOWED_ORIGINS: '["${SOC_PUBLIC_URL:-http://localhost:8080}"]'
+      SOC_COOKIE_SECURE: ${SOC_COOKIE_SECURE:-false}
+      SOC_OIDC_ISSUER: ${KC_PUBLIC_URL:-http://localhost:8081}/realms/soc
+      SOC_OIDC_INTERNAL_ISSUER: http://keycloak:8080/realms/soc   # server-to-server (token + JWKS)
+      SOC_OIDC_CLIENT_ID: soc-platform
+      SOC_OIDC_CLIENT_SECRET: ${KC_CLIENT_SECRET}
+      SOC_OIDC_REDIRECT_URI: ${SOC_PUBLIC_URL:-http://localhost:8080}/api/auth/oidc/callback
+      SOC_OIDC_POST_LOGOUT_REDIRECT_URI: ${SOC_PUBLIC_URL:-http://localhost:8080}/
+      SOC_OIDC_ROLE_CLAIM: soc_role
+      SOC_KC_ADMIN_URL: http://keycloak:8080                     # user provisioning by the super admin
+      SOC_KC_ADMIN_CLIENT_ID: soc-admin
+      SOC_KC_ADMIN_CLIENT_SECRET: ${KC_ADMIN_CLIENT_SECRET}
+    volumes: [reports:/srv/reports]
+    networks: [internal, egress]   # `egress` reaches the tools; the app's own SSRF policy still applies
+    read_only: true
+    tmpfs: [/tmp]
+    <<: *hardening
+
+  web:
+    image: ${WEB_IMAGE:-soc-web:local}
+    build: ./frontend
+    restart: unless-stopped
+    depends_on: [backend]
+    ports: ["127.0.0.1:8080:8080"]   # your reverse proxy (Nginx/Cloudflare tunnel) connects here
+    networks: [internal, edge]
+    read_only: true
+    tmpfs: [/tmp]
+    <<: *hardening
+
+volumes: { pgdata: {}, kcdata: {}, redisdata: {}, reports: {} }
+networks:
+  internal: { internal: true }   # no outside access: databases, Redis, service-to-service
+  edge: {}                       # only used to publish ports on the host
+  egress: {}
