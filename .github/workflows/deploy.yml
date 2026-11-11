@@ -71,6 +71,9 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
       # The server holds no git checkout — only the runtime files it needs. Copy those, then restart.
@@ -91,9 +94,13 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT || 22 }}
+          # The images are private. Log in with this run's short-lived GITHUB_TOKEN for the pull only,
+          # then log out so no registry credential is left on the server.
           script: |
             set -e
             cd ${{ secrets.SERVER_APP_DIR }}
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            trap 'docker logout ghcr.io >/dev/null 2>&1' EXIT
             docker compose pull backend web
             docker compose up -d --remove-orphans
             docker image prune -f
