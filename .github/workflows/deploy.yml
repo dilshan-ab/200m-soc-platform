@@ -72,7 +72,19 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy over SSH
+      - uses: actions/checkout@v4
+      # The server holds no git checkout — only the runtime files it needs. Copy those, then restart.
+      - name: Copy runtime files to server
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          source: "docker-compose.yml,deploy/"
+          target: ${{ secrets.SERVER_APP_DIR }}
+          overwrite: true
+      - name: Pull new images and restart
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -82,7 +94,6 @@ jobs:
           script: |
             set -e
             cd ${{ secrets.SERVER_APP_DIR }}
-            git pull --ff-only
             docker compose pull backend web
-            docker compose up -d
+            docker compose up -d --remove-orphans
             docker image prune -f
