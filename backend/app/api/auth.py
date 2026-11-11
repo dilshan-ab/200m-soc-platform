@@ -73,7 +73,12 @@ def me_payload(p: Principal) -> dict:
 @router.get("/config")
 def auth_config() -> dict:
     s = get_settings()
-    return {"auth_mode": s.auth_mode, "account_url": f"{s.oidc_issuer.rstrip('/')}/account/" if s.auth_mode == "oidc" and s.oidc_issuer else None}
+    account_url = None
+    if s.auth_mode == "oidc" and s.oidc_issuer:
+        account_url = s.oidc_account_url or f"{s.oidc_issuer.rstrip('/')}/account/"
+    # Accounts/roles can be created from the Admin page with local accounts or the bundled Keycloak (admin API);
+    # with an external OIDC provider (no Keycloak URL) they are managed in the provider.
+    return {"auth_mode": s.auth_mode, "account_url": account_url, "user_provisioning": s.auth_mode == "dev" or bool(s.kc_admin_url)}
 
 
 @router.post("/login")
