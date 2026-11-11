@@ -21,3 +21,8 @@ reports/
 .vscode/
 .idea/
 .claude/
+# private keys must never be committed
+devkey
+*.pem
+id_*
+!id_*.pub
