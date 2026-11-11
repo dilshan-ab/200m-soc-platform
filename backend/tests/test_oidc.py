@@ -65,7 +65,7 @@ def _begin(app, purpose_path="/api/auth/oidc/login?return_to=/alerts"):
 def test_auth_config_exposes_account_console_url_under_oidc(app, idp):
     c = TestClient(app)
     body = c.get("/api/auth/config").json()
-    assert body == {"auth_mode": "oidc", "account_url": f"{ISS}/account/"}
+    assert body == {"auth_mode": "oidc", "account_url": f"{ISS}/account/", "user_provisioning": False}
 
 
 def test_login_redirect_uses_pkce_state_nonce(app, idp):

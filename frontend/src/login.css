@@ -61,20 +61,68 @@ html .login.neon-login .login-story .eyebrow { color: var(--login-blue); }
 html .login.neon-login .orbit {
   --orbit-line: #4b9ce8;
   --orbit-surface: #071a36;
-  width: min(100%, 540px); aspect-ratio: 1.55;
-  margin: -10px 0 0 auto; background: none; mask-image: none; color: #bde7ff;
+  width: min(115%, 640px); aspect-ratio: 1.55;
+  margin: -10px -40px 0 auto; background: none; mask-image: none; color: #bde7ff;
 }
 .neon-login .login-globe {
   position: absolute;
   width: 100%;
-  height: auto;
-  filter: drop-shadow(0 0 23px #1274ed80);
-  transform: translate(var(--shield-x, 0), var(--shield-y, 0));
-  transition: transform .24s ease-out;
   pointer-events: none;
 }
-.neon-login .orbit-ring { width: 72%; border-color: #2c99ff66; }
-.neon-login .orbit-ring.second { width: 86%; }
+/* The globe no longer tracks the pointer, so disable the shared .login hover effects
+   (cursor-following glow, chip nudge) that styles.css applies to .orbit on hover. */
+.neon-login .orbit::before { opacity: 0 !important; }
+.neon-login .orbit-chip { transition: none !important; }
+.neon-login .orbit:hover .orbit-chip.one,
+.neon-login .orbit:hover .orbit-chip.two { transform: none !important; }
+.neon-login .login-globe-svg { position: relative; display: block; width: 100%; height: auto; }
+/* The glow used to be a `filter: drop-shadow` on the SVG itself, but that SVG's paths are
+   rewritten every animation frame (rotating the globe). Filtering content that mutates every
+   frame forces the browser to re-rasterize the filter 30x/sec, which produced a visible stale
+   tile artifact in some browsers. A separate, static, pre-blurred circle behind the globe gives
+   the same glow without ever needing to re-rasterize. */
+.neon-login .login-globe::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  height: 71.4%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #1274ed;
+  opacity: .55;
+  filter: blur(18px);
+}
+/* A uniform ring rotating is invisible (perfect symmetry) and a border can't be masked into an
+   arc, so each ring is redrawn as a conic-gradient disc cut down to a thin outline by a radial
+   mask, with one bright "sweep" segment — rotating that is clearly visible and reads as a radar
+   scan around the globe, which fits the product better than a plain decorative circle. */
+.neon-login .orbit-ring {
+  width: 72%;
+  border: none;
+  background: conic-gradient(from 0deg, transparent 0deg, #7fd4ff 22deg, #2c99ff 46deg, transparent 100deg, transparent 360deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1.5px));
+  animation: breathe 6s infinite, ring-spin 40s linear infinite;
+}
+.neon-login .orbit-ring.second {
+  width: 86%;
+  background: conic-gradient(from 160deg, transparent 0deg, #bfe9ff80 18deg, transparent 70deg, transparent 360deg);
+  animation: breathe 6s infinite, ring-spin-reverse 56s linear infinite;
+}
+@keyframes ring-spin { to { rotate: 360deg; } }
+@keyframes ring-spin-reverse { to { rotate: -360deg; } }
+/* The decorative orbit ellipses inside the globe SVG itself: each pivots around the globe's
+   center (300,300 in its 600x600 viewBox) so the ring and its satellite dots travel together,
+   reading as real orbits rather than a static overlay. */
+.neon-login .login-globe-orbit { transform-origin: 300px 300px; transform-box: view-box; }
+.neon-login .login-globe-orbit-a { animation: orbit-a 60s linear infinite; }
+.neon-login .login-globe-orbit-b { animation: orbit-b 80s linear infinite reverse; }
+.neon-login .login-globe-orbit-c { animation: orbit-c 100s linear infinite; }
+@keyframes orbit-a { from { transform: rotate(-24deg); } to { transform: rotate(336deg); } }
+@keyframes orbit-b { from { transform: rotate(27deg); } to { transform: rotate(387deg); } }
+@keyframes orbit-c { from { transform: rotate(-53deg); } to { transform: rotate(307deg); } }
 .neon-login .orbit-chip { z-index: 1; box-shadow: 0 6px 20px #020919aa; }
 .login.neon-login .orbit-chip.one { left: 3%; top: 24%; }
 .login.neon-login .orbit-chip.two { right: 3%; bottom: 17%; }
@@ -120,6 +168,6 @@ html .login.neon-login :is(a, button, input):focus-visible { outline: 2px solid 
   .login.neon-login .login-card { border-radius: 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .login.neon-login :is(.orbit-ring, .login-card) { animation: none; }
+  .login.neon-login :is(.orbit-ring, .login-card, .login-globe, .login-globe-orbit) { animation: none; }
   .neon-login .login-globe { transform: none; transition: none; }
 }

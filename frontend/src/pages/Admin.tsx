@@ -35,6 +35,8 @@ function Users() {
   const { me } = useAuth();
   const toast = useToast();
   const users = useQuery({ queryKey: ['users'], queryFn: () => get<any[]>('/api/admin/users') });
+  const authConfig = useQuery({ queryKey: ['auth-config'], queryFn: () => get<{ auth_mode: string; user_provisioning: boolean }>('/api/auth/config') });
+  const provisioning = authConfig.data?.user_provisioning ?? true;
   const clients = useQuery({ queryKey: ['clients'], queryFn: () => get<any[]>('/api/clients') });
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => get<any[]>('/api/admin/sessions') });
   const [add, setAdd] = useState(false);
@@ -46,7 +48,9 @@ function Users() {
   const oidc = me?.auth_mode === 'oidc';
   return (
     <>
-      <div className="row" style={{ marginBottom: 8 }}><h2>Users</h2><span className="spacer" />{oidc && <span style={{ color: 'var(--muted)' }}>Roles are managed in Keycloak.</span>}<button className="btn small" onClick={() => setAdd(true)}>Add user</button></div>
+      <div className="row" style={{ marginBottom: 8 }}><h2>Users</h2><span className="spacer" />
+        {oidc && <span style={{ color: 'var(--muted)' }}>{provisioning ? 'Roles are managed in Keycloak.' : 'Accounts and roles are managed in your identity provider; users appear here after their first sign-in.'}</span>}
+        {provisioning && <button className="btn small" onClick={() => setAdd(true)}>Add user</button>}</div>
       {users.data && (
         <>
           <Summary items={[

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { CompanyLogo } from '../components/CompanyLogo';
+import { LoginGlobe } from '../components/LoginGlobe';
 import { ApiError, get } from '../lib/api';
 import { WorkspaceIntro } from '../WorkspaceIntro';
 import { useAuth } from '../lib/auth';
@@ -53,26 +54,8 @@ export default function Login() {
               <h1>Security<br />operations center</h1>
               <p>Investigate alerts, manage cases, and coordinate response.</p>
             </div>
-            <div
-              className="orbit"
-              aria-hidden="true"
-              onPointerMove={(event) => {
-                if (event.pointerType === 'touch') return;
-                const orbit = event.currentTarget;
-                const bounds = orbit.getBoundingClientRect();
-                const x = event.clientX - bounds.left;
-                const y = event.clientY - bounds.top;
-                orbit.style.setProperty('--orbit-x', `${x}px`);
-                orbit.style.setProperty('--orbit-y', `${y}px`);
-                orbit.style.setProperty('--shield-x', `${(x / bounds.width - 0.5) * 14}px`);
-                orbit.style.setProperty('--shield-y', `${(y / bounds.height - 0.5) * 14}px`);
-              }}
-              onPointerLeave={(event) => {
-                event.currentTarget.style.removeProperty('--shield-x');
-                event.currentTarget.style.removeProperty('--shield-y');
-              }}
-            >
-              <div className="orbit-ring" /><div className="orbit-ring second" /><img className="login-globe" src="/login-globe.svg" alt="" />
+            <div className="orbit" aria-hidden="true">
+              <div className="orbit-ring" /><div className="orbit-ring second" /><LoginGlobe />
               <span className="orbit-chip one"><Activity size={16} />Detection</span>
               <span className="orbit-chip two"><Check size={16} />Response</span>
             </div>

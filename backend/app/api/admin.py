@@ -55,6 +55,13 @@ class UserIn(BaseModel):
     client_ids: list[str] = Field(default_factory=list, max_length=100)
 
 
+def _external_idp() -> bool:
+    """SSO through a provider other than the bundled Keycloak: no admin API, so accounts/roles live in the IdP.
+    (A Keycloak URL that is set but incomplete is a misconfiguration instead — _kc reports that as 503.)"""
+    s = get_settings()
+    return s.auth_mode == "oidc" and not s.kc_admin_url
+
+
 def _kc(fn: Any, *a: Any) -> Any:
     if not kc.configured():
         raise HTTPException(503, "Keycloak admin access is not configured (SOC_KC_ADMIN_URL / SOC_KC_ADMIN_CLIENT_SECRET)")
@@ -78,6 +85,8 @@ def create_user(body: UserIn, p: Principal = Depends(require_admin_step_up("user
         u.password_hash, u.totp_secret = hash_password(body.password), new_totp_secret()
         out["totp_secret"] = u.totp_secret  # shown once for authenticator enrolment
     else:  # SSO: the account is created in Keycloak (temporary password, forced change + authenticator enrolment)
+        if _external_idp():
+            raise HTTPException(400, "user accounts are managed in the identity provider; create the user there and assign a SOC role")
         if not body.password or not password_policy_ok(body.password):
             raise HTTPException(400, "initial password must be 12+ chars with upper, lower and a digit")
         for cid in body.client_ids:
@@ -120,6 +129,8 @@ def patch_user(uid: str, body: UserPatch, p: Principal = Depends(require_admin_s
         if get_settings().auth_mode == "oidc":
             if not p.can("users.provision"):
                 raise HTTPException(403, "only the super admin can change roles")
+            if _external_idp():  # the role is re-read from the IdP's claim at every login, so a local edit would not stick
+                raise HTTPException(400, "roles are managed in the identity provider; change the user's role there")
             _kc(kc.set_role, u.email, body.role)
             u.role = body.role
             revoke_all(db, u.id)
