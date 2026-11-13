@@ -73,7 +73,6 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER:-kcadmin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:?run sh scripts/setup.sh to create .env}
       KC_HOSTNAME: ${KC_PUBLIC_URL:-http://localhost:8081}   # browser-facing URL (the token issuer)
-      KC_HTTP_RELATIVE_PATH: ${KC_PATH:-/}                    # set to /kc when proxied at a sub-path
       KC_HTTP_ENABLED: "true"                                 # TLS is terminated by your reverse proxy
       KC_PROXY_HEADERS: xforwarded
       KC_HEALTH_ENABLED: "true"
@@ -112,8 +111,8 @@ services:
       # Defaults wire SSO to the bundled Keycloak (profile "keycloak"). To use an external OIDC
       # provider instead, set SOC_OIDC_* in .env and leave SOC_OIDC_INTERNAL_ISSUER / SOC_KC_ADMIN_URL
       # empty (`${VAR-default}`: unset -> default, empty stays empty).
-      SOC_OIDC_ISSUER: ${SOC_OIDC_ISSUER:-${KC_PUBLIC_URL:-http://localhost:8081}${KC_PATH:-}/realms/soc}
-      SOC_OIDC_INTERNAL_ISSUER: ${SOC_OIDC_INTERNAL_ISSUER-http://keycloak:8080${KC_PATH:-}/realms/soc}   # server-to-server (token + JWKS)
+      SOC_OIDC_ISSUER: ${SOC_OIDC_ISSUER:-${KC_PUBLIC_URL:-http://localhost:8081}/realms/soc}
+      SOC_OIDC_INTERNAL_ISSUER: ${SOC_OIDC_INTERNAL_ISSUER-http://keycloak:8080/realms/soc}   # server-to-server (token + JWKS)
       SOC_OIDC_CLIENT_ID: ${SOC_OIDC_CLIENT_ID:-soc-platform}
       SOC_OIDC_CLIENT_SECRET: ${SOC_OIDC_CLIENT_SECRET:-${KC_CLIENT_SECRET}}
       SOC_OIDC_REDIRECT_URI: ${SOC_PUBLIC_URL:-http://localhost:8080}/api/auth/oidc/callback
