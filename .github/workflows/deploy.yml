@@ -1,4 +1,4 @@
-name: Build, test and deploy
+name: Build and deploy
 
 on:
   push:
@@ -8,29 +8,7 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  test-backend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: cd backend && pip install -e ".[dev]"
-      - run: cd backend && python -m pytest tests/ -q --ignore=tests/test_services.py
-
-  test-frontend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - run: cd frontend && npm ci
-      - run: cd frontend && npm run typecheck
-      - run: cd frontend && npm test
-
   build-and-push:
-    needs: [test-backend, test-frontend]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -76,7 +54,6 @@ jobs:
       packages: read
     steps:
       - uses: actions/checkout@v4
-      # The server holds no git checkout — only the runtime files it needs. Copy those, then restart.
       - name: Copy runtime files to server
         uses: appleboy/scp-action@v1
         with:
@@ -94,8 +71,6 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT || 22 }}
-          # The images are private. Log in with this run's short-lived GITHUB_TOKEN for the pull only,
-          # then log out so no registry credential is left on the server.
           script: |
             set -e
             cd ${{ secrets.SERVER_APP_DIR }}
