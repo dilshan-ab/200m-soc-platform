@@ -160,3 +160,33 @@ def is_private_ip(addr: str) -> bool:
     except ValueError:
         return False
     return ip.is_private or ip.is_loopback
+
+
+def validate_external_egress_url(url: str, *, resolver: Resolver | None = None) -> str:
+    """Raise SecurityError unless `url` is https (or http when explicitly allowed), has no
+    credentials, and resolves only to public addresses. Unlike `validate_egress_url` (which
+    allowlists our own internal/corp networks for tool connectors), this permits any public
+    host — for admin-configured connections to a genuine external partner (e.g. a TAXII feed)
+    — while still blocking SSRF to loopback, link-local, and private (RFC1918) ranges."""
+    parts = urlsplit(url)
+    if parts.scheme not in ("https", "http"):
+        raise SecurityError("only http(s) URLs are allowed")
+    if parts.scheme == "http" and not get_settings().allow_http_connectors:
+        raise SecurityError("plain http is not allowed; use https")
+    if parts.username or parts.password:
+        raise SecurityError("credentials in URLs are not allowed")
+    host = parts.hostname
+    if not host:
+        raise SecurityError("URL has no host")
+    try:
+        ipaddress.ip_address(host)
+        addrs = [host]
+    except ValueError:
+        addrs = (resolver or _default_resolve)(host.lower())
+    if not addrs:
+        raise SecurityError("host did not resolve")
+    for a in addrs:
+        ip = ipaddress.ip_address(a)
+        if any(ip in n for n in _ALWAYS_BLOCKED_NETS) or ip.is_private:
+            raise SecurityError("destination address is not a public host")
+    return url

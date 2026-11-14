@@ -72,6 +72,12 @@ class Client(Base):
     report_recipients: Mapped[list[Any]] = mapped_column(JSON, default=list)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = _ts()
+    # --- MSSP branding / tenant metadata ---
+    logo_url: Mapped[str] = mapped_column(String(500), default="")
+    brand_color: Mapped[str] = mapped_column(String(10), default="")  # hex, e.g. #145fbd
+    timezone: Mapped[str] = mapped_column(String(60), default="UTC")
+    contact_email: Mapped[str] = mapped_column(String(255), default="")
+    tier: Mapped[str] = mapped_column(String(20), default="standard")  # standard | premium
 
 
 class User(Base):
@@ -933,4 +939,106 @@ class ReportTemplate(Base):
     params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     client_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _ts()
+
+
+# --------------------------------------------------------------------------- threat intel sharing (STIX/TAXII)
+class ThreatIndicator(Base):
+    """A durable, shareable indicator of compromise — the unit exchanged over STIX/TAXII."""
+
+    __tablename__ = "threat_indicators"
+    __table_args__ = (UniqueConstraint("type", "value"),)
+    id: Mapped[str] = _pk()
+    stix_id: Mapped[str] = mapped_column(String(200), default="", index=True)  # external "indicator--<uuid>" if imported
+    type: Mapped[str] = mapped_column(String(20), index=True)  # ip|domain|url|hash|email
+    value: Mapped[str] = mapped_column(String(500), index=True)
+    pattern: Mapped[str] = mapped_column(String(1000), default="")  # STIX pattern, kept verbatim for re-export
+    labels: Mapped[list[Any]] = mapped_column(JSON, default=list)  # e.g. ["malicious-activity"]
+    confidence: Mapped[int] = mapped_column(Integer, default=50)
+    tlp: Mapped[str] = mapped_column(String(10), default="AMBER")
+    verdict: Mapped[str] = mapped_column(String(20), default="unknown")  # unknown|benign|suspicious|malicious
+    source: Mapped[str] = mapped_column(String(160), default="manual")  # manual|import|feed:<id>
+    sightings: Mapped[int] = mapped_column(Integer, default=1)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    valid_until: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True, index=True)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    first_seen: Mapped[datetime] = _ts()
+    last_seen: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    created_at: Mapped[datetime] = _ts()
+
+
+class ThreatFeed(Base):
+    """A TAXII 2.1 feed we pull indicators from, or a record of a manual bundle export."""
+
+    __tablename__ = "threat_feeds"
+    id: Mapped[str] = _pk()
+    name: Mapped[str] = mapped_column(String(160))
+    direction: Mapped[str] = mapped_column(String(10), default="import")  # import|export
+    taxii_discovery_url: Mapped[str] = mapped_column(String(500), default="")
+    taxii_collection_id: Mapped[str] = mapped_column(String(120), default="")
+    taxii_username: Mapped[str] = mapped_column(String(160), default="")
+    auth_secret_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_sync_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    last_sync_status: Mapped[str] = mapped_column(String(20), default="")  # ok|error
+    last_sync_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str] = mapped_column(String(400), default="")
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _ts()
+
+
+# --------------------------------------------------------------------------- shift handoff
+class ShiftHandoff(Base):
+    """An end-of-shift report: what's open, what to watch, and notes for the next analyst."""
+
+    __tablename__ = "shift_handoffs"
+    id: Mapped[str] = _pk()
+    shift_name: Mapped[str] = mapped_column(String(80), default="")  # e.g. "Night Shift"
+    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft|submitted|acknowledged
+    summary: Mapped[str] = mapped_column(Text, default="")
+    open_items: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{title, priority, note}]
+    watch_items: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{title, note}]
+    handoff_notes: Mapped[str] = mapped_column(Text, default="")
+    case_ids: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    alert_ids: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    from_analyst_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    to_analyst_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    acknowledged_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True, index=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _ts()
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+
+
+# --------------------------------------------------------------------------- war room
+class WarRoom(Base):
+    """A live collaboration space for a major incident: chat, pinned items, participants."""
+
+    __tablename__ = "war_rooms"
+    id: Mapped[str] = _pk()
+    title: Mapped[str] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(20), default="active")  # active|stood_down
+    severity: Mapped[str] = mapped_column(String(10), default="high")
+    case_id: Mapped[str | None] = mapped_column(ForeignKey("cases.id"), nullable=True, index=True)
+    incident_id: Mapped[str | None] = mapped_column(ForeignKey("incidents.id"), nullable=True, index=True)
+    participants: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{user_id, label, role}]
+    summary: Mapped[str] = mapped_column(Text, default="")  # filled in on stand-down
+    client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True, index=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _ts()
+    closed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+
+
+class WarRoomMessage(Base):
+    __tablename__ = "war_room_messages"
+    id: Mapped[str] = _pk()
+    war_room_id: Mapped[str] = mapped_column(ForeignKey("war_rooms.id", ondelete="CASCADE"), index=True)
+    author_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    author_label: Mapped[str] = mapped_column(String(160), default="")
+    kind: Mapped[str] = mapped_column(String(20), default="message")  # message|system
+    content: Mapped[str] = mapped_column(Text, default="")
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = _ts()

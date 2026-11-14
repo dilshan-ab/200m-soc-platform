@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, AlertTriangle, Bell, BookMarked, Bot, Check, ChevronRight, Crosshair, FileCode2, FileText, Flame, GitMerge, Globe, HeartPulse, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Search, Server, Settings, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react';
+import { Activity, AlertTriangle, Bell, BookMarked, Bot, Building2, Check, ChevronRight, Crosshair, FileCode2, FileText, Flame, GitMerge, Globe, HeartPulse, MessagesSquare, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Repeat2, Search, Server, Settings, Share2, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { get } from '../lib/api';
@@ -22,6 +22,7 @@ const NAV: { group: string; items: Item[] }[] = [
   { group: 'OPERATIONS', items: [
     { to: '/app', label: 'Home', icon: LayoutDashboard },
     { to: '/app/intel', label: 'Threat Intelligence', icon: Globe, cap: 'intel.read' },
+    { to: '/app/threat-intel-sharing', label: 'Intel Sharing (STIX/TAXII)', icon: Share2, cap: 'threat_intel.read' },
     { to: '/app/enrichment', label: 'Enrichment', icon: Search, cap: 'intel.read' },
     { to: '/app/ueba', label: 'Behavior Analytics', icon: Activity, cap: 'ueba.read' },
     { to: '/app/copilot', label: 'AI Copilot', icon: Bot, cap: 'copilot.read' },
@@ -33,6 +34,8 @@ const NAV: { group: string; items: Item[] }[] = [
     { to: '/app/approvals', label: 'Approvals', icon: CheckCircle2, cap: 'response.approve' },
     { to: '/app/playbooks', label: 'Playbooks', icon: Play, cap: 'playbooks.read' },
     { to: '/app/notebooks', label: 'Investigation Notebooks', icon: BookMarked, cap: 'notebooks.read' },
+    { to: '/app/warroom', label: 'War Room', icon: MessagesSquare, cap: 'warroom.read' },
+    { to: '/app/handoff', label: 'Shift Handoff', icon: Repeat2, cap: 'handoff.read' },
   ] },
   { group: 'SECURITY POSTURE', items: [
     { to: '/app/servers', label: 'Servers', icon: Cpu, cap: 'servers.read' },
@@ -54,6 +57,7 @@ const NAV: { group: string; items: Item[] }[] = [
   { group: 'WORKSPACE', items: [
     { to: '/app/integrations', label: 'Integrations', icon: Plug, cap: 'integrations.read' },
     { to: '/app/integration-health', label: 'Integration Health', icon: HeartPulse, cap: 'integrations.read' },
+    { to: '/app/clients', label: 'Clients & MSSP', icon: Building2, cap: 'clients.read' },
     { to: '/app/admin', label: 'Settings', icon: Settings, cap: 'admin.settings' },
   ] },
 ];

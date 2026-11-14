@@ -33,6 +33,10 @@ const SimulationPage = lazy(() => import('./pages/Simulation'));
 const TriageQueue = lazy(() => import('./pages/TriageQueue'));
 const Notebooks = lazy(() => import('./pages/Notebooks'));
 const IntegrationHealth = lazy(() => import('./pages/IntegrationHealth'));
+const ThreatIntelSharing = lazy(() => import('./pages/ThreatIntelSharing'));
+const ShiftHandoff = lazy(() => import('./pages/ShiftHandoff'));
+const WarRoom = lazy(() => import('./pages/WarRoom'));
+const Clients = lazy(() => import('./pages/Clients'));
 const Xdr = lazy(() => import('./pages/DetectionWorkspaces').then(({ Xdr }) => ({ default: Xdr })));
 const RiskAnalytics = lazy(() => import('./pages/DetectionWorkspaces').then(({ RiskAnalytics }) => ({ default: RiskAnalytics })));
 const Admin = lazy(() => import('./pages/Admin'));
@@ -90,6 +94,10 @@ export default function App() {
           <Route path="triage" element={<Need cap="alerts.triage"><TriageQueue /></Need>} />
           <Route path="notebooks" element={<Need cap="notebooks.read"><Notebooks /></Need>} />
           <Route path="integration-health" element={<Need cap="integrations.read"><IntegrationHealth /></Need>} />
+          <Route path="threat-intel-sharing" element={<Need cap="threat_intel.read"><ThreatIntelSharing /></Need>} />
+          <Route path="handoff" element={<Need cap="handoff.read"><ShiftHandoff /></Need>} />
+          <Route path="warroom" element={<Need cap="warroom.read"><WarRoom /></Need>} />
+          <Route path="clients" element={<Need cap="clients.read"><Clients /></Need>} />
           <Route path="admin" element={<Need cap="admin.settings"><Admin /></Need>} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Route>
