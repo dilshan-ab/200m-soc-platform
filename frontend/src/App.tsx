@@ -24,6 +24,7 @@ const MitreAttack = lazy(() => import('./pages/MitreAttack'));
 const AnalystPerformance = lazy(() => import('./pages/AnalystPerformance'));
 const ThreatHunting = lazy(() => import('./pages/ThreatHunting'));
 const SigmaRules = lazy(() => import('./pages/SigmaRules'));
+const Playbooks = lazy(() => import('./pages/Playbooks'));
 const Xdr = lazy(() => import('./pages/DetectionWorkspaces').then(({ Xdr }) => ({ default: Xdr })));
 const RiskAnalytics = lazy(() => import('./pages/DetectionWorkspaces').then(({ RiskAnalytics }) => ({ default: RiskAnalytics })));
 const Admin = lazy(() => import('./pages/Admin'));
@@ -72,6 +73,7 @@ export default function App() {
           <Route path="threat-map" element={<Need cap="alerts.read"><ThreatMap /></Need>} />
           <Route path="mitre" element={<Need cap="alerts.read"><MitreAttack /></Need>} />
           <Route path="sigma" element={<Need cap="detections.read"><SigmaRules /></Need>} />
+          <Route path="playbooks" element={<Need cap="playbooks.read"><Playbooks /></Need>} />
           <Route path="admin" element={<Need cap="admin.settings"><Admin /></Need>} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Route>

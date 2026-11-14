@@ -769,6 +769,39 @@ class BackupJob(Base):
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
 
 
+# --------------------------------------------------------------------------- playbooks (visual SOAR)
+class Playbook(Base):
+    __tablename__ = "playbooks"
+    id: Mapped[str] = _pk()
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    trigger: Mapped[str] = mapped_column(String(40), default="manual")  # manual | alert.created | case.created | scheduled
+    nodes: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{id, type, position:{x,y}, data:{…}}]
+    edges: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{id, source, target, sourceHandle, targetHandle, label}]
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)  # draft | published | archived
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True, index=True)
+    created_by: Mapped[str] = mapped_column(String(160), default="")
+    created_at: Mapped[datetime] = _ts()
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+    runs: Mapped[list["PlaybookRun"]] = relationship(back_populates="playbook", cascade="all, delete-orphan")
+
+
+class PlaybookRun(Base):
+    __tablename__ = "playbook_runs"
+    id: Mapped[str] = _pk()
+    playbook_id: Mapped[str] = mapped_column(ForeignKey("playbooks.id", ondelete="CASCADE"), index=True)
+    trigger_ref: Mapped[str] = mapped_column(String(120), default="")  # alert:<id> or case:<id> or manual
+    status: Mapped[str] = mapped_column(String(20), default="running", index=True)  # running | paused | completed | failed | cancelled
+    current_node: Mapped[str] = mapped_column(String(60), default="")
+    execution_log: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{node_id, type, status, started_at, finished_at, result}]
+    error: Mapped[str] = mapped_column(Text, default="")
+    started_at: Mapped[datetime] = _ts()
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    playbook: Mapped["Playbook"] = relationship(back_populates="runs")
+
+
 class SigmaRule(Base):
     """An imported Sigma detection rule: https://github.com/SigmaHQ/sigma"""
 
