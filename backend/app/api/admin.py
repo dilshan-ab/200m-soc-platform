@@ -17,7 +17,7 @@ from ..config import get_settings
 from ..db import get_db
 from ..deps import Principal, require, require_admin_step_up
 from ..models import ApiToken, AuditEvent, BackupJob, Client, ClientMembership, RetentionPolicy, SessionRecord, SlaPolicy, User, utcnow
-from ..policy import CAPABILITIES, ROLES, SEVERITIES, get_role_overrides, role_capabilities, set_role_overrides
+from ..policy import CAPABILITIES, ROLES, SEVERITIES, role_capabilities, set_role_overrides
 from ..security import hash_password, new_token, new_totp_secret, password_policy_ok, sha256_hex
 from ..services.settings_svc import get_setting, set_setting
 from ..sessions import revoke_all

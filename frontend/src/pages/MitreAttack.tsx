@@ -77,6 +77,12 @@ function TechniqueDrawer({ technique, days, onClose }: { technique: TechniqueRow
   );
 }
 
+const HEAT_COLOR: Record<string, string> = { critical: 'var(--bad)', high: 'var(--bad)', medium: 'var(--warn)', low: 'var(--ok)', info: 'var(--muted)' };
+
+function heatOpacity(count: number, max: number): number {
+  return count === 0 ? 0 : 0.25 + Math.min(1, count / max) * 0.75;
+}
+
 export default function MitreAttack() {
   const [days, setDays] = useState(90);
   const [tactic, setTactic] = useState('');
@@ -84,6 +90,7 @@ export default function MitreAttack() {
   const [activity, setActivity] = useState('all');
   const [severity, setSeverity] = useState('');
   const [sort, setSort] = useState('volume');
+  const [view, setView] = useState<'list' | 'heatmap'>('heatmap');
   const [selected, setSelected] = useState<TechniqueRow | null>(null);
   const trigger = useRef<HTMLButtonElement | null>(null);
   const q = useQuery({
@@ -110,6 +117,7 @@ export default function MitreAttack() {
     (activity !== 'unobserved' || row.count === 0) &&
     (!severity || (row.count > 0 && row.max_severity === severity)),
   ).sort((a, b) => (sort === 'volume' ? b.count - a.count : 0) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  const maxCount = Math.max(1, ...rows.map((r) => r.count));
 
   function clearFilters() {
     setTactic('');
@@ -157,6 +165,10 @@ export default function MitreAttack() {
               <header>
                 <h2 id="attack-results-title">{tactic || 'Technique explorer'}</h2>
                 <p className="attack-caption" role="status">{number.format(rows.length)} {rows.length === 1 ? 'technique' : 'techniques'} · Last {days} days</p>
+                <div className="row" style={{ gap: 4 }}>
+                  <button type="button" className={'btn small' + (view === 'heatmap' ? ' primary' : '')} onClick={() => setView('heatmap')}>Heatmap</button>
+                  <button type="button" className={'btn small' + (view === 'list' ? ' primary' : '')} onClick={() => setView('list')}>List</button>
+                </div>
               </header>
               <div className="attack-filters">
                 <SearchBox value={search} onChange={setSearch} placeholder="Name or ID, e.g. T1059" label="Search techniques" />
@@ -181,7 +193,21 @@ export default function MitreAttack() {
                 </label>
               </div>
               {(tactic || search || activity !== 'all' || severity) && <button className="btn small attack-clear" onClick={clearFilters}>Clear filters</button>}
-              {rows.length === 0 ? <div className="empty">No techniques match these filters.</div> : (
+              {rows.length === 0 ? <div className="empty">No techniques match these filters.</div> : view === 'heatmap' ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(34px, 1fr))', gap: 4, marginTop: 8 }}>
+                  {rows.map((row) => (
+                    <button
+                      key={row.id} type="button" title={`${row.id} ${row.name} — ${row.count} alert(s)${row.rule_count ? `, ${row.rule_count} rule(s)` : ''}`}
+                      aria-haspopup="dialog" onClick={(e) => openTechnique(e, row)}
+                      style={{
+                        aspectRatio: '1', borderRadius: 4, border: '1px solid var(--border)', cursor: 'pointer',
+                        background: row.count > 0 ? HEAT_COLOR[row.max_severity] : 'transparent',
+                        opacity: row.count > 0 ? heatOpacity(row.count, maxCount) : 1,
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : (
                 <ul className="attack-techniques">
                   {rows.map((row) => (
                     <li key={row.id}>

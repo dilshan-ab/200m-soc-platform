@@ -90,7 +90,7 @@ def test_all_manifests_complete():
     from app.connectors.base import all_manifests
 
     ms = all_manifests()
-    assert len(ms) == 24
+    assert len(ms) == 28
     for m in ms:
         assert m.fields and m.test_checks is not None and m.link_method and m.direction
         assert all(not (f.secret and f.default) for f in m.fields)

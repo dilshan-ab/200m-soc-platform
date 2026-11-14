@@ -5,7 +5,7 @@ from collections import Counter, defaultdict
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Alert, EntityProfile, utcnow

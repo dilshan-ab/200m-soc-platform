@@ -75,7 +75,7 @@ function CreateCase({ onClose, onCreated }: { onClose: () => void; onCreated: (i
 }
 
 const KIND_ICONS: Record<string, typeof Shield> = { created: Shield, note: FileText, status: AlertTriangle, task: CheckCircle2, evidence: Package };
-const KIND_COLORS: Record<string, string> = { created: 'var(--blue)', note: 'var(--muted)', status: 'var(--yellow)', task: 'var(--green)', evidence: 'var(--accent)' };
+const KIND_COLORS: Record<string, string> = { created: 'var(--info)', note: 'var(--muted)', status: 'var(--warn)', task: 'var(--ok)', evidence: 'var(--accent)' };
 const EVIDENCE_TYPES = ['file', 'screenshot', 'pcap', 'log', 'artifact', 'note'] as const;
 
 function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
@@ -205,7 +205,7 @@ function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
             <tr key={o.id}>
               <td>{o.type}</td>
               <td className="mono wrap">{o.value}</td>
-              <td><span style={{ color: o.verdict === 'malicious' ? 'var(--red)' : o.verdict === 'suspicious' ? 'var(--yellow)' : 'var(--muted)' }}>{o.verdict ?? '—'}</span></td>
+              <td><span style={{ color: o.verdict === 'malicious' ? 'var(--bad)' : o.verdict === 'suspicious' ? 'var(--warn)' : 'var(--muted)' }}>{o.verdict ?? '—'}</span></td>
               <td>{o.enrichment && Object.keys(o.enrichment).length > 0 ? <span className="badge st-ok">enriched</span> : <span className="badge">pending</span>}</td>
               <td>{can('intel.enrich') && <button className="btn small" onClick={() => enrich.mutate(o.value)}>Enrich</button>}</td>
             </tr>))}</tbody></table></div>}

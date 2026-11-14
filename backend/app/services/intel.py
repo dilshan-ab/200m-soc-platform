@@ -110,8 +110,10 @@ def auto_enrich_alert(db: Session, alert_id: str) -> list[str]:
         indicators.append((alert.dst_ip, "ip"))
     if alert.file_hash:
         indicators.append((alert.file_hash, "hash"))
+    from .settings_svc import system_user
+
     job_ids: list[str] = []
     for value, itype in indicators:
-        j = queue_enrichment(db, value, itype, "system", alert_id=alert_id, client_id=alert.client_id)
+        j = queue_enrichment(db, value, itype, system_user(db).id, alert_id=alert_id, client_id=alert.client_id)
         job_ids.append(j.id)
     return job_ids

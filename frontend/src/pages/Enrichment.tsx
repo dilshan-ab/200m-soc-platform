@@ -10,7 +10,7 @@ import { useAct } from '../lib/mut';
 type Provider = { type: string; label: string; category: string; capabilities: string[]; setup_hint: string; configured: boolean; id?: string; name?: string; enabled?: boolean };
 type Job = { id: string; indicator: string; type: string; status: string; verdict: string; results: Record<string, any>; tlp: string; created_at: string; alert_id?: string; case_id?: string };
 
-const VERDICT_COLORS: Record<string, string> = { malicious: 'var(--red)', suspicious: 'var(--yellow)', benign: 'var(--green)', unknown: 'var(--muted)' };
+const VERDICT_COLORS: Record<string, string> = { malicious: 'var(--bad)', suspicious: 'var(--warn)', benign: 'var(--ok)', unknown: 'var(--muted)' };
 const VERDICT_ICONS: Record<string, typeof Shield> = { malicious: XCircle, suspicious: AlertTriangle, benign: CheckCircle2, unknown: Search };
 
 export default function Enrichment() {
@@ -47,9 +47,9 @@ function JobsPanel() {
       {stats && (
         <div className="kpi-row" style={{ marginBottom: 16 }}>
           <div className="kpi"><Database size={18} /><div><strong>{stats.total}</strong><small>Total jobs</small></div></div>
-          <div className="kpi"><XCircle size={18} style={{ color: 'var(--red)' }} /><div><strong>{stats.malicious}</strong><small>Malicious</small></div></div>
-          <div className="kpi"><AlertTriangle size={18} style={{ color: 'var(--yellow)' }} /><div><strong>{stats.suspicious}</strong><small>Suspicious</small></div></div>
-          <div className="kpi"><Clock size={18} style={{ color: 'var(--blue)' }} /><div><strong>{stats.running}</strong><small>In progress</small></div></div>
+          <div className="kpi"><XCircle size={18} style={{ color: 'var(--bad)' }} /><div><strong>{stats.malicious}</strong><small>Malicious</small></div></div>
+          <div className="kpi"><AlertTriangle size={18} style={{ color: 'var(--warn)' }} /><div><strong>{stats.suspicious}</strong><small>Suspicious</small></div></div>
+          <div className="kpi"><Clock size={18} style={{ color: 'var(--info)' }} /><div><strong>{stats.running}</strong><small>In progress</small></div></div>
         </div>
       )}
       {can('intel.enrich') && (
@@ -104,7 +104,7 @@ function JobDrawer({ job, onClose }: { job: Job; onClose: () => void }) {
       {sources.length === 0 ? <Empty>No sources returned data.</Empty> : sources.map(([name, data]) => (
         <details key={name} open style={{ marginBottom: 8, border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px' }}>
           <summary style={{ cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-            {data.error ? <XCircle size={14} style={{ color: 'var(--red)' }} /> : <CheckCircle2 size={14} style={{ color: 'var(--green)' }} />}
+            {data.error ? <XCircle size={14} style={{ color: 'var(--bad)' }} /> : <CheckCircle2 size={14} style={{ color: 'var(--ok)' }} />}
             {name}
             {data.verdict && <span style={{ marginLeft: 'auto', fontSize: 12, color: VERDICT_COLORS[data.verdict] }}>{data.verdict}</span>}
           </summary>
@@ -132,7 +132,7 @@ function ProvidersPanel() {
           {configured.map((p) => (
             <div key={p.type} className="card" style={{ padding: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <Activity size={18} style={{ color: p.enabled ? 'var(--green)' : 'var(--muted)' }} />
+                <Activity size={18} style={{ color: p.enabled ? 'var(--ok)' : 'var(--muted)' }} />
                 <strong>{p.label}</strong>
                 <span className={`badge ${p.enabled ? 'st-ok' : 'st-down'}`}>{p.enabled ? 'Active' : 'Disabled'}</span>
               </div>

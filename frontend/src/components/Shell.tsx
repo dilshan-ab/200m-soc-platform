@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, AlertTriangle, Bell, Bot, Check, ChevronRight, Crosshair, FileCode2, FileText, GitMerge, Globe, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Search, Server, Settings, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react';
+import { Activity, AlertTriangle, Bell, BookMarked, Bot, Check, ChevronRight, Crosshair, FileCode2, FileText, Flame, GitMerge, Globe, HeartPulse, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Search, Server, Settings, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { get } from '../lib/api';
@@ -26,11 +26,13 @@ const NAV: { group: string; items: Item[] }[] = [
     { to: '/app/ueba', label: 'Behavior Analytics', icon: Activity, cap: 'ueba.read' },
     { to: '/app/copilot', label: 'AI Copilot', icon: Bot, cap: 'copilot.read' },
     { to: '/app/alerts', label: 'Alerts', icon: Bell, cap: 'alerts.read' },
+    { to: '/app/triage', label: 'Triage Queue', icon: Flame, cap: 'alerts.triage' },
     { to: '/app/correlation', label: 'Correlation', icon: GitMerge, cap: 'incidents.read' },
     { to: '/app/cases', label: 'Cases', icon: Layers, cap: 'cases.read' },
     { to: '/app/response', label: 'Incident Response', icon: Workflow, cap: 'response.read' },
     { to: '/app/approvals', label: 'Approvals', icon: CheckCircle2, cap: 'response.approve' },
     { to: '/app/playbooks', label: 'Playbooks', icon: Play, cap: 'playbooks.read' },
+    { to: '/app/notebooks', label: 'Investigation Notebooks', icon: BookMarked, cap: 'notebooks.read' },
   ] },
   { group: 'SECURITY POSTURE', items: [
     { to: '/app/servers', label: 'Servers', icon: Cpu, cap: 'servers.read' },
@@ -51,6 +53,7 @@ const NAV: { group: string; items: Item[] }[] = [
   ] },
   { group: 'WORKSPACE', items: [
     { to: '/app/integrations', label: 'Integrations', icon: Plug, cap: 'integrations.read' },
+    { to: '/app/integration-health', label: 'Integration Health', icon: HeartPulse, cap: 'integrations.read' },
     { to: '/app/admin', label: 'Settings', icon: Settings, cap: 'admin.settings' },
   ] },
 ];

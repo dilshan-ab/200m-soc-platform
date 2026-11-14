@@ -75,7 +75,7 @@ function TriagePanel() {
   const triage = useMutation({ mutationFn: (alertId: string) => post<any>('/api/copilot/triage', { alert_id: alertId }) });
   return (
     <>
-      <div className="card" style={{ padding: 16, marginBottom: 16, borderLeft: '3px solid var(--yellow)' }}>
+      <div className="card" style={{ padding: 16, marginBottom: 16, borderLeft: '3px solid var(--warn)' }}>
         <h4 style={{ margin: 0, marginBottom: 4 }}><Zap size={16} style={{ verticalAlign: -3 }} /> Quick Triage</h4>
         <small style={{ color: 'var(--muted)' }}>Instant severity assessment, priority ranking, and verdict recommendation.</small>
       </div>
@@ -90,7 +90,7 @@ function ExplainPanel() {
   const explain = useMutation({ mutationFn: (alertId: string) => post<{ explanation: string; model: string; generated_at: string }>('/api/copilot/explain', { alert_id: alertId }) });
   return (
     <>
-      <div className="card" style={{ padding: 16, marginBottom: 16, borderLeft: '3px solid var(--blue, var(--accent))' }}>
+      <div className="card" style={{ padding: 16, marginBottom: 16, borderLeft: '3px solid var(--info)' }}>
         <h4 style={{ margin: 0, marginBottom: 4 }}><MessageSquare size={16} style={{ verticalAlign: -3 }} /> Plain Language Explanation</h4>
         <small style={{ color: 'var(--muted)' }}>Explain alerts in simple terms for junior analysts and stakeholders.</small>
       </div>
@@ -105,7 +105,7 @@ function SuggestPanel() {
   const suggest = useMutation({ mutationFn: (alertId: string) => post<any>('/api/copilot/suggest-response', { alert_id: alertId }) });
   return (
     <>
-      <div className="card" style={{ padding: 16, marginBottom: 16, borderLeft: '3px solid var(--red)' }}>
+      <div className="card" style={{ padding: 16, marginBottom: 16, borderLeft: '3px solid var(--bad)' }}>
         <h4 style={{ margin: 0, marginBottom: 4 }}><Shield size={16} style={{ verticalAlign: -3 }} /> Response Suggestions</h4>
         <small style={{ color: 'var(--muted)' }}>AI-recommended incident response actions with priority and automation assessment.</small>
       </div>
@@ -121,7 +121,7 @@ function SummarizePanel() {
   const summarize = useMutation({ mutationFn: (id: string) => post<{ summary: string; model: string; generated_at: string }>('/api/copilot/summarize', { case_id: id }) });
   return (
     <>
-      <div className="card" style={{ padding: 16, marginBottom: 16, borderLeft: '3px solid var(--green, var(--accent))' }}>
+      <div className="card" style={{ padding: 16, marginBottom: 16, borderLeft: '3px solid var(--ok)' }}>
         <h4 style={{ margin: 0, marginBottom: 4 }}><FileText size={16} style={{ verticalAlign: -3 }} /> Case Summary</h4>
         <small style={{ color: 'var(--muted)' }}>Generate an executive summary of a case including key findings, impact, and next steps.</small>
       </div>
@@ -150,7 +150,7 @@ function ResultCard({ title, model, time, content }: { title: string; model: str
 }
 
 function TriageResult({ data }: { data: any }) {
-  const VERDICT_COLORS: Record<string, string> = { true_positive: 'var(--red)', false_positive: 'var(--green)', needs_investigation: 'var(--yellow)' };
+  const VERDICT_COLORS: Record<string, string> = { true_positive: 'var(--bad)', false_positive: 'var(--ok)', needs_investigation: 'var(--warn)' };
   return (
     <div className="card" style={{ padding: 16 }}>
       <div className="row" style={{ gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -168,7 +168,7 @@ function TriageResult({ data }: { data: any }) {
 }
 
 function ActionsResult({ actions }: { actions: any[] }) {
-  const PRIORITY_COLORS: Record<string, string> = { immediate: 'var(--red)', urgent: 'var(--yellow)', standard: 'var(--blue, var(--accent))' };
+  const PRIORITY_COLORS: Record<string, string> = { immediate: 'var(--bad)', urgent: 'var(--warn)', standard: 'var(--info)' };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {actions.map((a, i) => (
@@ -177,7 +177,7 @@ function ActionsResult({ actions }: { actions: any[] }) {
             <strong>{a.action?.replace(/_/g, ' ')}</strong>
             <div className="row" style={{ gap: 6 }}>
               <span className="badge" style={{ background: PRIORITY_COLORS[a.priority] ?? 'var(--muted)', color: '#fff' }}>{a.priority}</span>
-              {a.automated && <span className="badge" style={{ background: 'var(--green)', color: '#fff' }}>automatable</span>}
+              {a.automated && <span className="badge" style={{ background: 'var(--ok)', color: '#fff' }}>automatable</span>}
             </div>
           </div>
           {a.target && <div style={{ fontSize: 13 }} className="mono">{a.target}</div>}

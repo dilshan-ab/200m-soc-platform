@@ -158,7 +158,7 @@ function IncidentDetail({ id, onClose }: { id: string; onClose: () => void }) {
           <h4>Kill chain stages</h4>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {inc.kill_chain_stages.map((t) => (
-              <span key={t} className="badge" style={{ background: 'var(--red-bg)', color: 'var(--red)', fontSize: 12 }}>{t}</span>
+              <span key={t} className="badge" style={{ background: 'var(--bad-bg)', color: 'var(--bad)', fontSize: 12 }}>{t}</span>
             ))}
           </div>
         </div>
@@ -209,7 +209,7 @@ function RuleList() {
                 </td>
                 <td><span className="badge">{STRAT_LABEL[r.strategy] ?? r.strategy}</span></td>
                 <td>+{r.severity_boost}</td>
-                <td>{r.enabled ? <span style={{ color: 'var(--green)' }}>Active</span> : <span style={{ color: 'var(--muted)' }}>Disabled</span>}</td>
+                <td>{r.enabled ? <span style={{ color: 'var(--ok)' }}>Active</span> : <span style={{ color: 'var(--muted)' }}>Disabled</span>}</td>
               </tr>
             ))}
           </tbody>
@@ -236,7 +236,7 @@ function RuleDetail({ id, onClose }: { id: string; onClose: () => void }) {
     <Drawer title={r.name} onClose={onClose}>
       <div className="row" style={{ marginBottom: 12, gap: 8 }}>
         <span className="badge">{STRAT_LABEL[r.strategy] ?? r.strategy}</span>
-        <span style={{ color: r.enabled ? 'var(--green)' : 'var(--muted)' }}>{r.enabled ? 'Active' : 'Disabled'}</span>
+        <span style={{ color: r.enabled ? 'var(--ok)' : 'var(--muted)' }}>{r.enabled ? 'Active' : 'Disabled'}</span>
         <span className="spacer" />
         {can('correlation.write') && (
           <button className="btn small" onClick={() => toggle.mutate(!r.enabled)}>

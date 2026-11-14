@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import cast, func, select, String
+from sqlalchemy import String, cast, func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
