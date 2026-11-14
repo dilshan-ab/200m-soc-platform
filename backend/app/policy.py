@@ -75,6 +75,18 @@ CAPABILITIES: dict[str, str] = {
     "simulation.write": "admin",
     "notebooks.read": "l1",
     "notebooks.write": "l1",
+    "threat_intel.read": "l1",
+    "threat_intel.write": "l2",
+    "threat_intel.admin": "admin",
+    "handoff.read": "l1",
+    "handoff.write": "l1",
+    "warroom.read": "l1",
+    "warroom.write": "l1",
+    "warroom.manage": "l2",
+    "clients.read": "l1",
+    "clients.write": "admin",
+    "clients.manage_members": "admin",
+    "mssp.view": "l2",
 }
 
 

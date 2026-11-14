@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 const MAP: Record<string, string[]> = {
   'alert.created': ['alerts', 'dashboard', 'alert-stats', 'triage-queue', 'mitre-matrix'], 'alert.updated': ['alerts', 'dashboard', 'alert', 'triage-queue', 'mitre-matrix'], 'case.created': ['cases'], 'case.updated': ['cases', 'case'],
   'action.updated': ['requests', 'approvals', 'request'], 'approval.pending': ['approvals'], 'server.down': ['servers', 'dashboard'],
+  'warroom.message': ['warroom', 'warrooms'], 'warroom.created': ['warrooms'],
 };
 
 /** Server-sent events carry identifiers only; the UI refetches through the authorised API. */

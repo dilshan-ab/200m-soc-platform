@@ -1,5 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog';
-import { Search } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
 import { titleCase } from '../lib/format';
 
@@ -52,28 +52,27 @@ export function Pager({ page, limit, total, set }: { page: number; limit: number
   );
 }
 
-/** A search icon that expands into a text input on click/focus, and collapses again when empty and blurred. */
-export function SearchBox({ value, onChange, placeholder = 'Search…', label = 'Search' }: { value: string; onChange: (v: string) => void; placeholder?: string; label?: string }) {
-  const [open, setOpen] = useState(!!value);
+export function SearchBox({ value, onChange, placeholder = 'Search…', label = 'Search', id }: { value: string; onChange: (v: string) => void; placeholder?: string; label?: string; id?: string }) {
   const ref = useRef<HTMLInputElement>(null);
-  function expand() {
-    setOpen(true);
-    requestAnimationFrame(() => ref.current?.focus());
-  }
-  function collapseIfEmpty() {
-    if (!value) setOpen(false);
+  function clear() {
+    onChange('');
+    ref.current?.focus();
   }
   return (
-    <div className={`search-box${open ? ' open' : ''}`}>
-      <button type="button" className="search-box-icon" aria-label={label} aria-expanded={open} onClick={expand}><Search size={16} aria-hidden="true" /></button>
+    <div className="search-box">
+      <Search size={17} aria-hidden="true" />
       <input
-        ref={ref} type="search" value={value} placeholder={placeholder} aria-label={label}
-        tabIndex={open ? 0 : -1}
-        onFocus={expand}
+        ref={ref} id={id} type="search" value={value} placeholder={placeholder} aria-label={label} maxLength={200}
         onChange={(e) => onChange(e.target.value)}
-        onBlur={collapseIfEmpty}
-        onKeyDown={(e) => { if (e.key === 'Escape') { onChange(''); ref.current?.blur(); } }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' && value) {
+            e.preventDefault();
+            e.stopPropagation();
+            clear();
+          }
+        }}
       />
+      {value && <button type="button" className="search-box-clear" aria-label={`Clear ${label.toLowerCase()}`} onClick={clear}><X size={16} aria-hidden="true" /></button>}
     </div>
   );
 }
