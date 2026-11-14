@@ -26,6 +26,8 @@ const ThreatHunting = lazy(() => import('./pages/ThreatHunting'));
 const SigmaRules = lazy(() => import('./pages/SigmaRules'));
 const Playbooks = lazy(() => import('./pages/Playbooks'));
 const Correlation = lazy(() => import('./pages/Correlation'));
+const Enrichment = lazy(() => import('./pages/Enrichment'));
+const UEBAPage = lazy(() => import('./pages/UEBA'));
 const Xdr = lazy(() => import('./pages/DetectionWorkspaces').then(({ Xdr }) => ({ default: Xdr })));
 const RiskAnalytics = lazy(() => import('./pages/DetectionWorkspaces').then(({ RiskAnalytics }) => ({ default: RiskAnalytics })));
 const Admin = lazy(() => import('./pages/Admin'));
@@ -76,6 +78,8 @@ export default function App() {
           <Route path="sigma" element={<Need cap="detections.read"><SigmaRules /></Need>} />
           <Route path="playbooks" element={<Need cap="playbooks.read"><Playbooks /></Need>} />
           <Route path="correlation" element={<Need cap="incidents.read"><Correlation /></Need>} />
+          <Route path="enrichment" element={<Need cap="intel.read"><Enrichment /></Need>} />
+          <Route path="ueba" element={<Need cap="ueba.read"><UEBAPage /></Need>} />
           <Route path="admin" element={<Need cap="admin.settings"><Admin /></Need>} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Route>

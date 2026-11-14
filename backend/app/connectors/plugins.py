@@ -599,6 +599,32 @@ class OpenCti(Connector):
                 "observables": [e["node"] for e in edges]}
 
 
+@register
+class Shodan(Connector):
+    manifest = Manifest(
+        "shodan", "Shodan", "intel", "REST API", ["action"], "API key",
+        [F("url", "API URL", "url", default="https://api.shodan.io"), F("api_key", "API key", "password", secret=True)],
+        ["enrich"], ["IP lookup returns"],
+        setup_hint="API key from account.shodan.io. Only IP indicators are supported.",
+    )
+
+    def test(self) -> list[CheckResult]:
+        self.json("GET", "/api-info", params={"key": self.secrets.get("api_key", "")})
+        return [CheckResult("IP lookup returns", True)]
+
+    def enrich(self, indicator: str, itype: str) -> dict[str, Any]:
+        if itype != "ip":
+            raise ConnectorError("Shodan only supports IP indicators")
+        d = self.json("GET", f"/shodan/host/{indicator}", params={"key": self.secrets.get("api_key", "")})
+        ports = d.get("ports", [])
+        vulns = d.get("vulns", [])
+        return {
+            "ports": ports, "vulns": vulns, "os": d.get("os"), "org": d.get("org"),
+            "isp": d.get("isp"), "country": d.get("country_code"),
+            "verdict": "suspicious" if vulns else "unknown",
+        }
+
+
 # ----------------------------------------------------------------------------- Ops / ticketing / case
 @register
 class Grafana(Connector):

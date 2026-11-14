@@ -1,5 +1,6 @@
 import { SavedViews } from '../components/SavedViews';
 import { useQuery } from '@tanstack/react-query';
+import { AlertTriangle, CheckCircle2, Clock, FileText, Link2, Package, Shield } from 'lucide-react';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Chips } from '../components/manage';
@@ -73,6 +74,10 @@ function CreateCase({ onClose, onCreated }: { onClose: () => void; onCreated: (i
   );
 }
 
+const KIND_ICONS: Record<string, typeof Shield> = { created: Shield, note: FileText, status: AlertTriangle, task: CheckCircle2, evidence: Package };
+const KIND_COLORS: Record<string, string> = { created: 'var(--blue)', note: 'var(--muted)', status: 'var(--yellow)', task: 'var(--green)', evidence: 'var(--accent)' };
+const EVIDENCE_TYPES = ['file', 'screenshot', 'pcap', 'log', 'artifact', 'note'] as const;
+
 function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const q = useQuery({ queryKey: ['case', id], queryFn: () => get<any>(`/api/cases/${id}`) });
   const { can } = useAuth();
@@ -80,6 +85,9 @@ function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const [task, setTask] = useState('');
   const [obs, setObs] = useState({ type: 'ip', value: '' });
   const [resolve, setResolve] = useState<null | { status: string; resolution: string }>(null);
+  const [section, setSection] = useState<'timeline' | 'evidence' | 'tasks' | 'observables'>('timeline');
+  const [addEvidence, setAddEvidence] = useState(false);
+  const [custodyView, setCustodyView] = useState<any>(null);
   const keys = ['case', 'cases'];
   const addNote = useAct(() => post(`/api/cases/${id}/notes`, { text: note }), keys, 'Note added', () => setNote(''));
   const addTask = useAct(() => post(`/api/cases/${id}/tasks`, { title: task }), keys, undefined, () => setTask(''));
@@ -103,25 +111,113 @@ function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
           {can('cases.close') && c.status === 'resolved' && <button className="btn small" onClick={() => setStatus.mutate({ status: 'closed' })}>Close</button>}
         </div>
       )}
-      <h3>Tasks</h3>
-      {c.tasks.length === 0 ? <Empty>No tasks.</Empty> : <ul style={{ listStyle: 'none', padding: 0 }}>{c.tasks.map((t: any) => (
-        <li key={t.id} className="row" style={{ padding: '4px 0' }}>
-          <input type="checkbox" aria-label={t.title} disabled={!write} checked={t.status === 'done'} onChange={(e) => setTaskStatus.mutate({ tid: t.id, status: e.target.checked ? 'done' : 'todo' })} />
-          <span style={{ textDecoration: t.status === 'done' ? 'line-through' : 'none' }}>{t.title}{t.required && ' *'}</span>
-        </li>))}</ul>}
-      {write && <div className="row"><input placeholder="Add task…" aria-label="New task" value={task} onChange={(e) => setTask(e.target.value)} /><button className="btn small" disabled={!task.trim()} onClick={() => addTask.mutate(undefined)}>Add</button></div>}
-      <h3 style={{ marginTop: 16 }}>Observables</h3>
-      {c.observables.length === 0 ? <Empty>No observables.</Empty> : <div className="table-wrap"><table><thead><tr><th>Type</th><th>Value</th><th>Verdict</th><th /></tr></thead><tbody>{c.observables.map((o: any) => (
-        <tr key={o.id}><td>{o.type}</td><td className="mono wrap">{o.value}</td><td>{o.verdict ?? '—'}</td><td>{can('intel.enrich') && <button className="btn small" onClick={() => enrich.mutate(o.value)}>Enrich</button>}</td></tr>))}</tbody></table></div>}
-      {write && <div className="row" style={{ marginTop: 8 }}>
-        <select aria-label="Observable type" value={obs.type} onChange={(e) => setObs({ ...obs, type: e.target.value })}>{['ip', 'domain', 'hash', 'url', 'user', 'email', 'host'].map((t) => <option key={t}>{t}</option>)}</select>
-        <input placeholder="Value" aria-label="Observable value" value={obs.value} onChange={(e) => setObs({ ...obs, value: e.target.value })} />
-        <button className="btn small" disabled={!obs.value.trim()} onClick={() => addObs.mutate(undefined)}>Add</button></div>}
-      {c.alerts?.length > 0 && <><h3 style={{ marginTop: 16 }}>Linked alerts</h3><ul>{c.alerts.map((a: any) => <li key={a.id}><Sev v={a.severity} /> {a.title}</li>)}</ul></>}
-      {c.tickets?.length > 0 && <><h3 style={{ marginTop: 16 }}>External tickets</h3><ul>{c.tickets.map((t: any) => <li key={t.id}>{t.provider} {t.external_id} ({t.status})</li>)}</ul></>}
-      <h3 style={{ marginTop: 16 }}>Timeline</h3>
-      {write && <div className="row"><input placeholder="Add a note…" aria-label="Note" value={note} onChange={(e) => setNote(e.target.value)} /><button className="btn small" disabled={!note.trim()} onClick={() => addNote.mutate(undefined)}>Post</button></div>}
-      <ul className="timeline">{[...c.timeline].reverse().map((e: any) => <li key={e.id}><b>{e.actor}</b> · {e.kind} <span style={{ color: 'var(--muted)' }}>{when(e.at)}</span><div style={{ whiteSpace: 'pre-wrap' }}>{e.message}</div></li>)}</ul>
+
+      <div className="tabs" style={{ marginBottom: 12, marginTop: 12 }}>
+        <button className={section === 'timeline' ? 'active' : ''} onClick={() => setSection('timeline')}>Timeline ({c.timeline?.length ?? 0})</button>
+        <button className={section === 'evidence' ? 'active' : ''} onClick={() => setSection('evidence')}>Evidence ({c.evidence?.length ?? 0})</button>
+        <button className={section === 'tasks' ? 'active' : ''} onClick={() => setSection('tasks')}>Tasks ({c.tasks?.length ?? 0})</button>
+        <button className={section === 'observables' ? 'active' : ''} onClick={() => setSection('observables')}>Observables ({c.observables?.length ?? 0})</button>
+      </div>
+
+      {section === 'timeline' && (
+        <>
+          {write && <div className="row" style={{ marginBottom: 8 }}><input placeholder="Add a note…" aria-label="Note" value={note} onChange={(e) => setNote(e.target.value)} /><button className="btn small" disabled={!note.trim()} onClick={() => addNote.mutate(undefined)}>Post</button></div>}
+          <div style={{ position: 'relative', paddingLeft: 24 }}>
+            <div style={{ position: 'absolute', left: 8, top: 0, bottom: 0, width: 2, background: 'var(--border)' }} />
+            {[...c.timeline].reverse().map((e: any) => {
+              const Icon = KIND_ICONS[e.kind] || FileText;
+              const color = KIND_COLORS[e.kind] || 'var(--muted)';
+              return (
+                <div key={e.id} style={{ position: 'relative', marginBottom: 12, paddingBottom: 4 }}>
+                  <div style={{ position: 'absolute', left: -20, top: 2, width: 20, height: 20, borderRadius: '50%', background: 'var(--surface)', border: `2px solid ${color}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon size={10} style={{ color }} />
+                  </div>
+                  <div style={{ marginLeft: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                      <strong>{e.actor}</strong>
+                      <span className="badge" style={{ fontSize: 10 }}>{e.kind}</span>
+                      <span style={{ color: 'var(--muted)', marginLeft: 'auto', fontSize: 12 }}>{when(e.at)}</span>
+                    </div>
+                    <div style={{ whiteSpace: 'pre-wrap', fontSize: 13, marginTop: 2 }}>{e.message}</div>
+                    {e.meta && Object.keys(e.meta).length > 0 && (
+                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                        {Object.entries(e.meta).map(([k, v]) => <span key={k} className="badge" style={{ marginRight: 4 }}>{k}: {String(v)}</span>)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {c.alerts?.length > 0 && <><h4 style={{ marginTop: 16, marginBottom: 8 }}>Linked Alerts</h4>{c.alerts.map((a: any) => (
+            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+              <Link2 size={14} style={{ color: 'var(--muted)' }} /><Sev v={a.severity} /><span className="wrap">{a.title}</span><span style={{ marginLeft: 'auto', color: 'var(--muted)', fontSize: 12 }}>{ago(a.time)}</span>
+            </div>
+          ))}</>}
+          {c.tickets?.length > 0 && <><h4 style={{ marginTop: 16, marginBottom: 8 }}>External Tickets</h4><ul>{c.tickets.map((t: any) => <li key={t.id}>{t.provider} {t.external_id} ({t.status})</li>)}</ul></>}
+        </>
+      )}
+
+      {section === 'evidence' && (
+        <>
+          {write && can('evidence.write') && <button className="btn small" style={{ marginBottom: 8 }} onClick={() => setAddEvidence(true)}>Add evidence</button>}
+          {(!c.evidence || c.evidence.length === 0) ? <Empty>No evidence collected yet.</Empty> : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {c.evidence.map((e: any) => (
+                <div key={e.id} style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '10px 14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <Package size={16} style={{ color: 'var(--accent)' }} />
+                    <strong>{e.name}</strong>
+                    <span className="badge">{e.type}</span>
+                    {e.tags?.map((t: string) => <span key={t} className="badge">{t}</span>)}
+                  </div>
+                  {e.description && <div style={{ fontSize: 13, color: 'var(--muted)' }}>{e.description}</div>}
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    <span>Collected by {e.collected_by}</span>
+                    <span>{ago(e.collected_at)}</span>
+                    {e.hash_sha256 && <span className="mono">SHA256: {e.hash_sha256.slice(0, 16)}…</span>}
+                    {e.file_size > 0 && <span>{(e.file_size / 1024).toFixed(1)} KB</span>}
+                  </div>
+                  <button className="btn small" style={{ marginTop: 6 }} onClick={() => setCustodyView(e)}>
+                    Chain of custody ({e.chain_of_custody?.length ?? 0})
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {section === 'tasks' && (
+        <>
+          {c.tasks.length === 0 ? <Empty>No tasks.</Empty> : <ul style={{ listStyle: 'none', padding: 0 }}>{c.tasks.map((t: any) => (
+            <li key={t.id} className="row" style={{ padding: '4px 0' }}>
+              <input type="checkbox" aria-label={t.title} disabled={!write} checked={t.status === 'done'} onChange={(e) => setTaskStatus.mutate({ tid: t.id, status: e.target.checked ? 'done' : 'todo' })} />
+              <span style={{ textDecoration: t.status === 'done' ? 'line-through' : 'none' }}>{t.title}{t.required && ' *'}</span>
+            </li>))}</ul>}
+          {write && <div className="row"><input placeholder="Add task…" aria-label="New task" value={task} onChange={(e) => setTask(e.target.value)} /><button className="btn small" disabled={!task.trim()} onClick={() => addTask.mutate(undefined)}>Add</button></div>}
+        </>
+      )}
+
+      {section === 'observables' && (
+        <>
+          {c.observables.length === 0 ? <Empty>No observables.</Empty> : <div className="table-wrap"><table><thead><tr><th>Type</th><th>Value</th><th>Verdict</th><th>Enrichment</th><th /></tr></thead><tbody>{c.observables.map((o: any) => (
+            <tr key={o.id}>
+              <td>{o.type}</td>
+              <td className="mono wrap">{o.value}</td>
+              <td><span style={{ color: o.verdict === 'malicious' ? 'var(--red)' : o.verdict === 'suspicious' ? 'var(--yellow)' : 'var(--muted)' }}>{o.verdict ?? '—'}</span></td>
+              <td>{o.enrichment && Object.keys(o.enrichment).length > 0 ? <span className="badge st-ok">enriched</span> : <span className="badge">pending</span>}</td>
+              <td>{can('intel.enrich') && <button className="btn small" onClick={() => enrich.mutate(o.value)}>Enrich</button>}</td>
+            </tr>))}</tbody></table></div>}
+          {write && <div className="row" style={{ marginTop: 8 }}>
+            <select aria-label="Observable type" value={obs.type} onChange={(e) => setObs({ ...obs, type: e.target.value })}>{['ip', 'domain', 'hash', 'url', 'user', 'email', 'host'].map((t) => <option key={t}>{t}</option>)}</select>
+            <input placeholder="Value" aria-label="Observable value" value={obs.value} onChange={(e) => setObs({ ...obs, value: e.target.value })} />
+            <button className="btn small" disabled={!obs.value.trim()} onClick={() => addObs.mutate(undefined)}>Add</button></div>}
+        </>
+      )}
+
+      {addEvidence && <AddEvidenceModal caseId={id} onClose={() => setAddEvidence(false)} />}
+      {custodyView && <CustodyModal evidence={custodyView} caseId={id} onClose={() => setCustodyView(null)} />}
       {resolve && (
         <Modal title="Resolve case" onClose={() => setResolve(null)}>
           <Field label="Resolution" id="res"><select id="res" value={resolve.resolution} onChange={(e) => setResolve({ ...resolve, resolution: e.target.value })}>{['true_positive', 'false_positive', 'benign', 'duplicate', 'other'].map((r) => <option key={r}>{r}</option>)}</select></Field>
@@ -130,5 +226,60 @@ function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
         </Modal>
       )}
     </Drawer>
+  );
+}
+
+function AddEvidenceModal({ caseId, onClose }: { caseId: string; onClose: () => void }) {
+  const [v, setV] = useState({ name: '', type: 'file' as string, description: '', hash_sha256: '', tags: '' });
+  const m = useAct(() => post(`/api/cases/${caseId}/evidence`, { ...v, tags: v.tags ? v.tags.split(',').map((t) => t.trim()) : [] }), ['case', 'cases'], 'Evidence added', onClose);
+  return (
+    <Modal title="Add evidence" onClose={onClose}>
+      <Field label="Name" id="en"><input id="en" value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Evidence name" /></Field>
+      <div className="grid cols-2">
+        <Field label="Type" id="et"><select id="et" value={v.type} onChange={(e) => setV({ ...v, type: e.target.value })}>{EVIDENCE_TYPES.map((t) => <option key={t}>{t}</option>)}</select></Field>
+        <Field label="SHA-256 hash" id="eh"><input id="eh" className="mono" value={v.hash_sha256} onChange={(e) => setV({ ...v, hash_sha256: e.target.value })} placeholder="Optional" /></Field>
+      </div>
+      <Field label="Description" id="ed"><textarea id="ed" value={v.description} onChange={(e) => setV({ ...v, description: e.target.value })} /></Field>
+      <Field label="Tags (comma-separated)" id="etg"><input id="etg" value={v.tags} onChange={(e) => setV({ ...v, tags: e.target.value })} placeholder="malware, phishing" /></Field>
+      {m.error && <ErrorBox error={m.error} />}
+      <button className="btn primary" disabled={!v.name.trim() || m.isPending} onClick={() => m.mutate(undefined)}>Add evidence</button>
+    </Modal>
+  );
+}
+
+function CustodyModal({ evidence, caseId, onClose }: { evidence: any; caseId: string; onClose: () => void }) {
+  const [action, setAction] = useState('');
+  const [custodyNote, setCustodyNote] = useState('');
+  const addCustody = useAct(() => post(`/api/cases/${caseId}/evidence/${evidence.id}/custody`, { action, note: custodyNote }), ['case', 'cases'], 'Custody entry added', () => { setAction(''); setCustodyNote(''); });
+  const chain = evidence.chain_of_custody || [];
+  return (
+    <Modal title={`Chain of custody: ${evidence.name}`} onClose={onClose}>
+      {evidence.hash_sha256 && <div style={{ marginBottom: 12, padding: '8px 12px', background: 'var(--surface)', borderRadius: 6 }}><small style={{ color: 'var(--muted)' }}>SHA-256</small><div className="mono" style={{ fontSize: 12, wordBreak: 'break-all' }}>{evidence.hash_sha256}</div></div>}
+      <div style={{ position: 'relative', paddingLeft: 20, marginBottom: 16 }}>
+        <div style={{ position: 'absolute', left: 6, top: 0, bottom: 0, width: 2, background: 'var(--border)' }} />
+        {chain.map((entry: any, i: number) => (
+          <div key={i} style={{ position: 'relative', marginBottom: 10, paddingBottom: 4 }}>
+            <div style={{ position: 'absolute', left: -17, top: 4, width: 12, height: 12, borderRadius: '50%', background: i === 0 ? 'var(--accent)' : 'var(--border)' }} />
+            <div style={{ marginLeft: 8 }}>
+              <div style={{ fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}>
+                <strong>{entry.actor}</strong>
+                <span className="badge">{entry.action}</span>
+                <span style={{ color: 'var(--muted)', fontSize: 12, marginLeft: 'auto' }}><Clock size={10} style={{ verticalAlign: -1 }} /> {ago(entry.at)}</span>
+              </div>
+              {entry.note && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{entry.note}</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="row" style={{ gap: 6 }}>
+        <select aria-label="Action" value={action} onChange={(e) => setAction(e.target.value)} style={{ flex: 1 }}>
+          <option value="">Select action…</option>
+          {['accessed', 'transferred', 'analyzed', 'copied', 'archived', 'exported', 'verified'].map((a) => <option key={a}>{a}</option>)}
+        </select>
+        <input placeholder="Note (optional)" aria-label="Note" value={custodyNote} onChange={(e) => setCustodyNote(e.target.value)} style={{ flex: 2 }} />
+        <button className="btn small" disabled={!action || addCustody.isPending} onClick={() => addCustody.mutate(undefined)}>Add</button>
+      </div>
+      {addCustody.error && <ErrorBox error={addCustody.error} />}
+    </Modal>
   );
 }

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from .. import audit
 from ..db import get_db
 from ..deps import Principal, require, scoped_get
-from ..models import Alert, Case, CaseObservable, CaseTask, CaseTemplate, CaseTicket, utcnow
+from ..models import Alert, Case, CaseEvidence, CaseObservable, CaseTask, CaseTemplate, CaseTicket, utcnow
 from ..services import cases as svc
 from ..services import events
 from .alerts import alert_out
@@ -26,7 +26,7 @@ def case_out(c: Case, detail: bool = False) -> dict[str, Any]:
         d.update({"description": c.description, "pap": c.pap, "resolution": c.resolution, "lessons": c.lessons, "external_id": c.external_id, "sync_error": c.sync_error,
                   "tasks": [{"id": t.id, "title": t.title, "description": t.description, "required": t.required, "status": t.status, "assignee_id": t.assignee_id, "position": t.position} for t in sorted(c.tasks, key=lambda t: t.position)],
                   "observables": [{"id": o.id, "type": o.type, "value": o.value, "verdict": o.verdict, "tlp": o.tlp, "enrichment": o.enrichment} for o in c.observables],
-                  "timeline": [{"id": e.id, "at": iso(e.at), "actor": e.actor, "kind": e.kind, "message": e.message} for e in c.timeline]})
+                  "timeline": [{"id": e.id, "at": iso(e.at), "actor": e.actor, "kind": e.kind, "message": e.message, "meta": e.meta} for e in c.timeline]})
     return d
 
 
@@ -91,6 +91,7 @@ def get_case(cid: str, p: Principal = Depends(require("cases.read")), db: Sessio
     d = case_out(c, True)
     d["alerts"] = [alert_out(a) for a in db.execute(select(Alert).where(Alert.case_id == c.id)).scalars()]
     d["tickets"] = [{"id": t.id, "provider": t.provider, "external_id": t.external_id, "url": t.url, "status": t.status} for t in db.execute(select(CaseTicket).where(CaseTicket.case_id == c.id)).scalars()]
+    d["evidence"] = [_evidence_out(e) for e in db.execute(select(CaseEvidence).where(CaseEvidence.case_id == c.id).order_by(CaseEvidence.collected_at.desc())).scalars()]
     return d
 
 
@@ -198,3 +199,66 @@ def add_observable(cid: str, body: ObsIn, p: Principal = Depends(require("cases.
     c.observables.append(o)
     db.flush()
     return {"id": o.id}
+
+
+def _evidence_out(e: CaseEvidence) -> dict[str, Any]:
+    return {"id": e.id, "name": e.name, "type": e.type, "description": e.description, "hash_sha256": e.hash_sha256,
+            "file_size": e.file_size, "tags": e.tags, "collected_by": e.collected_by,
+            "collected_at": iso(e.collected_at), "chain_of_custody": e.chain_of_custody,
+            "observable_id": e.observable_id, "alert_id": e.alert_id, "created_at": iso(e.created_at)}
+
+
+class EvidenceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=300)
+    type: Literal["file", "screenshot", "pcap", "log", "artifact", "note"] = "file"
+    description: str = Field(default="", max_length=5000)
+    hash_sha256: str = Field(default="", max_length=64)
+    file_size: int = Field(default=0, ge=0)
+    tags: list[str] = Field(default_factory=list, max_length=20)
+    observable_id: str | None = None
+    alert_id: str | None = None
+
+
+@router.get("/{cid}/evidence")
+def list_evidence(cid: str, p: Principal = Depends(require("evidence.read")), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    c = scoped_get(db, Case, cid, p)
+    rows = db.execute(select(CaseEvidence).where(CaseEvidence.case_id == c.id).order_by(CaseEvidence.collected_at.desc())).scalars()
+    return [_evidence_out(e) for e in rows]
+
+
+@router.post("/{cid}/evidence", status_code=201)
+def add_evidence(cid: str, body: EvidenceIn, p: Principal = Depends(require("evidence.write")), db: Session = Depends(get_db)) -> dict[str, Any]:
+    c = scoped_get(db, Case, cid, p)
+    now = utcnow()
+    e = CaseEvidence(
+        case_id=c.id, name=body.name, type=body.type, description=body.description,
+        hash_sha256=body.hash_sha256, file_size=body.file_size, tags=body.tags,
+        collected_by=p.label, collected_at=now, observable_id=body.observable_id, alert_id=body.alert_id,
+        client_id=c.client_id,
+        chain_of_custody=[{"actor": p.label, "action": "collected", "at": now.isoformat(), "note": "Evidence collected"}],
+    )
+    db.add(e)
+    db.flush()
+    svc.add_event(db, c, p.label, "evidence", f"Evidence added: {body.name}")
+    audit.record(db, "evidence.add", actor=p.label, actor_id=p.user.id, resource_type="evidence", resource_id=e.id, client_id=c.client_id, ip=p.ip)
+    return _evidence_out(e)
+
+
+class CustodyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action: str = Field(min_length=1, max_length=50)
+    note: str = Field(default="", max_length=1000)
+
+
+@router.post("/{cid}/evidence/{eid}/custody", status_code=201)
+def add_custody_entry(cid: str, eid: str, body: CustodyIn, p: Principal = Depends(require("evidence.write")), db: Session = Depends(get_db)) -> dict[str, Any]:
+    c = scoped_get(db, Case, cid, p)
+    e = db.get(CaseEvidence, eid)
+    if e is None or e.case_id != c.id:
+        raise HTTPException(404, "not found")
+    chain = list(e.chain_of_custody or [])
+    chain.append({"actor": p.label, "action": body.action, "at": utcnow().isoformat(), "note": body.note})
+    e.chain_of_custody = chain
+    db.flush()
+    return _evidence_out(e)
