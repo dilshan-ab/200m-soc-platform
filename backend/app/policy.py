@@ -65,6 +65,10 @@ CAPABILITIES: dict[str, str] = {
     "metrics.read": "l1",
     "detections.read": "viewer",
     "detections.write": "l2",
+    "evidence.read": "l1",
+    "evidence.write": "l1",
+    "ueba.read": "l1",
+    "ueba.write": "l2",
 }
 
 

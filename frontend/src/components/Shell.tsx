@@ -23,6 +23,7 @@ const NAV: { group: string; items: Item[] }[] = [
     { to: '/app', label: 'Home', icon: LayoutDashboard },
     { to: '/app/intel', label: 'Threat Intelligence', icon: Globe, cap: 'intel.read' },
     { to: '/app/enrichment', label: 'Enrichment', icon: Search, cap: 'intel.read' },
+    { to: '/app/ueba', label: 'Behavior Analytics', icon: Activity, cap: 'ueba.read' },
     { to: '/app/alerts', label: 'Alerts', icon: Bell, cap: 'alerts.read' },
     { to: '/app/correlation', label: 'Correlation', icon: GitMerge, cap: 'incidents.read' },
     { to: '/app/cases', label: 'Cases', icon: Layers, cap: 'cases.read' },

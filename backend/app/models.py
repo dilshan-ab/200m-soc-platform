@@ -866,3 +866,39 @@ class SigmaRule(Base):
     imported_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = _ts()
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+
+
+class CaseEvidence(Base):
+    __tablename__ = "case_evidence"
+    id: Mapped[str] = _pk()
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(300))
+    type: Mapped[str] = mapped_column(String(30), default="file")  # file|screenshot|pcap|log|artifact|note
+    description: Mapped[str] = mapped_column(Text, default="")
+    hash_sha256: Mapped[str] = mapped_column(String(64), default="")
+    file_size: Mapped[int] = mapped_column(Integer, default=0)
+    storage_ref: Mapped[str] = mapped_column(String(500), default="")
+    tags: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    collected_by: Mapped[str] = mapped_column(String(160), default="")
+    collected_at: Mapped[datetime] = _ts()
+    chain_of_custody: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    observable_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    alert_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True)
+    created_at: Mapped[datetime] = _ts()
+
+
+class EntityProfile(Base):
+    __tablename__ = "entity_profiles"
+    __table_args__ = (UniqueConstraint("entity_type", "entity_value", "client_id"),)
+    id: Mapped[str] = _pk()
+    entity_type: Mapped[str] = mapped_column(String(20), index=True)  # user|host|ip
+    entity_value: Mapped[str] = mapped_column(String(255), index=True)
+    client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True, index=True)
+    risk_score: Mapped[float] = mapped_column(Float, default=0.0)
+    alert_count: Mapped[int] = mapped_column(Integer, default=0)
+    baseline: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    anomalies: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    first_seen: Mapped[datetime] = _ts()
+    last_seen: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
