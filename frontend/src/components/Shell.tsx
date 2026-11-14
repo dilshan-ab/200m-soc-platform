@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, AlertTriangle, Bell, BookMarked, Bot, Building2, Check, ChevronRight, Crosshair, FileCode2, FileText, Flame, GitMerge, Globe, HeartPulse, MessagesSquare, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Repeat2, Search, Server, Settings, Share2, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react';
+import { Activity, AlertTriangle, Bell, BookMarked, Bot, Check, ChevronRight, Crosshair, FileCode2, FileText, Flame, GitMerge, Globe, HeartPulse, MessagesSquare, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Repeat2, Search, Server, Settings, Share2, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react'; // Building2 removed with the Clients & MSSP nav entry below — re-add it when un-commenting
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { get } from '../lib/api';
@@ -57,7 +57,8 @@ const NAV: { group: string; items: Item[] }[] = [
   { group: 'WORKSPACE', items: [
     { to: '/app/integrations', label: 'Integrations', icon: Plug, cap: 'integrations.read' },
     { to: '/app/integration-health', label: 'Integration Health', icon: HeartPulse, cap: 'integrations.read' },
-    { to: '/app/clients', label: 'Clients & MSSP', icon: Building2, cap: 'clients.read' },
+    // Hidden until this moves to the personal repo — uncomment (and re-add `Building2` to the lucide-react import above) to restore.
+    // { to: '/app/clients', label: 'Clients & MSSP', icon: Building2, cap: 'clients.read' },
     { to: '/app/admin', label: 'Settings', icon: Settings, cap: 'admin.settings' },
   ] },
 ];

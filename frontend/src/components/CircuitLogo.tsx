@@ -1,6 +1,6 @@
 export function CircuitLogo({ className, strokeWidth = 4 }: { className: string; strokeWidth?: number }) {
   return (
-    <svg className={className} viewBox="0 0 560 190" aria-hidden="true">
+    <svg className={className} viewBox="0 0 540 220" aria-hidden="true">
       <g
         fill="none"
         stroke="currentColor"
@@ -11,28 +11,30 @@ export function CircuitLogo({ className, strokeWidth = 4 }: { className: string;
         <path
           className="circuit-line"
           pathLength="1"
-          d="M20 58C20 30 44 16 66 16C90 16 110 32 110 56C110 84 82 104 22 150H112"
+          d="M28 88C28 32 111 26 120 82C126 113 87 141 47 174H145M47 88C47 54 95 52 99 82C103 101 72 125 28 166C18 177 23 190 39 190H151"
         />
-        <ellipse className="circuit-line circuit-delay-one" pathLength="1" cx="180" cy="95" rx="46" ry="63" />
-        <ellipse className="circuit-line circuit-delay-two" pathLength="1" cx="300" cy="95" rx="46" ry="63" />
+        <path
+          className="circuit-line circuit-delay-one"
+          pathLength="1"
+          d="M190 190C144 190 124 155 130 110C136 61 173 26 217 37M208 57C177 48 153 80 150 112C145 146 162 167 185 167C214 167 232 142 235 110"
+        />
+        <path
+          className="circuit-line circuit-delay-two"
+          pathLength="1"
+          d="M183 190C223 191 257 168 258 113C260 72 291 50 318 62C348 77 350 113 337 143C326 172 306 181 281 170M224 108C220 70 255 30 295 31H313M245 170C276 206 325 197 350 162C377 126 373 73 343 48"
+        />
         <path
           className="circuit-line circuit-delay-three"
           pathLength="1"
-          d="M368 150V20L410 90L452 20V150"
+          d="M341 33C358 31 371 37 382 53L417 105L460 44Q468 30 487 33Q502 34 502 49V182Q502 191 491 191Q479 191 479 180V81L430 147Q417 159 405 143L366 89"
         />
       </g>
-      <path
-        className="circuit-line circuit-delay-three"
-        pathLength="1"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={Math.max(2, strokeWidth * 0.4)}
-        strokeLinecap="round"
-        d="M466 26C480 10 500 8 510 18"
-      />
-      <g className="circuit-nodes">
-        <circle cx="510" cy="18" r="8" fill="var(--bg)" stroke="currentColor" strokeWidth="3" />
-        <circle cx="510" cy="18" r="3.6" fill="#34c3eb" />
+      <g className="circuit-nodes" fill="currentColor" stroke="var(--bg)" strokeWidth="2">
+        <circle cx="28" cy="88" r="6" />
+        <circle cx="183" cy="190" r="5" />
+        <circle cx="235" cy="110" r="5" />
+        <circle cx="341" cy="33" r="6" />
+        <circle cx="502" cy="160" r="5" />
       </g>
     </svg>
   );
