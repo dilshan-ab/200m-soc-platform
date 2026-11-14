@@ -75,6 +75,13 @@ services:
       KC_SUPERADMIN_EMAIL: ${KC_SUPERADMIN_EMAIL:?run sh scripts/setup.sh to create .env}
       KC_SUPERADMIN_PASSWORD: ${KC_SUPERADMIN_PASSWORD:?run sh scripts/setup.sh to create .env}
       KC_ADMIN_CLIENT_SECRET: ${KC_ADMIN_CLIENT_SECRET:?run sh scripts/setup.sh to create .env}
+      # outbound mail (e.g. your Mailu server), for Keycloak's "Verify Email" / password-reset emails.
+      # Leave blank to skip SMTP setup for now; required user actions needing mail will not work until this is set.
+      SOC_SMTP_HOST: ${SOC_SMTP_HOST:-}
+      SOC_SMTP_PORT: ${SOC_SMTP_PORT:-587}
+      SOC_SMTP_FROM: ${SOC_SMTP_FROM:-soc@200m.local}
+      SOC_SMTP_USER: ${SOC_SMTP_USER:-}
+      SOC_SMTP_PASSWORD: ${SOC_SMTP_PASSWORD:-}
     volumes:
       - ./deploy/keycloak/soc-realm.json:/opt/keycloak/data/import/soc-realm.json:ro
     # Bind/port are overridable per host (a shared server may already use these ports or need 0.0.0.0).
@@ -111,6 +118,7 @@ services:
       SOC_OIDC_POST_LOGOUT_REDIRECT_URI: ${SOC_PUBLIC_URL:-http://localhost:8080}/
       SOC_OIDC_ROLE_CLAIM: ${SOC_OIDC_ROLE_CLAIM:-soc_role}
       SOC_OIDC_ACCOUNT_URL: ${SOC_OIDC_ACCOUNT_URL:-}
+      SOC_OIDC_REQUIRE_EMAIL_VERIFICATION: ${SOC_OIDC_REQUIRE_EMAIL_VERIFICATION:-false}
       SOC_KC_ADMIN_URL: ${SOC_KC_ADMIN_URL-http://keycloak:8080}   # user provisioning by the super admin (Keycloak only)
       SOC_KC_ADMIN_CLIENT_ID: soc-admin
       SOC_KC_ADMIN_CLIENT_SECRET: ${KC_ADMIN_CLIENT_SECRET}

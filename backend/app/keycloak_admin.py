@@ -73,11 +73,13 @@ def find_user_id(client: httpx.Client, email: str) -> str | None:
 def create_user(client: httpx.Client, email: str, name: str, role: str, password: str) -> str:
     rep = _role_rep(client, role)
     first, _, last = name.strip().partition(" ")
+    require_verify = get_settings().oidc_require_email_verification
+    required_actions = (["VERIFY_EMAIL"] if require_verify else []) + ["UPDATE_PASSWORD", "CONFIGURE_TOTP"]
     body = {
-        "username": email, "email": email, "emailVerified": True, "enabled": True,
+        "username": email, "email": email, "emailVerified": not require_verify, "enabled": True,
         "firstName": first or email.split("@")[0], "lastName": last,
         "credentials": [{"type": "password", "value": password, "temporary": True}],  # user must change it at first login
-        "requiredActions": ["UPDATE_PASSWORD", "CONFIGURE_TOTP"],
+        "requiredActions": required_actions,
     }
     r = _call(client, "POST", "/users", json=body)
     if r.status_code == 409:

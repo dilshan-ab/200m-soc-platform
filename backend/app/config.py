@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     oidc_allowed_algs: list[str] = ["RS256", "ES256"]
     oidc_step_up_acr: str = "mfa-webauthn"
     oidc_account_url: str = ""  # self-service account page; defaults to Keycloak's <issuer>/account/ when empty
+    oidc_require_email_verification: bool = False  # adds VERIFY_EMAIL to new users' required actions; needs SMTP configured in Keycloak first
 
     # --- Sessions / cookies ---------------------------------------------
     cookie_secure: bool = True
