@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, AlertTriangle, Bell, Check, ChevronRight, Crosshair, FileCode2, FileText, GitMerge, Globe, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Search, Server, Settings, Shield, Sun, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react';
+import { Activity, AlertTriangle, Bell, Bot, Check, ChevronRight, Crosshair, FileCode2, FileText, GitMerge, Globe, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Search, Server, Settings, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { get } from '../lib/api';
@@ -24,6 +24,7 @@ const NAV: { group: string; items: Item[] }[] = [
     { to: '/app/intel', label: 'Threat Intelligence', icon: Globe, cap: 'intel.read' },
     { to: '/app/enrichment', label: 'Enrichment', icon: Search, cap: 'intel.read' },
     { to: '/app/ueba', label: 'Behavior Analytics', icon: Activity, cap: 'ueba.read' },
+    { to: '/app/copilot', label: 'AI Copilot', icon: Bot, cap: 'copilot.read' },
     { to: '/app/alerts', label: 'Alerts', icon: Bell, cap: 'alerts.read' },
     { to: '/app/correlation', label: 'Correlation', icon: GitMerge, cap: 'incidents.read' },
     { to: '/app/cases', label: 'Cases', icon: Layers, cap: 'cases.read' },
@@ -41,6 +42,7 @@ const NAV: { group: string; items: Item[] }[] = [
     { to: '/app/threat-map', label: 'Threat map', icon: Globe, cap: 'alerts.read' },
     { to: '/app/mitre', label: 'ATT&CK mapping', icon: Crosshair, cap: 'alerts.read' },
     { to: '/app/sigma', label: 'Detection rules', icon: FileCode2, cap: 'detections.read' },
+    { to: '/app/simulation', label: 'Attack Simulation', icon: Target, cap: 'simulation.read' },
   ] },
   { group: 'INSIGHTS', items: [
     { to: '/app/analysts', label: 'Analyst Performance', icon: Gauge, cap: 'metrics.read' },

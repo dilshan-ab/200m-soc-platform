@@ -69,6 +69,13 @@ class Settings(BaseSettings):
     public_base_url: str = "http://localhost:8000"
     default_timezone: str = "Asia/Colombo"
 
+    # --- AI Copilot -------------------------------------------------------
+    llm_provider: Literal["anthropic", "openai", "none"] = "none"
+    llm_api_key: str = ""
+    llm_model: str = "claude-sonnet-4-20250514"
+    llm_max_tokens: int = 2048
+    llm_temperature: float = 0.3
+
     @model_validator(mode="after")
     def _production_guards(self) -> Settings:
         if self.environment == "production":
