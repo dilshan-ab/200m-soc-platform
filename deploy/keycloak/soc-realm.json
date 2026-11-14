@@ -26,6 +26,18 @@
     "frontendUrl": "${KC_PUBLIC_URL:http://localhost:8081}",
     "acr.loa.map": "{\"mfa-webauthn\": \"1\"}"
   },
+  "smtpServer": {
+    "host": "${SOC_SMTP_HOST:}",
+    "port": "${SOC_SMTP_PORT:587}",
+    "from": "${SOC_SMTP_FROM:soc@200m.local}",
+    "fromDisplayName": "200M SOC",
+    "replyTo": "${SOC_SMTP_FROM:soc@200m.local}",
+    "auth": "true",
+    "user": "${SOC_SMTP_USER:}",
+    "password": "${SOC_SMTP_PASSWORD:}",
+    "starttls": "true",
+    "ssl": "false"
+  },
   "roles": {
     "realm": [
       {
