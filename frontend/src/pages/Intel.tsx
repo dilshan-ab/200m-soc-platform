@@ -9,7 +9,7 @@ import { useAct } from '../lib/mut';
 export default function Intel() {
   return (
     <>
-      <PageHead title="Threat intelligence" sub="Enrich indicators with Cortex and MISP." />
+      <PageHead title="Threat intelligence" sub="Manual indicator enrichment and job history." />
       <Enrich />
     </>
   );

@@ -61,6 +61,40 @@ def enrich(body: EnrichIn, p: Principal = Depends(require("intel.enrich")), db: 
     return job_out(j)
 
 
+class BulkEnrichIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    alert_id: str
+
+
+@router.post("/intel/enrich/alert", status_code=202)
+def enrich_alert(body: BulkEnrichIn, p: Principal = Depends(require("intel.enrich")), db: Session = Depends(get_db)) -> dict[str, Any]:
+    a = db.get(Alert, body.alert_id)
+    if a is None or not p.can_see_client(a.client_id):
+        raise HTTPException(404, "not found")
+    job_ids = svc.auto_enrich_alert(db, a.id)
+    audit.record(db, "intel.enrich.bulk", actor=p.label, actor_id=p.user.id, resource_type="alert", resource_id=a.id, client_id=a.client_id, ip=p.ip, meta={"jobs": len(job_ids)})
+    return {"alert_id": a.id, "jobs": job_ids}
+
+
+@router.get("/intel/providers")
+def providers(p: Principal = Depends(require("intel.read")), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    from ..connectors.base import all_manifests
+
+    enrichable = {m.type: m for m in all_manifests() if "enrich" in m.capabilities}
+    configured = {}
+    for t in db.execute(select(Tool).where(Tool.type.in_(list(enrichable.keys())))).scalars():
+        configured[t.type] = {"id": t.id, "name": t.name, "enabled": t.enabled}
+    out = []
+    for typ, m in enrichable.items():
+        entry: dict[str, Any] = {"type": typ, "label": m.label, "category": m.category, "capabilities": m.capabilities, "setup_hint": m.setup_hint}
+        if typ in configured:
+            entry.update({"configured": True, **configured[typ]})
+        else:
+            entry["configured"] = False
+        out.append(entry)
+    return out
+
+
 @router.get("/intel/jobs")
 def jobs(p: Principal = Depends(require("intel.read")), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     q = select(EnrichmentJob).where(p.scope(EnrichmentJob.client_id)).order_by(EnrichmentJob.created_at.desc()).limit(100)
@@ -235,7 +269,10 @@ def escalate_hunt(hid: str, body: EscalateIn, p: Principal = Depends(require("ca
 
 @router.get("/intel/sources")
 def sources(p: Principal = Depends(require("intel.read")), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    from ..connectors.base import all_manifests
+
+    enrichable_types = [m.type for m in all_manifests() if "enrich" in m.capabilities]
     out = []
-    for t in db.execute(select(Tool).where(Tool.type.in_(["misp", "cortex"]))).scalars():
+    for t in db.execute(select(Tool).where(Tool.type.in_(enrichable_types))).scalars():
         out.append({"id": t.id, "name": t.name, "type": t.type, "enabled": t.enabled, "capabilities": get_connector_cls(t.type).manifest.capabilities})
     return out

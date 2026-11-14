@@ -98,6 +98,9 @@ def ingest_alert(db: Session, tool: Tool | None, n: NormAlert, *, source: str | 
     if tool_id and n.source_id:
         _receipt(db, tool_id, n.source_id, a.id)
     events.publish(db, "alert.created", id=a.id, severity=a.severity, client_id=a.client_id, category=a.category)
+    if a.category == "security" and (a.src_ip or a.dst_ip or a.file_hash):
+        from . import intel as intel_svc
+        intel_svc.auto_enrich_alert(db, a.id)
     return a, True
 
 

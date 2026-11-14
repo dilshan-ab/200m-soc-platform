@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..connectors.base import ConnectorError
-from ..models import EnrichmentJob, Tool, utcnow
+from ..models import Alert, EnrichmentJob, Tool, utcnow
 from . import events, tools_svc
 
 _HASH = re.compile(r"^[A-Fa-f0-9]{32}$|^[A-Fa-f0-9]{40}$|^[A-Fa-f0-9]{64}$")
@@ -55,7 +55,10 @@ def run_enrichment(db: Session, payload: dict[str, Any]) -> None:
     j.status = "running"
     results: dict[str, Any] = {}
     verdict = "unknown"
-    tools = db.execute(select(Tool).where(Tool.enabled.is_(True), Tool.type.in_(["misp", "cortex"]))).scalars().all()
+    from ..connectors.base import all_manifests
+
+    enrichable_types = [m.type for m in all_manifests() if "enrich" in m.capabilities]
+    tools = db.execute(select(Tool).where(Tool.enabled.is_(True), Tool.type.in_(enrichable_types))).scalars().all() if enrichable_types else []
     errors = 0
     for t in tools:
         try:
@@ -73,3 +76,42 @@ def run_enrichment(db: Session, payload: dict[str, Any]) -> None:
             results[t.name] = {"error": str(e)[:200]}
     j.results, j.verdict = results, verdict
     j.status = "failed" if tools and errors == len(tools) else "done"
+    _write_back_enrichment(db, j)
+
+
+def _write_back_enrichment(db: Session, j: EnrichmentJob) -> None:
+    """Stamp enrichment results back onto the originating Alert or CaseObservable."""
+    from ..models import Alert, CaseObservable
+
+    summary = {"verdict": j.verdict, "sources": list(j.results.keys()), "results": j.results}
+    if j.alert_id:
+        alert = db.get(Alert, j.alert_id)
+        if alert is not None:
+            merged = {**(alert.enrichment or {}), j.indicator: summary}
+            alert.enrichment = merged
+    if j.case_id:
+        obs = db.execute(
+            select(CaseObservable).where(CaseObservable.case_id == j.case_id, CaseObservable.value == j.indicator)
+        ).scalars().first()
+        if obs is not None:
+            obs.enrichment = summary
+            obs.verdict = j.verdict
+
+
+def auto_enrich_alert(db: Session, alert_id: str) -> list[str]:
+    """Extract IOCs from an alert and queue enrichment for each. Returns job IDs."""
+    alert = db.get(Alert, alert_id)
+    if alert is None:
+        return []
+    indicators: list[tuple[str, str]] = []
+    if alert.src_ip and alert.src_ip not in ("", "0.0.0.0", "127.0.0.1", "::1"):
+        indicators.append((alert.src_ip, "ip"))
+    if alert.dst_ip and alert.dst_ip not in ("", "0.0.0.0", "127.0.0.1", "::1"):
+        indicators.append((alert.dst_ip, "ip"))
+    if alert.file_hash:
+        indicators.append((alert.file_hash, "hash"))
+    job_ids: list[str] = []
+    for value, itype in indicators:
+        j = queue_enrichment(db, value, itype, "system", alert_id=alert_id, client_id=alert.client_id)
+        job_ids.append(j.id)
+    return job_ids
