@@ -50,7 +50,7 @@ def test_hunt_escalation_creates_case_from_matches(make_session, clients):
 
     esc = l2.post(f"/api/hunts/{hunt['id']}/escalate", {})
     assert esc.status_code == 201, esc.text
-    case_id = esc.json()["id"]
+    esc.json()["id"]
     assert l2.get(f"/api/hunts/{hunt['id']}").json()["case_id"] is not None
 
     # escalating again with no remaining un-cased alerts fails cleanly

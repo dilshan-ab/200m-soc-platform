@@ -111,9 +111,9 @@ def test_mapping_validation(admin):
     assert r.status_code == 200 and r.json()["severity_map"] == {"12": "critical"}
 
 
-def test_catalogue_lists_all_24_with_fields(admin):
+def test_catalogue_lists_all_28_with_fields(admin):
     cat = admin.get("/api/integrations/catalogue").json()
-    assert len(cat) == 24 and {c["type"] for c in cat} >= {"wazuh_indexer", "thehive", "velociraptor", "keycloak", "telegram", "virustotal", "custom"}
+    assert len(cat) == 28 and {c["type"] for c in cat} >= {"wazuh_indexer", "thehive", "velociraptor", "keycloak", "telegram", "virustotal", "custom", "caldera", "atomic_red_team", "attack_simulator"}
     assert all(c["fields"] and c["link_method"] for c in cat)
 
 

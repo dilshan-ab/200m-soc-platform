@@ -785,7 +785,7 @@ class Playbook(Base):
     created_by: Mapped[str] = mapped_column(String(160), default="")
     created_at: Mapped[datetime] = _ts()
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
-    runs: Mapped[list["PlaybookRun"]] = relationship(back_populates="playbook", cascade="all, delete-orphan")
+    runs: Mapped[list[PlaybookRun]] = relationship(back_populates="playbook", cascade="all, delete-orphan")
 
 
 class PlaybookRun(Base):
@@ -799,7 +799,7 @@ class PlaybookRun(Base):
     error: Mapped[str] = mapped_column(Text, default="")
     started_at: Mapped[datetime] = _ts()
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
-    playbook: Mapped["Playbook"] = relationship(back_populates="runs")
+    playbook: Mapped[Playbook] = relationship(back_populates="runs")
 
 
 # --------------------------------------------------------------------------- alert correlation engine
@@ -902,3 +902,35 @@ class EntityProfile(Base):
     first_seen: Mapped[datetime] = _ts()
     last_seen: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+
+
+class Notebook(Base):
+    """Investigation notebook: an ordered list of note / query / finding cells, optionally tied to a case."""
+
+    __tablename__ = "notebooks"
+    id: Mapped[str] = _pk()
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    case_id: Mapped[str | None] = mapped_column(ForeignKey("cases.id", ondelete="SET NULL"), nullable=True, index=True)
+    client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True, index=True)
+    tags: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    cells: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{id, type: note|query|finding|ioc, content, filters, result_count, result_sample, ran_at, created_by, created_at}]
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = _ts()
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+
+
+class ReportTemplate(Base):
+    """A named, reusable preset of report kind/format/parameters."""
+
+    __tablename__ = "report_templates"
+    id: Mapped[str] = _pk()
+    name: Mapped[str] = mapped_column(String(160))
+    description: Mapped[str] = mapped_column(Text, default="")
+    kind: Mapped[str] = mapped_column(String(40))
+    fmt: Mapped[str] = mapped_column(String(10), default="html")
+    params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    client_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _ts()

@@ -52,6 +52,39 @@ def list_tools(p: Principal = Depends(require("integrations.read")), db: Session
     return [tool_out(db, t) for t in db.execute(select(Tool).order_by(Tool.name)).scalars()]
 
 
+def _health_status(t: Tool, out: dict[str, Any]) -> str:
+    if not t.enabled:
+        return "paused" if t.status == "paused" else "disabled"
+    h = out["health"] or {}
+    if (h.get("error_count") or 0) >= 5 or t.status in ("error", "failed"):
+        return "down"
+    lag, interval = h.get("lag_seconds"), t.poll_interval
+    if (h.get("error_count") or 0) >= 1 or (lag is not None and interval and lag > interval * 3):
+        return "degraded"
+    return "healthy"
+
+
+@router.get("/health")
+def health_dashboard(p: Principal = Depends(require("integrations.read")), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Aggregate health across every linked tool: status breakdown, worst offenders first."""
+    rows = []
+    for t in db.execute(select(Tool).order_by(Tool.name)).scalars():
+        out = tool_out(db, t)
+        rows.append({**out, "health_status": _health_status(t, out)})
+    order = {"down": 0, "degraded": 1, "disabled": 2, "paused": 3, "healthy": 4}
+    rows.sort(key=lambda r: (order.get(r["health_status"], 5), -(r["health"]["error_count"] if r["health"] else 0)))
+    counts = {k: sum(1 for r in rows if r["health_status"] == k) for k in order}
+    lags = [r["health"]["lag_seconds"] for r in rows if r["health"] and r["health"].get("lag_seconds") is not None]
+    errors_today = sum((r["health"]["error_count"] if r["health"] else 0) for r in rows)
+    items_today = sum((r["health"]["items_today"] if r["health"] else 0) for r in rows)
+    return {
+        "total": len(rows), "counts": counts,
+        "avg_lag_seconds": round(sum(lags) / len(lags), 1) if lags else None,
+        "total_errors": errors_today, "total_items_today": items_today,
+        "tools": rows,
+    }
+
+
 @router.get("/tools/{tid}")
 def get_tool(tid: str, p: Principal = Depends(require("integrations.read")), db: Session = Depends(get_db)) -> dict[str, Any]:
     return tool_out(db, _get_tool(db, tid))

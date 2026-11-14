@@ -103,7 +103,7 @@ export default function Playbooks() {
               <div style={{ fontSize: 12, color: 'var(--muted)', display: 'flex', gap: 12, marginTop: 8 }}>
                 <span>v{pb.version}</span>
                 <span>{pb.trigger}</span>
-                {pb.enabled && <span style={{ color: 'var(--green)' }}>enabled</span>}
+                {pb.enabled && <span style={{ color: 'var(--ok)' }}>enabled</span>}
               </div>
             </button>
           ))}

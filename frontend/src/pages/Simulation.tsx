@@ -7,7 +7,7 @@ import { get, post } from '../lib/api';
 type Platform = { system_type: string; name: string; description: string; configured: boolean; tool_id: string | null; capabilities: string[] };
 
 const TYPE_ICONS: Record<string, typeof Target> = { caldera: Crosshair, atomic_red_team: Zap, attack_simulator: Target };
-const TYPE_COLORS: Record<string, string> = { caldera: 'var(--red)', atomic_red_team: 'var(--yellow)', attack_simulator: 'var(--accent)' };
+const TYPE_COLORS: Record<string, string> = { caldera: 'var(--bad)', atomic_red_team: 'var(--warn)', attack_simulator: 'var(--accent)' };
 
 export default function Simulation() {
   const [tab, setTab] = useState<'platforms' | 'run' | 'results'>('platforms');
@@ -51,7 +51,7 @@ function PlatformsPanel() {
             <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
               {p.capabilities.map((c) => <span key={c} className="badge">{c}</span>)}
             </div>
-            <span className="badge" style={{ background: p.configured ? 'var(--green)' : 'var(--muted)', color: '#fff' }}>
+            <span className="badge" style={{ background: p.configured ? 'var(--ok)' : 'var(--muted)', color: '#fff' }}>
               {p.configured ? 'Configured' : 'Not configured'}
             </span>
             {!p.configured && <p style={{ fontSize: 12, color: 'var(--muted)', margin: '8px 0 0' }}>Configure via Integrations page to enable.</p>}
@@ -125,12 +125,12 @@ function RunPanel() {
           <button className="btn primary" onClick={() => run.mutate()} disabled={run.isPending || !selectedTool || !actionKey}>
             {run.isPending ? 'Running…' : 'Execute'}
           </button>
-          <AlertTriangle size={14} style={{ color: 'var(--yellow)' }} />
+          <AlertTriangle size={14} style={{ color: 'var(--warn)' }} />
           <small style={{ color: 'var(--muted)' }}>Requires approval for high-risk actions</small>
         </div>
         {run.error && <ErrorBox error={run.error} />}
         {run.data && (
-          <div className="card" style={{ padding: 12, background: 'var(--surface-alt, var(--surface))', borderLeft: '3px solid var(--green)' }}>
+          <div className="card" style={{ padding: 12, background: 'var(--surface)', borderLeft: '3px solid var(--ok)' }}>
             <strong>Simulation started</strong>
             <pre style={{ margin: '8px 0 0', fontSize: 12, whiteSpace: 'pre-wrap' }}>{JSON.stringify((run.data as any).result, null, 2)}</pre>
           </div>
@@ -146,7 +146,7 @@ function ResultsPanel() {
 
   const results = useQuery({
     queryKey: ['sim-results', selectedTool],
-    queryFn: () => post<{ findings: any[]; count: number }>('/api/simulation/results', { tool_id: selectedTool, action_key: '', targets: [], params: {} }),
+    queryFn: () => post<{ findings: any[]; count: number }>('/api/simulation/results', { tool_id: selectedTool }),
     enabled: !!selectedTool,
   });
 
@@ -187,13 +187,13 @@ function ResultsPanel() {
                       {f.technique_name && <div style={{ fontSize: 12, color: 'var(--muted)' }}>{f.technique_name}</div>}
                     </td>
                     <td>
-                      <span className="badge" style={{ background: f.status === 'success' ? 'var(--green)' : f.status === 'failed' ? 'var(--red)' : 'var(--muted)', color: '#fff' }}>
+                      <span className="badge" style={{ background: f.status === 'success' ? 'var(--ok)' : f.status === 'failed' ? 'var(--bad)' : 'var(--muted)', color: '#fff' }}>
                         {f.status}
                       </span>
                     </td>
                     <td>
                       {f.detected != null && (
-                        <span className="badge" style={{ background: f.detected ? 'var(--green)' : 'var(--red)', color: '#fff' }}>
+                        <span className="badge" style={{ background: f.detected ? 'var(--ok)' : 'var(--bad)', color: '#fff' }}>
                           {f.detected ? 'Yes' : 'No'}
                         </span>
                       )}

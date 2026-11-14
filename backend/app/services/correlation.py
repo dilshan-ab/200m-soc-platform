@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 from ..models import Alert, CorrelationRule, Incident, utcnow
 from ..policy import SEVERITIES, sev_rank
 
-
 IOC_FIELDS = ("src_ip", "dst_ip", "host", "username", "file_hash")
 
 
@@ -135,7 +134,7 @@ def correlate_time_window(
     incidents: list[Incident] = []
     for key, group in groups.items():
         if len(group) >= min_alerts:
-            shared = {f: [v] for f, v in zip(group_by, key) if v}
+            shared = {f: [v] for f, v in zip(group_by, key, strict=False) if v}
             incidents.append(_build_incident(db, rule, group, shared))
     return incidents
 
@@ -209,7 +208,7 @@ def correlate_threshold(
         for val, group in vals.items():
             if len(group) >= threshold:
                 shared = {field: [val]}
-                shared.update({f: [v] for f, v in zip(group_by, key) if v})
+                shared.update({f: [v] for f, v in zip(group_by, key, strict=False) if v})
                 incidents.append(_build_incident(db, rule, group, shared))
     return incidents
 

@@ -10,7 +10,7 @@ import { useAct } from '../lib/mut';
 type Profile = { id: string; entity_type: string; entity_value: string; risk_score: number; alert_count: number; baseline: any; anomalies: any[]; first_seen: string; last_seen: string; updated_at: string; client_id?: string };
 type Summary = { total_entities: number; by_type: Record<string, number>; risk_distribution: Record<string, number>; top_risk: Profile[]; total_anomalies: number };
 
-const RISK_COLORS: Record<string, string> = { critical: 'var(--red)', high: 'var(--orange, var(--yellow))', medium: 'var(--yellow)', low: 'var(--green)' };
+const RISK_COLORS: Record<string, string> = { critical: 'var(--bad)', high: 'var(--warn)', medium: 'var(--warn)', low: 'var(--ok)' };
 const ENTITY_ICONS: Record<string, typeof User> = { user: User, host: Monitor, ip: Activity };
 
 function riskLabel(score: number): string {
@@ -48,9 +48,9 @@ function OverviewPanel() {
     <>
       <div className="kpi-row" style={{ marginBottom: 16 }}>
         <div className="kpi"><Shield size={18} /><div><strong>{s.total_entities}</strong><small>Tracked entities</small></div></div>
-        <div className="kpi"><XCircle size={18} style={{ color: 'var(--red)' }} /><div><strong>{s.risk_distribution.critical}</strong><small>Critical risk</small></div></div>
-        <div className="kpi"><AlertTriangle size={18} style={{ color: 'var(--yellow)' }} /><div><strong>{s.risk_distribution.high}</strong><small>High risk</small></div></div>
-        <div className="kpi"><TrendingUp size={18} style={{ color: 'var(--blue)' }} /><div><strong>{s.total_anomalies}</strong><small>Anomalies detected</small></div></div>
+        <div className="kpi"><XCircle size={18} style={{ color: 'var(--bad)' }} /><div><strong>{s.risk_distribution.critical}</strong><small>Critical risk</small></div></div>
+        <div className="kpi"><AlertTriangle size={18} style={{ color: 'var(--warn)' }} /><div><strong>{s.risk_distribution.high}</strong><small>High risk</small></div></div>
+        <div className="kpi"><TrendingUp size={18} style={{ color: 'var(--info)' }} /><div><strong>{s.total_anomalies}</strong><small>Anomalies detected</small></div></div>
       </div>
       <div className="grid cols-3" style={{ marginBottom: 16 }}>
         <div className="card" style={{ padding: 16, textAlign: 'center' }}>
@@ -209,10 +209,10 @@ function EntityDrawer({ profile: p, onClose }: { profile: Profile; onClose: () =
 
       <h4 style={{ marginTop: 16, marginBottom: 8 }}>Anomalies ({p.anomalies?.length ?? 0})</h4>
       {!p.anomalies?.length ? <Empty>No anomalies detected.</Empty> : p.anomalies.map((a, i) => (
-        <div key={i} style={{ marginBottom: 8, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, borderLeft: `3px solid ${a.score >= 50 ? 'var(--red)' : 'var(--yellow)'}` }}>
+        <div key={i} style={{ marginBottom: 8, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 6, borderLeft: `3px solid ${a.score >= 50 ? 'var(--bad)' : 'var(--warn)'}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong>{a.type.replace(/_/g, ' ')}</strong>
-            <span className="badge" style={{ background: a.score >= 50 ? 'var(--red)' : 'var(--yellow)', color: '#fff' }}>{a.score}</span>
+            <span className="badge" style={{ background: a.score >= 50 ? 'var(--bad)' : 'var(--warn)', color: '#fff' }}>{a.score}</span>
           </div>
           <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>{a.description}</div>
           <div style={{ fontSize: 11, color: 'var(--muted)' }}>{ago(a.detected_at)}</div>

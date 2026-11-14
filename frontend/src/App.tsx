@@ -30,6 +30,9 @@ const Enrichment = lazy(() => import('./pages/Enrichment'));
 const UEBAPage = lazy(() => import('./pages/UEBA'));
 const CopilotPage = lazy(() => import('./pages/Copilot'));
 const SimulationPage = lazy(() => import('./pages/Simulation'));
+const TriageQueue = lazy(() => import('./pages/TriageQueue'));
+const Notebooks = lazy(() => import('./pages/Notebooks'));
+const IntegrationHealth = lazy(() => import('./pages/IntegrationHealth'));
 const Xdr = lazy(() => import('./pages/DetectionWorkspaces').then(({ Xdr }) => ({ default: Xdr })));
 const RiskAnalytics = lazy(() => import('./pages/DetectionWorkspaces').then(({ RiskAnalytics }) => ({ default: RiskAnalytics })));
 const Admin = lazy(() => import('./pages/Admin'));
@@ -84,6 +87,9 @@ export default function App() {
           <Route path="ueba" element={<Need cap="ueba.read"><UEBAPage /></Need>} />
           <Route path="copilot" element={<Need cap="copilot.read"><CopilotPage /></Need>} />
           <Route path="simulation" element={<Need cap="simulation.read"><SimulationPage /></Need>} />
+          <Route path="triage" element={<Need cap="alerts.triage"><TriageQueue /></Need>} />
+          <Route path="notebooks" element={<Need cap="notebooks.read"><Notebooks /></Need>} />
+          <Route path="integration-health" element={<Need cap="integrations.read"><IntegrationHealth /></Need>} />
           <Route path="admin" element={<Need cap="admin.settings"><Admin /></Need>} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Route>

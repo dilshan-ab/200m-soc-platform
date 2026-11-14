@@ -72,6 +72,36 @@ def list_alerts(
     return page_out([alert_out(a) for a in rows], total, page, limit)
 
 
+@router.get("/queue")
+def triage_queue(
+    p: Principal = Depends(require("alerts.triage")), db: Session = Depends(get_db),
+    unassigned_only: bool = True, severity: list[str] = Query(default=[]), limit: int = Query(default=25, ge=1, le=100),
+) -> dict[str, Any]:
+    """Prioritised live triage queue: new alerts ordered by severity, then SLA urgency."""
+    from sqlalchemy import case as sql_case
+
+    sev_rank = sql_case(*[(Alert.severity == s, i) for i, s in enumerate(SEVERITIES)], else_=0)
+    conditions = [p.scope(Alert.client_id), Alert.status == "new"]
+    if unassigned_only:
+        conditions.append(Alert.assignee_id.is_(None))
+    if severity:
+        conditions.append(Alert.severity.in_([s for s in severity if s in SEVERITIES]))
+
+    qy = select(Alert).where(*conditions).order_by(sev_rank.desc(), Alert.ack_due.asc().nulls_last(), Alert.time.asc())
+    items = db.execute(qy.limit(limit)).scalars().all()
+
+    stats_rows = db.execute(select(Alert.severity, func.count()).where(*conditions).group_by(Alert.severity)).all()
+    by_severity = {s: 0 for s in SEVERITIES}
+    by_severity.update({sev: n for sev, n in stats_rows})
+    oldest = db.execute(select(func.min(Alert.time)).where(*conditions)).scalar()
+    return {
+        "items": [alert_out(a) for a in items],
+        "total_waiting": sum(by_severity.values()),
+        "by_severity": by_severity,
+        "oldest_waiting": iso(oldest),
+    }
+
+
 @router.get("/stats")
 def stats(p: Principal = Depends(require("alerts.read")), db: Session = Depends(get_db)) -> dict[str, Any]:
     from sqlalchemy import func

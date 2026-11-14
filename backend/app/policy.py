@@ -73,6 +73,8 @@ CAPABILITIES: dict[str, str] = {
     "copilot.write": "l2",
     "simulation.read": "l2",
     "simulation.write": "admin",
+    "notebooks.read": "l1",
+    "notebooks.write": "l1",
 }
 
 

@@ -26,6 +26,7 @@ from ..models import (
     NotificationRule,
     ReportJob,
     ReportSchedule,
+    ReportTemplate,
     Runbook,
     Tool,
     utcnow,
@@ -133,6 +134,72 @@ def pause_schedule(sid: str, p: Principal = Depends(require("reports.schedule"))
     if not s.paused:
         s.next_run_at = reports.next_run(s)
     return {"paused": s.paused}
+
+
+@router.post("/reports/schedules/{sid}/run-now", status_code=202)
+def run_schedule_now(sid: str, p: Principal = Depends(require("reports.schedule")), db: Session = Depends(get_db)) -> dict[str, Any]:
+    s = db.get(ReportSchedule, sid)
+    if s is None or not p.can_see_client(s.client_id):
+        raise HTTPException(404, "not found")
+    j = ReportJob(kind=s.kind, fmt=s.fmt, requester_id=p.user.id, client_id=s.client_id, schedule_id=s.id, params={})
+    db.add(j)
+    db.flush()
+    events.enqueue(db, "report.run", {"job_id": j.id})
+    audit.record(db, "report.schedule.run_now", actor=p.label, actor_id=p.user.id, resource_type="report_schedule", resource_id=s.id, ip=p.ip)
+    return job_out(j)
+
+
+@router.delete("/reports/schedules/{sid}", status_code=204)
+def delete_schedule(sid: str, p: Principal = Depends(require("reports.schedule")), db: Session = Depends(get_db)) -> None:
+    s = db.get(ReportSchedule, sid)
+    if s is None or not p.can_see_client(s.client_id):
+        raise HTTPException(404, "not found")
+    audit.record(db, "report.schedule.delete", actor=p.label, actor_id=p.user.id, resource_type="report_schedule", resource_id=s.id, ip=p.ip, meta={"name": s.name})
+    db.delete(s)
+
+
+# ------------------------------------------------------------------------ report templates
+class ReportTemplateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=2, max_length=160)
+    description: str = Field(default="", max_length=2000)
+    kind: Literal["soc_metrics", "compliance", "vulnerabilities", "client", "case"]
+    fmt: Literal["html", "csv", "json", "pdf"] = "html"
+    params: dict[str, Any] = Field(default_factory=dict)
+    client_id: str | None = None
+
+
+def template_out(t: ReportTemplate) -> dict[str, Any]:
+    return {"id": t.id, "name": t.name, "description": t.description, "kind": t.kind, "fmt": t.fmt, "params": t.params, "client_id": t.client_id, "created_at": iso(t.created_at)}
+
+
+@router.get("/report-templates")
+def list_templates(p: Principal = Depends(require("reports.generate")), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    return [template_out(t) for t in db.execute(select(ReportTemplate).where(p.scope(ReportTemplate.client_id) | ReportTemplate.client_id.is_(None)).order_by(ReportTemplate.name)).scalars()]
+
+
+@router.post("/report-templates", status_code=201)
+def create_template(body: ReportTemplateIn, p: Principal = Depends(require("reports.generate")), db: Session = Depends(get_db)) -> dict[str, Any]:
+    if any(k not in ("days", "framework", "case_id") for k in body.params):
+        raise HTTPException(400, "unknown parameters")
+    if body.client_id and db.get(Client, body.client_id) is None:
+        raise HTTPException(400, "unknown client")
+    t = ReportTemplate(**body.model_dump(), created_by=p.user.id)
+    db.add(t)
+    db.flush()
+    audit.record(db, "report_template.create", actor=p.label, actor_id=p.user.id, resource_type="report_template", resource_id=t.id, ip=p.ip)
+    return template_out(t)
+
+
+@router.delete("/report-templates/{tid}", status_code=204)
+def delete_template(tid: str, p: Principal = Depends(require("reports.generate")), db: Session = Depends(get_db)) -> None:
+    t = db.get(ReportTemplate, tid)
+    if t is None or not p.can_see_client(t.client_id):
+        raise HTTPException(404, "not found")
+    if t.created_by != p.user.id and not p.can("reports.schedule"):
+        raise HTTPException(403, "only the template's creator or a scheduling admin can delete it")
+    audit.record(db, "report_template.delete", actor=p.label, actor_id=p.user.id, resource_type="report_template", resource_id=t.id, ip=p.ip, meta={"name": t.name})
+    db.delete(t)
 
 
 # ------------------------------------------------------------------------ automation
