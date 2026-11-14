@@ -35,7 +35,7 @@ const NODE_COLORS: Record<string, string> = {
   end: '#6b7280',
 };
 
-type NodeData = { label: string; description?: string; [key: string]: unknown };
+type NodeData = { label: string; description?: string;[key: string]: unknown };
 
 function BaseNode({ data, type }: NodeProps<Node<NodeData>>) {
   const color = NODE_COLORS[type as string] ?? '#6b7280';
@@ -85,7 +85,7 @@ export default function Playbooks() {
 
   return (
     <>
-      <PageHead title="Playbooks" sub="Visual SOAR automation — drag-and-drop response workflows with conditional logic and approval gates.">
+      <PageHead title="Playbooks">
         {can('playbooks.write') && <button className="btn primary" onClick={() => setCreating(true)}>New playbook</button>}
       </PageHead>
 
