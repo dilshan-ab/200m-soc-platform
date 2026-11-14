@@ -69,6 +69,10 @@ CAPABILITIES: dict[str, str] = {
     "evidence.write": "l1",
     "ueba.read": "l1",
     "ueba.write": "l2",
+    "copilot.read": "l1",
+    "copilot.write": "l2",
+    "simulation.read": "l2",
+    "simulation.write": "admin",
 }
 
 
@@ -138,6 +142,10 @@ ACTIONS: dict[str, ActionSpec] = {a.key: a for a in [
     ActionSpec("run_playbook", "Run Shuffle playbook", "shuffle", risk="medium", params=["workflow"]),
     ActionSpec("restart_agent", "Restart Wazuh agent", "wazuh_manager", risk="low"),
     ActionSpec("disable_account", "Disable user account", "wazuh_manager", reversible=True, risk="critical", approvals=2, capability="response.request", target_kind="user"),
+    ActionSpec("run_adversary", "Run Caldera adversary emulation", "caldera", risk="high", approvals=2, capability="simulation.write", target_kind="host", params=["adversary_id", "operation_name"]),
+    ActionSpec("run_atomic", "Run Atomic Red Team test", "atomic_red_team", risk="high", approvals=2, capability="simulation.write", target_kind="host", params=["technique_id", "test_numbers"]),
+    ActionSpec("run_simulation", "Run BAS simulation scenario", "attack_simulator", risk="high", approvals=2, capability="simulation.write", target_kind="host", params=["scenario_id"]),
+    ActionSpec("stop_simulation", "Stop running simulation", "attack_simulator", risk="low", capability="simulation.write", target_kind="host", params=["simulation_id"]),
 ]}
 
 # Targets that may never be the object of an automated or requested response action.

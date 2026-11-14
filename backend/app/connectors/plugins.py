@@ -696,3 +696,152 @@ class CustomTool(Connector):
             mitre=list(payload.get("mitre") or []), host=str(payload.get("host", "")), src_ip=str(payload.get("src_ip", "")),
             dst_ip=str(payload.get("dst_ip", "")), username=str(payload.get("username", "")), raw=payload,
         )]
+
+
+# ----------------------------------------------------------------------------- Attack simulation / BAS
+@register
+class Caldera(Connector):
+    manifest = Manifest(
+        "caldera", "MITRE Caldera", "response", "REST API v2", ["pull", "action"], "API key",
+        [URL, F("api_key", "API key", "password", secret=True), F("group", "Default agent group", default="red")],
+        ["action", "poll_findings"], ["API reachable"],
+        setup_hint="API key from Caldera conf/local.yml (api_key_red for red team ops). Default port 8888.",
+    )
+
+    def _h(self) -> dict[str, str]:
+        return {"KEY": self.secrets.get("api_key", ""), "Content-Type": "application/json"}
+
+    def test(self) -> list[CheckResult]:
+        self.json("GET", "/api/v2/health", headers=self._h())
+        return [CheckResult("API reachable", True)]
+
+    def execute(self, action_key: str, targets: list[str], params: dict[str, Any]) -> dict[str, Any]:
+        if action_key == "run_adversary":
+            body = {
+                "name": params.get("operation_name", f"sim-{uuid.uuid4().hex[:8]}"),
+                "adversary": {"adversary_id": params["adversary_id"]},
+                "group": params.get("group", self.cfg.get("group", "red")),
+                "auto_close": True, "jitter": "2/8",
+            }
+            d = self.json("POST", "/api/v2/operations", headers=self._h(), json=body)
+            return {"operation_id": d.get("id"), "name": d.get("name"), "state": d.get("state")}
+        if action_key == "stop_operation":
+            op_id = params.get("operation_id") or (targets[0] if targets else "")
+            d = self.json("PATCH", f"/api/v2/operations/{op_id}", headers=self._h(), json={"state": "cleanup"})
+            return {"operation_id": op_id, "state": d.get("state")}
+        raise ConnectorError(f"unsupported action: {action_key}")
+
+    def poll(self, checkpoint: dict[str, Any], limit: int = 500) -> PollResult:
+        ops = self.json("GET", "/api/v2/operations", headers=self._h())
+        findings: list[dict[str, Any]] = []
+        for op in (ops if isinstance(ops, list) else []):
+            op_id = op.get("id", "")
+            if op.get("state") != "finished":
+                continue
+            for link in op.get("chain", []):
+                findings.append({
+                    "id": f"caldera-{op_id}-{link.get('id', '')}",
+                    "operation": op.get("name"), "operation_id": op_id,
+                    "technique_id": link.get("ability", {}).get("technique_id", ""),
+                    "technique_name": link.get("ability", {}).get("technique_name", ""),
+                    "tactic": link.get("ability", {}).get("tactic", ""),
+                    "status": "success" if link.get("status", -1) == 0 else "failed",
+                    "host": link.get("host", ""), "pid": link.get("pid"),
+                    "visibility": link.get("visibility", {}).get("score", 0),
+                })
+        return PollResult(findings=findings, checkpoint=checkpoint)
+
+
+@register
+class AtomicRedTeam(Connector):
+    manifest = Manifest(
+        "atomic_red_team", "Atomic Red Team", "response", "Invoke-AtomicTest via API", ["pull", "action"], "API key",
+        [URL, F("api_key", "API key", "password", secret=True)],
+        ["action", "poll_findings"], ["API reachable"],
+        setup_hint="Requires an Atomic Red Team execution server (invoke-atomicredteam wrapper). Supports running individual techniques and collecting results.",
+    )
+
+    def _h(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self.secrets.get('api_key', '')}", "Content-Type": "application/json"}
+
+    def test(self) -> list[CheckResult]:
+        self.json("GET", "/api/health", headers=self._h())
+        return [CheckResult("API reachable", True)]
+
+    def execute(self, action_key: str, targets: list[str], params: dict[str, Any]) -> dict[str, Any]:
+        if action_key == "run_atomic":
+            body = {
+                "technique_id": params["technique_id"],
+                "test_numbers": params.get("test_numbers", []),
+                "hostname": targets[0] if targets else "",
+                "cleanup": params.get("cleanup", True),
+            }
+            d = self.json("POST", "/api/execute", headers=self._h(), json=body)
+            return {"execution_id": d.get("id"), "technique_id": params["technique_id"], "status": d.get("status")}
+        if action_key == "cleanup_atomic":
+            d = self.json("POST", f"/api/cleanup/{params.get('execution_id', '')}", headers=self._h())
+            return {"status": d.get("status", "cleaned")}
+        raise ConnectorError(f"unsupported action: {action_key}")
+
+    def poll(self, checkpoint: dict[str, Any], limit: int = 500) -> PollResult:
+        d = self.json("GET", "/api/results", headers=self._h(), params={"limit": limit})
+        findings = []
+        for r in (d if isinstance(d, list) else d.get("results", [])):
+            findings.append({
+                "id": f"art-{r.get('id', '')}",
+                "technique_id": r.get("technique_id", ""),
+                "technique_name": r.get("technique_name", ""),
+                "test_name": r.get("test_name", ""),
+                "status": r.get("status", "unknown"),
+                "hostname": r.get("hostname", ""),
+                "output": str(r.get("output", ""))[:2000],
+                "detected": r.get("detected", False),
+                "detection_time_seconds": r.get("detection_time_seconds"),
+            })
+        return PollResult(findings=findings, checkpoint=checkpoint)
+
+
+@register
+class AttackSimulator(Connector):
+    manifest = Manifest(
+        "attack_simulator", "Custom BAS", "response", "REST API", ["pull", "action"], "API key",
+        [URL, F("api_key", "API key", "password", secret=True), F("platform_name", "Platform name", default="BAS")],
+        ["action", "poll_findings"], ["API reachable"],
+        setup_hint="Generic Breach and Attack Simulation connector. Works with SafeBreach, AttackIQ, Picus, or any BAS with a REST API.",
+    )
+
+    def _h(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self.secrets.get('api_key', '')}", "Content-Type": "application/json"}
+
+    def test(self) -> list[CheckResult]:
+        self.json("GET", "/api/v1/status", headers=self._h())
+        return [CheckResult("API reachable", True)]
+
+    def execute(self, action_key: str, targets: list[str], params: dict[str, Any]) -> dict[str, Any]:
+        if action_key == "run_simulation":
+            body = {"scenario_id": params.get("scenario_id"), "targets": targets, "options": params.get("options", {})}
+            d = self.json("POST", "/api/v1/simulations/run", headers=self._h(), json=body)
+            return {"simulation_id": d.get("id"), "status": d.get("status")}
+        if action_key == "stop_simulation":
+            sim_id = params.get("simulation_id") or (targets[0] if targets else "")
+            d = self.json("POST", f"/api/v1/simulations/{sim_id}/stop", headers=self._h())
+            return {"simulation_id": sim_id, "status": d.get("status")}
+        raise ConnectorError(f"unsupported action: {action_key}")
+
+    def poll(self, checkpoint: dict[str, Any], limit: int = 500) -> PollResult:
+        d = self.json("GET", "/api/v1/simulations/results", headers=self._h(), params={"limit": limit})
+        findings = []
+        for r in (d if isinstance(d, list) else d.get("results", [])):
+            findings.append({
+                "id": f"bas-{r.get('id', '')}",
+                "simulation_id": r.get("simulation_id", ""),
+                "scenario": r.get("scenario_name", ""),
+                "technique_id": r.get("technique_id", ""),
+                "attack_type": r.get("attack_type", ""),
+                "status": r.get("status", "unknown"),
+                "detected": r.get("detected", False),
+                "blocked": r.get("blocked", False),
+                "detection_coverage": r.get("detection_coverage", 0),
+                "mean_time_to_detect": r.get("mttd_seconds"),
+            })
+        return PollResult(findings=findings, checkpoint=checkpoint)
