@@ -769,6 +769,83 @@ class BackupJob(Base):
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
 
 
+# --------------------------------------------------------------------------- playbooks (visual SOAR)
+class Playbook(Base):
+    __tablename__ = "playbooks"
+    id: Mapped[str] = _pk()
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    trigger: Mapped[str] = mapped_column(String(40), default="manual")  # manual | alert.created | case.created | scheduled
+    nodes: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{id, type, position:{x,y}, data:{…}}]
+    edges: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{id, source, target, sourceHandle, targetHandle, label}]
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)  # draft | published | archived
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True, index=True)
+    created_by: Mapped[str] = mapped_column(String(160), default="")
+    created_at: Mapped[datetime] = _ts()
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+    runs: Mapped[list["PlaybookRun"]] = relationship(back_populates="playbook", cascade="all, delete-orphan")
+
+
+class PlaybookRun(Base):
+    __tablename__ = "playbook_runs"
+    id: Mapped[str] = _pk()
+    playbook_id: Mapped[str] = mapped_column(ForeignKey("playbooks.id", ondelete="CASCADE"), index=True)
+    trigger_ref: Mapped[str] = mapped_column(String(120), default="")  # alert:<id> or case:<id> or manual
+    status: Mapped[str] = mapped_column(String(20), default="running", index=True)  # running | paused | completed | failed | cancelled
+    current_node: Mapped[str] = mapped_column(String(60), default="")
+    execution_log: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{node_id, type, status, started_at, finished_at, result}]
+    error: Mapped[str] = mapped_column(Text, default="")
+    started_at: Mapped[datetime] = _ts()
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    playbook: Mapped["Playbook"] = relationship(back_populates="runs")
+
+
+# --------------------------------------------------------------------------- alert correlation engine
+class CorrelationRule(Base):
+    __tablename__ = "correlation_rules"
+    id: Mapped[str] = _pk()
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    strategy: Mapped[str] = mapped_column(String(30), default="ioc_overlap")  # ioc_overlap | time_window | kill_chain | threshold
+    config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # config schema per strategy:
+    #   ioc_overlap:  {fields: ["src_ip","dst_ip","host","username","file_hash"], min_shared: 2, window_minutes: 60}
+    #   time_window:  {window_minutes: 15, min_alerts: 3, group_by: ["host","client_id"]}
+    #   kill_chain:   {tactics: ["initial-access","execution","persistence"], window_minutes: 120, same_host: true}
+    #   threshold:    {field: "rule_id", threshold: 10, window_minutes: 30, group_by: ["client_id"]}
+    severity_boost: Mapped[int] = mapped_column(Integer, default=1)  # how many levels to escalate the incident severity
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True, index=True)
+    created_by: Mapped[str] = mapped_column(String(160), default="")
+    created_at: Mapped[datetime] = _ts()
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+
+
+class Incident(Base):
+    __tablename__ = "incidents"
+    id: Mapped[str] = _pk()
+    name: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    severity: Mapped[str] = mapped_column(String(10), default="medium", index=True)
+    status: Mapped[str] = mapped_column(String(20), default="open", index=True)  # open | investigating | resolved | false_positive
+    rule_id: Mapped[str | None] = mapped_column(ForeignKey("correlation_rules.id"), nullable=True, index=True)
+    rule_name: Mapped[str] = mapped_column(String(200), default="")
+    strategy: Mapped[str] = mapped_column(String(30), default="manual")
+    alert_ids: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    shared_iocs: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # {field: [values]} — the IOCs that linked these alerts
+    kill_chain_stages: Mapped[list[Any]] = mapped_column(JSON, default=list)  # MITRE tactics seen across correlated alerts
+    alert_count: Mapped[int] = mapped_column(Integer, default=0)
+    first_alert_time: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    last_alert_time: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    case_id: Mapped[str | None] = mapped_column(ForeignKey("cases.id"), nullable=True, index=True)
+    client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True, index=True)
+    assignee_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = _ts()
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+
+
 class SigmaRule(Base):
     """An imported Sigma detection rule: https://github.com/SigmaHQ/sigma"""
 

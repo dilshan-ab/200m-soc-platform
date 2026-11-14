@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, AlertTriangle, Bell, Check, ChevronRight, Crosshair, FileCode2, FileText, Globe, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Plug, Search, Server, Settings, Shield, Sun, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react';
+import { Activity, AlertTriangle, Bell, Check, ChevronRight, Crosshair, FileCode2, FileText, GitMerge, Globe, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Search, Server, Settings, Shield, Sun, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { get } from '../lib/api';
@@ -23,9 +23,11 @@ const NAV: { group: string; items: Item[] }[] = [
     { to: '/app', label: 'Home', icon: LayoutDashboard },
     { to: '/app/intel', label: 'Threat Intelligence', icon: Globe, cap: 'intel.read' },
     { to: '/app/alerts', label: 'Alerts', icon: Bell, cap: 'alerts.read' },
+    { to: '/app/correlation', label: 'Correlation', icon: GitMerge, cap: 'incidents.read' },
     { to: '/app/cases', label: 'Cases', icon: Layers, cap: 'cases.read' },
     { to: '/app/response', label: 'Incident Response', icon: Workflow, cap: 'response.read' },
     { to: '/app/approvals', label: 'Approvals', icon: CheckCircle2, cap: 'response.approve' },
+    { to: '/app/playbooks', label: 'Playbooks', icon: Play, cap: 'playbooks.read' },
   ] },
   { group: 'SECURITY POSTURE', items: [
     { to: '/app/servers', label: 'Servers', icon: Cpu, cap: 'servers.read' },
