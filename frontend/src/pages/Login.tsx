@@ -51,6 +51,7 @@ export default function Login() {
     <div className="app">
       <main className="login neon-login">
         <section className="login-story">
+          <a className="brand" href="/" aria-label="200M home"><CircuitLogo className="login-logo" /></a>
           <div className="story-content">
             <div className="story-copy">
               <h1>Security<br />operations center</h1>
