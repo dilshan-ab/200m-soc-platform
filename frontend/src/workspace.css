@@ -399,9 +399,7 @@ input:is([type=checkbox], [type=radio]) { accent-color: var(--accent); }
 .main-shell.nav-closed { margin-left: 72px; }
 .sidebar.collapsed { width: 72px; padding: 20px 10px 16px; align-items: center; overflow: visible; }
 .sidebar.collapsed .sidebar-toggle { align-self: center; margin-bottom: 18px; }
-.sidebar.collapsed .brand { justify-content: center; padding: 0; width: 100%; overflow: hidden; }
-.sidebar.collapsed .brand span { display: none; }
-.sidebar.collapsed .workspace-brand-logo { width: 42px; height: 18px; }
+.sidebar.collapsed .brand,
 .sidebar.collapsed .workspace,
 .sidebar.collapsed .nav-label,
 .sidebar.collapsed .sidebar-tools,
@@ -409,8 +407,14 @@ input:is([type=checkbox], [type=radio]) { accent-color: var(--accent); }
 .sidebar.collapsed nav { width: 100%; }
 .sidebar.collapsed nav a { justify-content: center; padding: 10px; }
 .sidebar.collapsed nav a span { display: none; }
-.sidebar.collapsed .soc-sidebar-health { justify-content: center; padding: 10px 0; }
+.sidebar.collapsed .soc-sidebar-health {
+  width: 10px; height: 10px; min-height: 10px; margin: 10px auto; padding: 0; border: 0; border-radius: 50%;
+  background: var(--muted); box-shadow: none;
+}
+.sidebar.collapsed .soc-sidebar-health svg,
 .sidebar.collapsed .soc-sidebar-health span { display: none; }
+.sidebar.collapsed .soc-sidebar-health.online { background: #00e676; box-shadow: 0 0 6px rgba(0, 230, 118, .6); }
+.sidebar.collapsed .soc-sidebar-health.offline { background: #ef4444; box-shadow: 0 0 6px rgba(239, 68, 68, .6); }
 .sidebar.collapsed .user { justify-content: center; padding: 12px 0; width: 100%; }
 .sidebar.collapsed .user span:not(.avatar) { display: none; }
 .sidebar.collapsed .user > svg { display: none; }
