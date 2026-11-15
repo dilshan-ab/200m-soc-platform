@@ -393,15 +393,25 @@ input:is([type=checkbox], [type=radio]) { accent-color: var(--accent); }
 .intel-share-grid input[type=file] { display: block; width: 100%; max-width: 100%; font-size: 13px; }
 
 /* ---------------------------------------------------------------- collapsible sidebar (desktop) */
-.sidebar-close { position: absolute; top: 14px; right: 14px; border: 0; background: transparent; color: var(--muted); padding: 6px; border-radius: 6px; cursor: pointer; line-height: 0; }
-.sidebar-close:hover { background: var(--soft); color: var(--text); }
-.sidebar-reopen {
-  position: fixed; top: 18px; left: 18px; z-index: 25;
-  display: flex; align-items: center; justify-content: center;
-  width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 10px;
-  background: var(--surface); color: var(--text); cursor: pointer; box-shadow: 0 4px 14px rgb(0 0 0 / 15%);
-}
-.sidebar-reopen:hover { background: var(--soft); }
+.sidebar-toggle { align-self: flex-end; flex: none; margin: 0 0 14px; border: 0; background: transparent; color: var(--muted); padding: 6px; border-radius: 6px; cursor: pointer; line-height: 0; }
+.sidebar-toggle:hover { background: var(--soft); color: var(--text); }
 .main-shell { transition: margin-left .18s ease; }
-.main-shell.nav-closed { margin-left: 0; }
-@media (max-width: 650px) { .sidebar-reopen { display: none; } }
+.main-shell.nav-closed { margin-left: 72px; }
+.sidebar.collapsed { width: 72px; padding: 20px 10px 16px; align-items: center; overflow: visible; }
+.sidebar.collapsed .sidebar-toggle { align-self: center; margin-bottom: 18px; }
+.sidebar.collapsed .brand { justify-content: center; padding: 0; width: 100%; overflow: hidden; }
+.sidebar.collapsed .brand span { display: none; }
+.sidebar.collapsed .workspace-brand-logo { width: 42px; height: 18px; }
+.sidebar.collapsed .workspace,
+.sidebar.collapsed .nav-label,
+.sidebar.collapsed .sidebar-tools,
+.sidebar.collapsed .nav-count { display: none; }
+.sidebar.collapsed nav { width: 100%; }
+.sidebar.collapsed nav a { justify-content: center; padding: 10px; }
+.sidebar.collapsed nav a span { display: none; }
+.sidebar.collapsed .soc-sidebar-health { justify-content: center; padding: 10px 0; }
+.sidebar.collapsed .soc-sidebar-health span { display: none; }
+.sidebar.collapsed .user { justify-content: center; padding: 12px 0; width: 100%; }
+.sidebar.collapsed .user span:not(.avatar) { display: none; }
+.sidebar.collapsed .user > svg { display: none; }
+@media (max-width: 650px) { .sidebar-toggle { display: none; } }
