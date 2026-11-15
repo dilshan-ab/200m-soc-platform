@@ -714,3 +714,19 @@ html[data-theme=dark] .ops-overview :is(.soc-overview-grid, .soc-detail-grid, .s
 .soc-category-legend strong {
   font-variant-numeric: tabular-nums;
 }
+/* A connected event stream gives the overview a restrained telemetry sweep. */
+.ops-overview .ops-kpi { position: relative; overflow: hidden; }
+.ops-overview .ops-kpi::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(110deg, transparent 25%, rgb(66 163 255 / 9%) 50%, transparent 75%);
+  transform: translateX(-120%);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ops-overview:has(.soc-telemetry-stream.online) .ops-kpi::after { animation: soc-telemetry-sweep 12s ease-in-out infinite; }
+  .ops-overview .ops-kpi:nth-child(2)::after { animation-delay: 1s; }
+  .ops-overview .ops-kpi:nth-child(3)::after { animation-delay: 2s; }
+  .ops-overview .ops-kpi:nth-child(4)::after { animation-delay: 3s; }
+  .ops-overview:has(.soc-telemetry-stream.online) .soc-hero-copy > svg { animation: soc-shield-pulse 5s ease-in-out infinite; }
+}
+@keyframes soc-telemetry-sweep { 0%, 55% { transform: translateX(-120%); } 90%, 100% { transform: translateX(120%); } }
+@keyframes soc-shield-pulse { 0%, 100% { opacity: .7; } 50% { opacity: 1; } }

@@ -50,6 +50,26 @@ export default function Login() {
   return (
     <div className="app">
       <main className="login neon-login">
+        <div className="login-signals" aria-hidden="true">
+          <svg viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice" fill="none">
+            <g className="login-signal-grid">
+              <path d="M0 150H175L260 235H430M0 600H130L235 495H390M1200 190H1040L950 280H830M1200 660H1090L980 550H850M100 0V65L355 320V480M1110 0V90L1000 200M200 800V690L370 520M1120 800V735L930 545" />
+            </g>
+            <g className="login-signal-flow">
+              <path d="M0 150H175L260 235H430" />
+              <path d="M0 600H130L235 495H390" />
+              <path d="M1200 190H1040L950 280H830" />
+              <path d="M1200 660H1090L980 550H850" />
+              <path d="M100 0V65L355 320V480" />
+              <path d="M1120 800V735L930 545" />
+            </g>
+            <g className="login-signal-nodes">
+              <circle cx="175" cy="150" r="4" /><circle cx="235" cy="495" r="4" />
+              <circle cx="1040" cy="190" r="4" /><circle cx="980" cy="550" r="4" />
+              <circle cx="355" cy="320" r="4" /><circle cx="930" cy="545" r="4" />
+            </g>
+          </svg>
+        </div>
         <section className="login-story">
           <a className="brand" href="/" aria-label="200M home"><CircuitLogo className="login-logo" /></a>
           <div className="story-content">
@@ -58,6 +78,7 @@ export default function Login() {
               <p>Investigate alerts, manage cases, and coordinate response.</p>
             </div>
             <div className="orbit" aria-hidden="true">
+              <div className="login-radar"><span /><span /></div>
               <div className="orbit-ring" /><div className="orbit-ring second" /><LoginGlobe />
               <span className="orbit-chip one"><Activity size={16} />Detection</span>
               <span className="orbit-chip two"><Check size={16} />Response</span>
