@@ -201,7 +201,7 @@ export function Shell() {
             <span>Workspace</span><ChevronRight size={14} /><strong>{title}</strong>
           </div>
           <div className="header-actions">
-            <Button variant="ghost" className="workspace-search" aria-label="Search workspace (Ctrl+K)" aria-haspopup="dialog" aria-expanded={palette} onClick={() => setPalette(true)}><Search size={18} aria-hidden="true" /><span>Search workspace</span><kbd>Ctrl K</kbd></Button>
+            <Button variant="ghost" className="workspace-search" aria-label="Search workspace (Ctrl+K)" aria-haspopup="dialog" aria-expanded={palette} onClick={() => setPalette(true)}><i className="workspace-search-symbol" aria-hidden="true"><Search size={17} /></i><span className="workspace-search-copy"><strong>Search workspace</strong><small>Pages · Alerts · Cases · Assets</small></span><kbd>Ctrl K</kbd></Button>
             <span className={'demo-pill' + (live ? '' : ' off')}><Activity size={11} style={{ verticalAlign: -1, marginRight: 5 }} />{live ? 'Live' : 'Offline'}</span>
             <Button variant="ghost" aria-label={dark ? 'Use light theme' : 'Use dark theme'} onClick={toggleTheme}>{dark ? <Sun size={18} /> : <Moon size={18} />}</Button>
             {can('alerts.read') && <span style={{ position: "relative", display: "inline-flex" }}><Button variant="ghost" aria-label={`Notifications${(pending + newAlerts) ? ` (${pending + newAlerts})` : ""}`} onClick={() => setNotifOpen((v) => !v)} className="bell"><Bell size={18} /><Pulse active={newAlerts > 0 || pending > 0} /></Button>{notifOpen && <NotificationPanel onClose={() => setNotifOpen(false)} />}</span>}
