@@ -104,7 +104,7 @@ def mssp_dashboard(p: Principal = Depends(require("mssp.view")), db: Session = D
         raise HTTPException(403, "MSSP dashboard requires access to all clients")
     clients = db.execute(select(Client).where(Client.active.is_(True)).order_by(Client.name)).scalars().all()
     open_statuses = ["new", "acknowledged", "investigating"]
-    rows = []
+    rows: list[dict[str, Any]] = []
     for c in clients:
         crit = db.execute(select(func.count()).where(Alert.client_id == c.id, Alert.status.in_(open_statuses), Alert.severity == "critical")).scalar_one()
         open_alerts = db.execute(select(func.count()).where(Alert.client_id == c.id, Alert.status.in_(open_statuses))).scalar_one()

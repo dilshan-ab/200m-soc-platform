@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 const MAP: Record<string, string[]> = {
   'alert.created': ['alerts', 'dashboard', 'alert-stats', 'triage-queue', 'mitre-matrix'], 'alert.updated': ['alerts', 'dashboard', 'alert', 'triage-queue', 'mitre-matrix'], 'case.created': ['cases'], 'case.updated': ['cases', 'case'],
   'action.updated': ['requests', 'approvals', 'request'], 'approval.pending': ['approvals'], 'server.down': ['servers', 'dashboard'],
+  'alert.deleted': ['alerts', 'alert', 'alert-stats', 'dashboard', 'triage-queue', 'mitre-matrix', 'threat-map', 'overview-recent-alerts', 'overview-active-cases', 'cases', 'case', 'incidents', 'incident', 'assets', 'asset', 'notif-alerts'],
+  'warroom.deleted': ['warrooms'],
   'warroom.message': ['warroom', 'warrooms'], 'warroom.created': ['warrooms'],
 };
 

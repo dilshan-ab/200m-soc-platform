@@ -53,7 +53,7 @@ def matching_alerts(db: Session, p: Principal, query: dict[str, Any]) -> list[Al
     technique_ids = set(query.get("technique_ids") or [])
     if technique_ids:
         rows = [a for a in rows if technique_ids & set(a.mitre or [])]
-    return rows
+    return list(rows)
 
 
 def run_hunt(db: Session, p: Principal, hunt: Hunt) -> list[Alert]:

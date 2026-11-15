@@ -96,10 +96,19 @@ export function Shell() {
     window.scrollTo(0, 0);
   }, [loc.pathname]);
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.repeat) return; if (!account && !mobile && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((p) => !p); } if (e.key === '?' && !(e.target as HTMLElement).closest('input, textarea, select, [contenteditable]') && !account && !mobile && !palette) setKbdHelp((v) => !v); };
+    const h = (e: KeyboardEvent) => {
+      if (e.repeat || (document.querySelector('[role="dialog"]') && !palette)) return;
+      if (!account && !mobile && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPalette((open) => !open);
+      }
+      if (e.key === '?' && !(e.target as HTMLElement).closest('input, textarea, select, [contenteditable]') && !account && !mobile && !palette) {
+        setKbdHelp(true);
+      }
+    };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [account, mobile]);
+  }, [account, mobile, palette]);
   useEffect(() => {
     const desktop = window.matchMedia('(min-width: 651px)');
     const closeOnDesktop = () => { if (desktop.matches) setMobile(false); };
