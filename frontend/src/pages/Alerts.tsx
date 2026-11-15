@@ -1,12 +1,13 @@
+import { LiveTimer, Skeleton } from '../components/Interactive';
 import { SavedViews } from '../components/SavedViews';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Chips } from '../components/manage';
-import { Drawer, Empty, ErrorBox, Field, Loading, PageHead, Pager, SearchBox, Sev, Status, useToast } from '../components/ui';
+import { Drawer, Empty, ErrorBox, Field, PageHead, Pager, SearchBox, Sev, Status, useToast } from '../components/ui';
 import { get, patch, post, type Page } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { SEVERITIES, ago, until, when } from '../lib/format';
+import { SEVERITIES, ago, when } from '../lib/format';
 import { RequestActionModal } from './Response';
 
 type Alert = any;
@@ -92,7 +93,7 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
         </>}
         {(scoped || f.q || f.status || f.category || f.severity.length > 0) && <button className="btn small" onClick={clearAll}>Clear filters</button>}
       </div>
-      {q.isLoading ? <Loading /> : q.error ? <ErrorBox error={q.error} /> : q.data!.items.length === 0 ? <Empty>No alerts match these filters.</Empty> : (
+      {q.isLoading ? <Skeleton lines={8} /> : q.error ? <ErrorBox error={q.error} /> : q.data!.items.length === 0 ? <Empty>No alerts match these filters.</Empty> : (
         <>
           <div className="table-wrap"><table>
             <thead><tr><th><input type="checkbox" style={{ width: 'auto' }} aria-label="Select all on this page" checked={allSel} onChange={() => setSel(allSel ? new Set() : new Set(items.map((a) => a.id)))} /></th><th>Severity</th><th>Alert</th><th>Host</th><th>Source IP</th><th>Source</th><th>Status</th><th>Count</th><th>Ack due</th><th>Time</th></tr></thead>
@@ -101,7 +102,7 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
                 <td onClick={(e) => e.stopPropagation()}><input type="checkbox" style={{ width: 'auto' }} aria-label={`Select ${a.title}`} checked={sel.has(a.id)} onChange={() => toggle(a.id)} /></td>
                 <td><Sev v={a.severity} /></td><td className="wrap">{a.title}{a.sla_breached && <span className="badge st-failed" style={{ marginLeft: 8 }}>SLA</span>}</td>
                 <td>{a.host || '—'}</td><td className="mono">{a.src_ip || '—'}</td><td>{a.source}</td><td><Status v={a.status} /></td><td>{a.count}</td>
-                <td>{a.status !== 'new' ? '✓' : until(a.ack_due)}</td><td>{ago(a.time)}</td>
+                <td><LiveTimer deadline={a.ack_due} done={a.status !== 'new'} /></td><td>{ago(a.time)}</td>
               </tr>))}</tbody>
           </table></div>
           <Pager page={page} limit={50} total={q.data!.total} set={changePage} />
@@ -137,7 +138,7 @@ function AlertDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const enrich = useMutation({ mutationFn: (ind: string) => post('/api/intel/enrich', { indicator: ind, alert_id: id }), onSuccess: () => toast('Enrichment queued — see Threat intel'), onError: (e: Error) => toast(e.message, true) });
   return (
     <Drawer title={a ? <><Sev v={a.severity} /> {a.title}</> : 'Alert'} onClose={onClose}>
-      {q.isLoading ? <Loading /> : q.error ? <ErrorBox error={q.error} /> : (
+      {q.isLoading ? <Skeleton lines={8} /> : q.error ? <ErrorBox error={q.error} /> : (
         <>
           <div className="row" style={{ marginBottom: 14 }}>
             {can('alerts.triage') && a.status === 'new' && <button className="btn primary small" onClick={() => upd.mutate({ status: 'acknowledged' })}>Acknowledge</button>}
