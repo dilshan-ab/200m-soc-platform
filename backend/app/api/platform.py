@@ -6,7 +6,7 @@ import re
 from datetime import timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select, text
@@ -252,16 +252,28 @@ def setup_complete(p: Principal = Depends(require("admin.settings")), db: Sessio
 
 
 @router.get("/search")
-def global_search(q: str, p: Principal = Depends(require("alerts.read")), db: Session = Depends(get_db)) -> dict[str, Any]:
+def global_search(q: str = Query(max_length=200), p: Principal = Depends(get_principal), db: Session = Depends(get_db)) -> dict[str, Any]:
     from ..models import Asset, Case
 
-    q = q.strip()[:100]
-    if len(q) < 2:
-        return {"alerts": [], "cases": [], "assets": []}
-    a = db.execute(select(Alert).where(p.scope(Alert.client_id), Alert.title.contains(q, autoescape=True) | Alert.host.contains(q, autoescape=True) | Alert.src_ip.contains(q, autoescape=True)).order_by(Alert.time.desc()).limit(8)).scalars()
-    c = db.execute(select(Case).where(p.scope(Case.client_id), Case.title.contains(q, autoescape=True)).limit(8)).scalars()
-    s = db.execute(select(Asset).where(p.scope(Asset.client_id), Asset.name.contains(q, autoescape=True)).limit(8)).scalars()
-    return {"alerts": [{"id": x.id, "title": x.title, "severity": x.severity} for x in a], "cases": [{"id": x.id, "number": x.number, "title": x.title} for x in c], "assets": [{"id": x.id, "name": x.name} for x in s]}
+    term = q.strip()
+    results: dict[str, Any] = {"alerts": [], "cases": [], "assets": []}
+    if len(term) < 2:
+        return results
+    if p.can("alerts.read"):
+        alerts = db.execute(select(Alert).where(
+            p.scope(Alert.client_id),
+            Alert.title.contains(term, autoescape=True) | Alert.host.contains(term, autoescape=True)
+            | Alert.src_ip.contains(term, autoescape=True) | Alert.username.contains(term, autoescape=True)
+            | Alert.rule_id.contains(term, autoescape=True),
+        ).order_by(Alert.time.desc(), Alert.id).limit(8)).scalars()
+        results["alerts"] = [{"id": alert.id, "title": alert.title, "severity": alert.severity} for alert in alerts]
+    if p.can("cases.read"):
+        cases = db.execute(select(Case).where(p.scope(Case.client_id), Case.title.contains(term, autoescape=True)).order_by(Case.created_at.desc(), Case.id).limit(8)).scalars()
+        results["cases"] = [{"id": case.id, "number": case.number, "title": case.title} for case in cases]
+    if p.can("assets.read"):
+        assets = db.execute(select(Asset).where(p.scope(Asset.client_id), Asset.name.contains(term, autoescape=True) | Asset.hostname.contains(term, autoescape=True)).order_by(Asset.name, Asset.id).limit(8)).scalars()
+        results["assets"] = [{"id": asset.id, "name": asset.name} for asset in assets]
+    return results
 
 
 _ = (Client, get_connector_cls)

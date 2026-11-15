@@ -72,29 +72,37 @@ html[data-theme=dark] .sidebar nav a.active {
   box-shadow: 0 0 10px #00e676;
 }
 
-.main-shell>header .header-actions {
-  flex: 1;
-  min-width: 0;
-  justify-content: flex-end;
-}
-
-.main-shell>header .workspace-search {
+.main-shell > header { column-gap: clamp(14px, 2vw, 28px); }
+.main-shell > header .crumb { min-width: 0; flex: 0 1 auto; white-space: nowrap; }
+.main-shell > header .crumb strong { overflow: hidden; text-overflow: ellipsis; }
+.main-shell > header .header-actions { flex: 1; min-width: 0; justify-content: flex-end; gap: 10px; }
+.main-shell > header .workspace-search {
   order: -1;
-  margin-right: auto;
-  width: min(100%, 510px);
+  flex: 1 1 280px;
+  min-width: 42px;
+  max-width: 510px;
+  margin-inline: 0 auto;
+  min-height: 42px;
+  padding-inline: 14px;
+  border: 1px solid var(--control-border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  transition: border-color .18s, background-color .18s, box-shadow .18s;
+}
+.main-shell > header .workspace-search svg { flex: none; color: var(--accent); }
+.main-shell > header .workspace-search span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.main-shell > header .workspace-search kbd { margin-inline-start: auto; }
+.main-shell > header .workspace-search:hover,
+.main-shell > header .workspace-search:focus-visible {
+  border-color: var(--accent);
   background: var(--soft);
-  border-color: var(--border);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
 }
-
-.main-shell>header .workspace-search kbd {
-  margin-inline-start: auto;
-}
-
 @media (max-width: 850px) {
-  .main-shell>header .workspace-search {
-    width: auto;
-    margin-right: 0;
-  }
+  .main-shell > header .workspace-search { flex: none; width: 42px; padding-inline: 0; margin-right: 0; justify-content: center; }
+  .main-shell > header .crumb { flex: 1; }
+  .main-shell > header .header-actions { flex: none; }
 }
 
 .soc-hero {
