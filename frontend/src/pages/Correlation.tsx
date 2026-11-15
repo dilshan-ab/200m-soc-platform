@@ -16,18 +16,20 @@ const STRAT_LABEL: Record<string, string> = { ioc_overlap: 'IOC overlap', time_w
 export default function Correlation() {
   const [tab, setTab] = useState<'incidents' | 'rules'>('incidents');
   const { can } = useAuth();
+  const run = useAct(() => post('/api/correlation/run'), ['incidents', 'correlation-rules'], 'Correlation complete');
 
   return (
     <>
       <PageHead title="Alert correlation" sub="Automatically group related alerts into incidents using configurable correlation rules.">
         <div style={{ display: 'flex', gap: 8 }}>
           {can('correlation.write') && (
-            <button className="btn" onClick={() => post('/api/correlation/run').then(() => window.location.reload())}>
-              Run correlation
+            <button className="btn" disabled={run.isPending} onClick={() => run.mutate(undefined)}>
+              {run.isPending ? 'Running…' : 'Run correlation'}
             </button>
           )}
         </div>
       </PageHead>
+      {run.error && <ErrorBox error={run.error} />}
       <div className="tabs" style={{ marginBottom: 16 }}>
         <button className={`tab ${tab === 'incidents' ? 'active' : ''}`} onClick={() => setTab('incidents')}>Incidents</button>
         <button className={`tab ${tab === 'rules' ? 'active' : ''}`} onClick={() => setTab('rules')}>Rules</button>
@@ -49,14 +51,14 @@ function IncidentList() {
   return (
     <>
       <div className="row" style={{ marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
-        <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} style={{ minWidth: 120 }}>
+        <select aria-label="Incident status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} style={{ minWidth: 120 }}>
           <option value="">All statuses</option>
           <option value="open">Open</option>
           <option value="investigating">Investigating</option>
           <option value="resolved">Resolved</option>
           <option value="false_positive">False positive</option>
         </select>
-        <select value={sevFilter} onChange={(e) => { setSevFilter(e.target.value); setPage(1); }} style={{ minWidth: 120 }}>
+        <select aria-label="Incident severity" value={sevFilter} onChange={(e) => { setSevFilter(e.target.value); setPage(1); }} style={{ minWidth: 120 }}>
           <option value="">All severities</option>
           {SEV_ORDER.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
@@ -66,7 +68,7 @@ function IncidentList() {
         <Empty>No incidents found. Run correlation or adjust filters.</Empty>
       ) : (
         <>
-          <table className="table">
+          <div className="table-wrap"><table className="table">
             <thead>
               <tr>
                 <th>Severity</th>
@@ -79,7 +81,7 @@ function IncidentList() {
             </thead>
             <tbody>
               {q.data.items.map((inc) => (
-                <tr key={inc.id} style={{ cursor: 'pointer' }} onClick={() => setSelected(inc.id)}>
+                <tr key={inc.id} tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => setSelected(inc.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && event.key === 'Enter') setSelected(inc.id); }}>
                   <td><span className={`badge sev-${inc.severity}`}>{inc.severity}</span></td>
                   <td>
                     <div style={{ fontWeight: 500 }}>{inc.name}</div>
@@ -97,7 +99,7 @@ function IncidentList() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
           <Pager page={q.data.page} limit={q.data.limit} total={q.data.total} set={setPage} />
         </>
       )}
@@ -198,7 +200,7 @@ function RuleList() {
       {q.isLoading ? <Loading /> : q.error ? <ErrorBox error={q.error} /> : !q.data?.items.length ? (
         <Empty>No correlation rules. Create one to start grouping alerts into incidents.</Empty>
       ) : (
-        <table className="table">
+        <div className="table-wrap"><table className="table">
           <thead><tr><th>Name</th><th>Strategy</th><th>Severity boost</th><th>Enabled</th></tr></thead>
           <tbody>
             {q.data.items.map((r) => (
@@ -213,7 +215,7 @@ function RuleList() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
 
       {creating && <CreateRule onClose={() => setCreating(false)} />}

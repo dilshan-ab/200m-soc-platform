@@ -16,7 +16,7 @@ const initials = (name: string) => name.split(/[\s@.]+/).filter(Boolean).slice(0
 
 export default function WarRoom() {
   const { can } = useAuth();
-  const live = useLive(true);
+  const live = useLive(can('alerts.read'));
   const rooms = useQuery({ queryKey: ['warrooms'], queryFn: () => get<WarRoomSummary[]>('/api/warrooms'), refetchInterval: 10000 });
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -82,7 +82,7 @@ function CreateWarRoom({ onClose, onCreated }: { onClose: () => void; onCreated:
 }
 
 function ChatPanel({ id }: { id: string }) {
-  const { me } = useAuth();
+  const { me, can } = useAuth();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['warroom', id], queryFn: () => get<WarRoomDetail>(`/api/warrooms/${id}`), refetchInterval: 4000 });
   const [draft, setDraft] = useState('');
@@ -100,7 +100,7 @@ function ChatPanel({ id }: { id: string }) {
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (draft.trim()) send.mutate(undefined);
+    if (draft.trim() && !send.isPending) send.mutate(undefined);
   }
 
   return (
@@ -124,7 +124,7 @@ function ChatPanel({ id }: { id: string }) {
           <div key={m.id} className={'chat-bubble' + (m.author_label === me?.name || m.author_label === me?.email ? ' own' : '')}>
             <div className="chat-author row" style={{ justifyContent: 'space-between', gap: 8 }}>
               <span>{m.author_label}</span>
-              <button type="button" onClick={() => pin.mutate(m.id)} style={{ border: 0, background: 'none', cursor: 'pointer', opacity: m.pinned ? 1 : 0.4, color: 'inherit' }} aria-label={m.pinned ? 'Unpin' : 'Pin'}><Pin size={11} /></button>
+              {can('warroom.write') && <button type="button" disabled={pin.isPending} onClick={() => pin.mutate(m.id)} style={{ border: 0, background: 'none', cursor: 'pointer', opacity: m.pinned ? 1 : 0.4, color: 'inherit' }} aria-label={m.pinned ? 'Unpin' : 'Pin'}><Pin size={11} /></button>}
             </div>
             {m.content}
             <span className="chat-time">{ago(m.created_at)}</span>
@@ -132,13 +132,14 @@ function ChatPanel({ id }: { id: string }) {
         ))}
         {room.messages.length === 0 && <Empty>No messages yet. Say what you're seeing.</Empty>}
       </div>
-      {room.status === 'active' && (
+      {room.status === 'active' && can('warroom.write') && (
         <form className="chat-composer" onSubmit={submit}>
-          <textarea rows={1} value={draft} placeholder="Share an update…" onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (draft.trim()) send.mutate(undefined); } }} />
-          <button className="btn primary" type="submit" disabled={send.isPending || !draft.trim()}><Send size={15} /></button>
+          <textarea rows={1} aria-label="Message" maxLength={10000} disabled={send.isPending} value={draft} placeholder="Share an update…" onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (draft.trim() && !send.isPending) send.mutate(undefined); } }} />
+          <button className="btn primary" type="submit" aria-label="Send message" disabled={send.isPending || !draft.trim()}><Send size={15} /></button>
         </form>
       )}
+      {(send.error || pin.error) && <ErrorBox error={send.error || pin.error} />}
       {standingDown && <StandDownModal id={id} onClose={() => setStandingDown(false)} onDone={() => { setStandingDown(false); void qc.invalidateQueries({ queryKey: ['warrooms'] }); }} />}
     </div>
   );

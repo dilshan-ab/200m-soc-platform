@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { AtSign, Copy, Download, FileJson, Fingerprint, Globe2, Plug, Plus, RefreshCw, Shield, Trash2, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Empty, ErrorBox, Field, Loading, Modal, Pager, PageHead, SearchBox, useToast } from '../components/ui';
@@ -22,6 +22,7 @@ const VERDICT_STYLE: Record<string, { background: string; color: string }> = {
 };
 
 export default function ThreatIntelSharing() {
+  const { can } = useAuth();
   const [tab, setTab] = useState<'indicators' | 'share' | 'feeds'>('indicators');
   const stats = useQuery({ queryKey: ['intel-share-stats'], queryFn: () => get<Stats>('/api/threat-intel/stats'), refetchInterval: 20000 });
 
@@ -39,7 +40,7 @@ export default function ThreatIntelSharing() {
       <div className="tabs" style={{ marginBottom: 16 }}>
         <button className={tab === 'indicators' ? 'active' : ''} onClick={() => setTab('indicators')}>Indicators</button>
         <button className={tab === 'share' ? 'active' : ''} onClick={() => setTab('share')}>Share &amp; Import</button>
-        <button className={tab === 'feeds' ? 'active' : ''} onClick={() => setTab('feeds')}>TAXII Feeds</button>
+        {can('threat_intel.admin') && <button className={tab === 'feeds' ? 'active' : ''} onClick={() => setTab('feeds')}>TAXII Feeds</button>}
       </div>
       {tab === 'indicators' && <IndicatorsPanel />}
       {tab === 'share' && <SharePanel />}
@@ -56,14 +57,14 @@ function IndicatorsPanel() {
   const [page, setPage] = useState(1);
   const [adding, setAdding] = useState(false);
   const list = useQuery({ queryKey: ['indicators', type, verdict, q, page], queryFn: () => get<Page<Indicator>>('/api/threat-intel/indicators', { type: type || undefined, verdict: verdict || undefined, q: q || undefined, page, limit: 25 }) });
-  const revoke = useAct((id: string) => post(`/api/threat-intel/indicators/${id}/revoke`), ['indicators'], 'Indicator revoked');
+  const revoke = useAct((id: string) => post(`/api/threat-intel/indicators/${id}/revoke`), ['indicators', 'intel-share-stats'], 'Indicator revoked');
 
   return (
     <>
       <div className="filters" style={{ marginBottom: 12 }}>
         <SearchBox value={q} onChange={(v) => { setQ(v); setPage(1); }} placeholder="Search by value…" label="Search indicators" />
-        <select value={type} onChange={(e) => { setType(e.target.value); setPage(1); }}><option value="">All types</option>{['ip', 'domain', 'url', 'hash', 'email'].map((t) => <option key={t} value={t}>{titleCase(t)}</option>)}</select>
-        <select value={verdict} onChange={(e) => { setVerdict(e.target.value); setPage(1); }}><option value="">Any verdict</option>{['malicious', 'suspicious', 'benign', 'unknown'].map((v) => <option key={v} value={v}>{titleCase(v)}</option>)}</select>
+        <select aria-label="Indicator type" value={type} onChange={(e) => { setType(e.target.value); setPage(1); }}><option value="">All types</option>{['ip', 'domain', 'url', 'hash', 'email'].map((t) => <option key={t} value={t}>{titleCase(t)}</option>)}</select>
+        <select aria-label="Verdict" value={verdict} onChange={(e) => { setVerdict(e.target.value); setPage(1); }}><option value="">Any verdict</option>{['malicious', 'suspicious', 'benign', 'unknown'].map((v) => <option key={v} value={v}>{titleCase(v)}</option>)}</select>
         <span className="spacer" />
         {can('threat_intel.write') && <button className="btn small primary" onClick={() => setAdding(true)}><Plus size={14} /> Add indicator</button>}
       </div>
@@ -117,7 +118,7 @@ function AddIndicatorModal({ onClose }: { onClose: () => void }) {
 
 function SharePanel() {
   const toast = useToast();
-  const qc = useQueryClient();
+  const { can } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
   const [bundleText, setBundleText] = useState('');
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null);
@@ -142,24 +143,25 @@ function SharePanel() {
       toast(`Exported ${bundle.objects.length} indicator(s)`);
     } catch (e: any) { toast(e.message, true); }
   }
-  function copy(text: string) {
-    navigator.clipboard?.writeText(text);
-    toast('Copied');
-    void qc.invalidateQueries();
+  async function copy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Copied');
+    } catch { toast('Could not copy. Select and copy the discovery URL manually.', true); }
   }
 
   const taxiiBase = `${location.origin}/taxii2/`;
   return (
     <div className="intel-share-grid">
-      <div className="card">
+      {can('threat_intel.write') && <div className="card">
         <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}><Upload size={16} /> Import a STIX bundle</h3>
         <p style={{ color: 'var(--muted)', fontSize: 13 }}>Paste STIX 2.1 JSON, or upload a <code>.json</code> file. Indicator objects are upserted by type + value.</p>
-        <input ref={fileRef} type="file" accept="application/json,.json" onChange={onFile} style={{ marginBottom: 10 }} />
-        <textarea rows={8} className="mono" placeholder='{"type":"bundle","objects":[...]}' value={bundleText} onChange={(e) => setBundleText(e.target.value)} style={{ marginBottom: 10 }} />
+        <input ref={fileRef} type="file" aria-label="STIX bundle file" accept="application/json,.json" onChange={onFile} style={{ marginBottom: 10 }} />
+        <textarea aria-label="STIX bundle JSON" rows={8} className="mono" placeholder='{"type":"bundle","objects":[...]}' value={bundleText} onChange={(e) => setBundleText(e.target.value)} style={{ marginBottom: 10 }} />
         {importMut.error && <ErrorBox error={importMut.error} />}
         {importResult && <div className="notice" style={{ marginBottom: 10 }}>Imported {importResult.imported}, skipped {importResult.skipped} non-indicator object(s).</div>}
         <button className="btn primary" disabled={importMut.isPending || !bundleText.trim()} onClick={() => importMut.mutate(undefined)}><FileJson size={15} /> Import bundle</button>
-      </div>
+      </div>}
 
       <div className="card">
         <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}><Download size={16} /> Export for a partner</h3>
@@ -168,12 +170,12 @@ function SharePanel() {
           <Field label="Type" id="et"><select id="et" value={exportType} onChange={(e) => setExportType(e.target.value)}><option value="">All types</option>{['ip', 'domain', 'url', 'hash', 'email'].map((t) => <option key={t} value={t}>{titleCase(t)}</option>)}</select></Field>
           <Field label="Seen in last (days)" id="ed"><input id="ed" type="number" min={1} max={365} value={exportDays} onChange={(e) => setExportDays(Number(e.target.value))} /></Field>
         </div>
-        <button className="btn primary" onClick={() => void doExport()}><Download size={15} /> Download bundle</button>
+        <button className="btn primary" disabled={!Number.isInteger(exportDays) || exportDays < 1 || exportDays > 365} onClick={() => void doExport()}><Download size={15} /> Download bundle</button>
 
         <h3 style={{ marginTop: 24, display: 'flex', alignItems: 'center', gap: 8 }}><Plug size={16} /> Our TAXII 2.1 feed</h3>
         <p style={{ color: 'var(--muted)', fontSize: 13 }}>Give a partner this discovery URL so their TAXII client can pull our indicators directly, continuously.</p>
         <div className="taxii-info">
-          <div className="taxii-info-row"><label>Discovery</label><code>{taxiiBase}</code><button className="btn small" onClick={() => copy(taxiiBase)}><Copy size={12} /></button></div>
+          <div className="taxii-info-row"><label>Discovery</label><code>{taxiiBase}</code><button className="btn small" aria-label="Copy TAXII discovery URL" onClick={() => void copy(taxiiBase)}><Copy size={12} /></button></div>
           <div className="taxii-info-row"><label>Collection</label><code>200M SOC shared indicators</code></div>
           <div className="taxii-info-row"><label>Auth</label><code>Bearer API token (see Admin → API tokens)</code></div>
         </div>
@@ -207,7 +209,7 @@ function FeedsPanel() {
             {can('threat_intel.admin') && (
               <div className="row" style={{ gap: 6, marginTop: 4 }}>
                 <button className="btn small" disabled={sync.isPending} onClick={() => sync.mutate(f.id)}><RefreshCw size={12} /> Sync now</button>
-                <button className="btn small danger" onClick={() => { if (confirm(`Remove feed "${f.name}"?`)) remove.mutate(f.id); }}><Trash2 size={12} /></button>
+                <button className="btn small danger" aria-label={`Remove feed ${f.name}`} onClick={() => { if (confirm(`Remove feed "${f.name}"?`)) remove.mutate(f.id); }}><Trash2 size={12} /></button>
               </div>
             )}
           </div>

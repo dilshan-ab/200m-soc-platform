@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, FileSearch, Flag, Plus, Search, StickyNote, Tag, Target, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { Empty, ErrorBox, Field, Loading, Modal, PageHead } from '../components/ui';
+import { Empty, ErrorBox, Field, Loading, Modal, PageHead, SearchBox } from '../components/ui';
 import { del, get, post, put } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ago } from '../lib/format';
@@ -15,7 +15,8 @@ const CELL_LABELS: Record<string, string> = { note: 'Note', query: 'Query', find
 
 export default function Notebooks() {
   const { can } = useAuth();
-  const list = useQuery({ queryKey: ['notebooks'], queryFn: () => get<Notebook[]>('/api/notebooks') });
+  const [search, setSearch] = useState('');
+  const list = useQuery({ queryKey: ['notebooks', search], queryFn: () => get<Notebook[]>('/api/notebooks', { q: search }) });
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -24,9 +25,10 @@ export default function Notebooks() {
       <PageHead title="Investigation Notebooks" sub="Capture notes, saved queries and findings as you work an investigation.">
         {can('notebooks.write') && <button className="btn primary" onClick={() => setCreating(true)}><Plus size={16} /> New notebook</button>}
       </PageHead>
-      <div className="row" style={{ gap: 24, alignItems: 'flex-start' }}>
-        <div style={{ width: 280, flexShrink: 0 }}>
-          {list.isLoading ? <Loading /> : list.error ? <ErrorBox error={list.error} /> : list.data!.length === 0 ? <Empty>No notebooks yet.</Empty> : (
+      <div className="notebook-workspace">
+        <div className="notebook-list">
+          <SearchBox value={search} onChange={setSearch} placeholder="Search notebooks…" label="Search notebooks" />
+          {list.isLoading ? <Loading /> : list.error ? <ErrorBox error={list.error} /> : list.data!.length === 0 ? <Empty>{search ? 'No notebooks match your search.' : 'No notebooks yet.'}</Empty> : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {list.data!.map((nb) => (
                 <button key={nb.id} type="button" className="card" style={{ textAlign: 'left', padding: 12, border: selected === nb.id ? '2px solid var(--accent)' : undefined, cursor: 'pointer' }} onClick={() => setSelected(nb.id)}>
@@ -39,7 +41,7 @@ export default function Notebooks() {
           )}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          {selected ? <NotebookEditor id={selected} onDeleted={() => setSelected(null)} /> : <Empty>Select a notebook, or create a new one.</Empty>}
+          {selected ? <NotebookEditor key={selected} id={selected} onDeleted={() => setSelected(null)} /> : <Empty>Select a notebook, or create a new one.</Empty>}
         </div>
       </div>
       {creating && <CreateNotebook onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); setSelected(id); }} />}
@@ -67,16 +69,14 @@ function NotebookEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
   const qc = useQueryClient();
   const { can } = useAuth();
   const q = useQuery({ queryKey: ['notebook', id], queryFn: () => get<Notebook>(`/api/notebooks/${id}`) });
+  const [queryError, setQueryError] = useState<unknown>(null);
+  const [running, setRunning] = useState<string | null>(null);
   const [adding, setAdding] = useState<'note' | 'query' | 'finding' | 'ioc' | null>(null);
   const writable = can('notebooks.write');
 
   const saveCells = useAct((cells: Cell[]) => put(`/api/notebooks/${id}/cells`, { version: q.data!.version, cells }), ['notebook', 'notebooks']);
   const delNotebook = useAct(() => del(`/api/notebooks/${id}`), ['notebooks'], 'Notebook deleted', onDeleted);
 
-  function updateCell(cellId: string, patchFn: (c: Cell) => Cell) {
-    const nb = q.data!;
-    saveCells.mutate(nb.cells.map((c) => (c.id === cellId ? patchFn(c) : c)));
-  }
   function removeCell(cellId: string) {
     const nb = q.data!;
     saveCells.mutate(nb.cells.filter((c) => c.id !== cellId));
@@ -93,10 +93,13 @@ function NotebookEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
   async function runQuery(cellId: string) {
     const cell = q.data!.cells.find((c) => c.id === cellId);
     if (!cell) return;
+    setRunning(cellId);
+    setQueryError(null);
     try {
       const result = await get<any>('/api/alerts', { ...cell.filters, limit: 10 });
-      updateCell(cellId, (c) => ({ ...c, result_count: result.total, result_sample: result.items.slice(0, 10), ran_at: new Date().toISOString() }));
-    } catch { /* surfaced via saveCells error state on next save attempt */ }
+      await saveCells.mutateAsync(q.data!.cells.map((c) => c.id === cellId ? { ...c, result_count: result.total, result_sample: result.items.slice(0, 10), ran_at: new Date().toISOString() } : c));
+    } catch (error) { setQueryError(error); }
+    finally { setRunning(null); }
   }
 
   if (q.isLoading) return <Loading />;
@@ -122,16 +125,16 @@ function NotebookEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
                 <span className="row" style={{ gap: 6, alignItems: 'center' }}><Icon size={14} /><strong style={{ fontSize: 12 }}>{CELL_LABELS[cell.type]}</strong><small style={{ color: 'var(--muted)' }}>{ago(cell.created_at)} · {cell.created_by}</small></span>
                 {writable && (
                   <span className="row" style={{ gap: 4 }}>
-                    <button className="btn small" disabled={i === 0} onClick={() => moveCell(cell.id, -1)}>↑</button>
-                    <button className="btn small" disabled={i === nb.cells.length - 1} onClick={() => moveCell(cell.id, 1)}>↓</button>
-                    <button className="btn small danger" onClick={() => removeCell(cell.id)}><Trash2 size={12} /></button>
+                    <button className="btn small" aria-label="Move cell up" disabled={i === 0 || saveCells.isPending || !!running} onClick={() => moveCell(cell.id, -1)}>↑</button>
+                    <button className="btn small" aria-label="Move cell down" disabled={i === nb.cells.length - 1 || saveCells.isPending || !!running} onClick={() => moveCell(cell.id, 1)}>↓</button>
+                    <button className="btn small danger" aria-label="Remove cell" disabled={saveCells.isPending || !!running} onClick={() => removeCell(cell.id)}><Trash2 size={12} /></button>
                   </span>
                 )}
               </div>
               {cell.type === 'query' ? (
                 <>
                   <div className="mono" style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>{JSON.stringify(cell.filters)}</div>
-                  <button className="btn small" onClick={() => runQuery(cell.id)}><FileSearch size={12} /> Run query</button>
+                  {writable && can('alerts.read') && <button className="btn small" disabled={!!running || saveCells.isPending} onClick={() => runQuery(cell.id)}><FileSearch size={12} /> {running === cell.id ? 'Running…' : 'Run query'}</button>}
                   {cell.ran_at && <div style={{ marginTop: 8, fontSize: 12 }}>
                     {cell.result_count} matching alert(s) · last run {ago(cell.ran_at)}
                     {cell.result_sample.length > 0 && (
@@ -155,11 +158,13 @@ function NotebookEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
           <button className="btn small" onClick={() => setAdding('ioc')}>+ IOC</button>
         </div>
       )}
+      {queryError !== null && <ErrorBox error={queryError} />}
       {saveCells.error && <ErrorBox error={saveCells.error} />}
       {adding && <AddCellModal type={adding} onClose={() => setAdding(null)} onAdd={async (content, filters) => {
         await post(`/api/notebooks/${id}/cells/new`, { type: adding, content, filters });
         setAdding(null);
         void qc.invalidateQueries({ queryKey: ['notebook', id] });
+        void qc.invalidateQueries({ queryKey: ['notebooks'] });
       }} />}
     </div>
   );
@@ -170,21 +175,23 @@ function AddCellModal({ type, onClose, onAdd }: { type: 'note' | 'query' | 'find
   const [severity, setSeverity] = useState('');
   const [host, setHost] = useState('');
   const [status, setStatus] = useState('');
+  const add = useAct(async () => onAdd(type === 'query' ? '' : content, type === 'query' ? { ...(severity ? { severity: [severity] } : {}), ...(host ? { host: host.trim() } : {}), ...(status ? { status: [status] } : {}) } : {}), []);
   return (
     <Modal title={`Add ${CELL_LABELS[type]} cell`} onClose={onClose}>
       {type === 'query' ? (
         <>
           <Field label="Severity" id="qs"><select id="qs" value={severity} onChange={(e) => setSeverity(e.target.value)}><option value="">Any</option>{['critical', 'high', 'medium', 'low', 'info'].map((s) => <option key={s} value={s}>{s}</option>)}</select></Field>
-          <Field label="Host contains" id="qh"><input id="qh" value={host} onChange={(e) => setHost(e.target.value)} /></Field>
+          <Field label="Exact hostname" id="qh"><input id="qh" value={host} onChange={(e) => setHost(e.target.value)} /></Field>
           <Field label="Status" id="qst"><select id="qst" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Any</option>{['new', 'acknowledged', 'investigating', 'resolved', 'false_positive'].map((s) => <option key={s} value={s}>{s}</option>)}</select></Field>
-          <button className="btn primary" onClick={() => onAdd('', { ...(severity ? { severity: [severity] } : {}), ...(host ? { host } : {}), ...(status ? { status: [status] } : {}) })}>Add</button>
+          <button className="btn primary" disabled={add.isPending} onClick={() => add.mutate(undefined)}>Add</button>
         </>
       ) : (
         <>
           <Field label="Content" id="cc" hint={type === 'ioc' ? 'One indicator per line.' : undefined}><textarea id="cc" rows={6} value={content} onChange={(e) => setContent(e.target.value)} autoFocus /></Field>
-          <button className="btn primary" disabled={!content.trim()} onClick={() => onAdd(content, {})}>Add</button>
+          <button className="btn primary" disabled={!content.trim() || add.isPending} onClick={() => add.mutate(undefined)}>Add</button>
         </>
       )}
+      {add.error && <ErrorBox error={add.error} />}
     </Modal>
   );
 }

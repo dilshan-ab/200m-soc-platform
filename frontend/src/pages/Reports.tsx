@@ -32,7 +32,7 @@ export default function Reports() {
       )}
 
       <div className="row" style={{ margin: '22px 0 8px' }}><h2>Templates</h2><span className="spacer" />{can('reports.generate') && <button className="btn small" onClick={() => setSavingTemplate(true)}>New template</button>}</div>
-      {templates.data && templates.data.length > 0 ? (
+      {templates.isLoading ? <Loading /> : templates.error ? <ErrorBox error={templates.error} /> : templates.data && templates.data.length > 0 ? (
         <div className="table-wrap"><table><thead><tr><th>Name</th><th>Report</th><th>Format</th><th /></tr></thead>
           <tbody>{templates.data.map((t) => <tr key={t.id}><td>{t.name}<div style={{ fontSize: 12, color: 'var(--muted)' }}>{t.description}</div></td><td>{titleCase(t.kind)}</td><td>{t.fmt.toUpperCase()}</td>
             <td className="row" style={{ gap: 4 }}>
@@ -42,7 +42,7 @@ export default function Reports() {
       ) : <Empty>No templates yet. Save a template to reuse a report configuration.</Empty>}
 
       <div className="row" style={{ margin: '22px 0 8px' }}><h2>Schedules</h2><span className="spacer" />{can('reports.schedule') && <button className="btn small" onClick={() => setSched(true)}>New schedule</button>}</div>
-      {sch.data && sch.data.length > 0 ? (
+      {sch.isLoading ? <Loading /> : sch.error ? <ErrorBox error={sch.error} /> : sch.data && sch.data.length > 0 ? (
         <div className="table-wrap"><table><thead><tr><th>Name</th><th>Report</th><th>Cadence</th><th>Next run</th><th>State</th><th /></tr></thead>
           <tbody>{sch.data.map((s) => <tr key={s.id}><td>{s.name}</td><td>{titleCase(s.kind)} ({s.fmt})</td><td>{s.cadence} at {String(s.hour).padStart(2, '0')}:00 {s.timezone}</td><td>{s.paused ? '—' : when(s.next_run_at)}</td><td>{s.paused ? 'Paused' : 'Active'}</td>
             <td className="row" style={{ gap: 4 }}>{can('reports.schedule') && <>
@@ -73,7 +73,7 @@ function Generate({ template, onClose }: { template: Template | null; onClose: (
       <Field label="Client" id="gc"><select id="gc" value={v.client_id} onChange={(e) => setV({ ...v, client_id: e.target.value })}><option value="">All clients</option>{clients.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
       <Field label="Period (days)" id="gd"><input id="gd" type="number" min={1} max={365} value={v.days} onChange={(e) => setV({ ...v, days: Number(e.target.value) })} /></Field>
       {m.error && <ErrorBox error={m.error} />}
-      <button className="btn primary" disabled={m.isPending} onClick={() => m.mutate(undefined)}>Generate</button>
+      <button className="btn primary" disabled={m.isPending || !Number.isInteger(v.days) || v.days < 1 || v.days > 365} onClick={() => m.mutate(undefined)}>Generate</button>
     </Modal>
   );
 }
@@ -95,7 +95,7 @@ function SaveTemplate({ onClose }: { onClose: () => void }) {
         <Field label="Default period (days)" id="tdy"><input id="tdy" type="number" min={1} max={365} value={v.days} onChange={(e) => setV({ ...v, days: Number(e.target.value) })} /></Field>
       </div>
       {m.error && <ErrorBox error={m.error} />}
-      <button className="btn primary" disabled={m.isPending || v.name.trim().length < 2} onClick={() => m.mutate(undefined)}>Save template</button>
+      <button className="btn primary" disabled={m.isPending || v.name.trim().length < 2 || !Number.isInteger(v.days) || v.days < 1 || v.days > 365} onClick={() => m.mutate(undefined)}>Save template</button>
     </Modal>
   );
 }
@@ -115,7 +115,7 @@ function Schedule({ onClose }: { onClose: () => void }) {
       </div>
       <Field label="Client" id="scl"><select id="scl" value={v.client_id} onChange={(e) => setV({ ...v, client_id: e.target.value })}><option value="">All clients</option>{clients.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
       {m.error && <ErrorBox error={m.error} />}
-      <button className="btn primary" disabled={m.isPending || v.name.trim().length < 2} onClick={() => m.mutate(undefined)}>Create</button>
+      <button className="btn primary" disabled={m.isPending || v.name.trim().length < 2 || !Number.isInteger(v.hour) || v.hour < 0 || v.hour > 23} onClick={() => m.mutate(undefined)}>Create</button>
     </Modal>
   );
 }

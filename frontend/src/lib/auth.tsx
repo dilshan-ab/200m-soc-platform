@@ -10,17 +10,22 @@ export const useAuth = () => useContext(AuthCtx);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const [me, setMe] = useState<Me | null>(null);
+  const currentUser = useRef<Me | null>(null);
   const [loading, setLoading] = useState(true);
   const [stepUp, setStepUp] = useState<null | ((ok: boolean) => void)>(null);
 
-  const apply = useCallback((m: Me | null) => { setMe(m); setCsrf(m?.csrf_token ?? null); }, []);
+  const apply = useCallback((m: Me | null) => { currentUser.current = m; setMe(m); setCsrf(m?.csrf_token ?? null); }, []);
   const refresh = useCallback(async () => {
     try { apply(await get<Me>('/api/auth/me')); } catch { apply(null); } finally { setLoading(false); }
   }, [apply]);
 
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
-    onUnauth(() => { apply(null); qc.clear(); });
+    onUnauth(() => {
+      if (!currentUser.current) return;
+      apply(null);
+      qc.clear();
+    });
     onStepUp(() => new Promise<boolean>((resolve) => setStepUp(() => resolve)));
     return () => { onUnauth(null); onStepUp(null); };
   }, [apply, qc]);
@@ -57,7 +62,7 @@ function StepUpModal({ mode, done }: { mode: 'dev' | 'oidc'; done: (ok: boolean)
       <p className="notice">This action needs recent multi-factor verification.</p>
       {mode === 'oidc' ? (
         <div className="row" style={{ marginTop: 14 }}>
-          <button className="btn primary" onClick={() => { window.location.href = `/api/auth/oidc/step-up?return_to=${encodeURIComponent(window.location.pathname)}`; }}>Verify with identity provider</button>
+          <button className="btn primary" onClick={() => { window.location.href = `/api/auth/oidc/step-up?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`; }}>Verify with identity provider</button>
           <button className="btn" onClick={() => done(false)}>Cancel</button>
         </div>
       ) : (
