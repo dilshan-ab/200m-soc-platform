@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Drawer, Empty, ErrorBox, Loading, PageHead, Pager, SearchBox, Sev, Status } from '../components/ui';
 import { get, patch, type Page } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -12,7 +12,13 @@ export default function Assets({ endpoint = false }: { endpoint?: boolean }) {
   const canSeeAlerts = can('alerts.read');
   const [page, setPage] = useState(1);
   const [f, setF] = useState({ q: '', kind: '', agent_status: '', department: '' });
-  const [sel, setSel] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
+  const sel = params.get('open');
+  const setSel = (id: string | null) => {
+    const next = new URLSearchParams(params);
+    if (id) next.set('open', id); else next.delete('open');
+    setParams(next);
+  };
   const q = useQuery({ queryKey: ['assets', f, page], queryFn: () => get<Page<any>>('/api/assets', { ...f, page, limit: 50 }) });
   const upd = (k: string, v: string) => { setF({ ...f, [k]: v }); setPage(1); };
   return (
@@ -35,7 +41,7 @@ export default function Assets({ endpoint = false }: { endpoint?: boolean }) {
           <Pager page={page} limit={50} total={q.data!.total} set={setPage} />
         </>
       )}
-      {sel && <AssetDrawer id={sel} onClose={() => setSel(null)} />}
+      {sel && <AssetDrawer key={sel} id={sel} onClose={() => setSel(null)} />}
     </>
   );
 }

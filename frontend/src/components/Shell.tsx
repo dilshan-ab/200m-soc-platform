@@ -201,7 +201,7 @@ export function Shell() {
             <span>Workspace</span><ChevronRight size={14} /><strong>{title}</strong>
           </div>
           <div className="header-actions">
-            <Button variant="ghost" className="workspace-search" aria-label="Search workspace (Ctrl+K)" onClick={() => setPalette(true)}><Search size={18} aria-hidden="true" /><span>Search workspace</span><kbd>Ctrl K</kbd></Button>
+            <Button variant="ghost" className="workspace-search" aria-label="Search workspace (Ctrl+K)" aria-haspopup="dialog" aria-expanded={palette} onClick={() => setPalette(true)}><Search size={18} aria-hidden="true" /><span>Search workspace</span><kbd>Ctrl K</kbd></Button>
             <span className={'demo-pill' + (live ? '' : ' off')}><Activity size={11} style={{ verticalAlign: -1, marginRight: 5 }} />{live ? 'Live' : 'Offline'}</span>
             <Button variant="ghost" aria-label={dark ? 'Use light theme' : 'Use dark theme'} onClick={toggleTheme}>{dark ? <Sun size={18} /> : <Moon size={18} />}</Button>
             {can('alerts.read') && <span style={{ position: "relative", display: "inline-flex" }}><Button variant="ghost" aria-label={`Notifications${(pending + newAlerts) ? ` (${pending + newAlerts})` : ""}`} onClick={() => setNotifOpen((v) => !v)} className="bell"><Bell size={18} /><Pulse active={newAlerts > 0 || pending > 0} /></Button>{notifOpen && <NotificationPanel onClose={() => setNotifOpen(false)} />}</span>}
@@ -213,11 +213,13 @@ export function Shell() {
       {palette && (
         <CommandPalette
           onClose={() => setPalette(false)}
+          onNavigate={(path) => nav(path)}
+          recordTypes={(['alerts', 'cases', 'assets'] as const).filter((area) => can(`${area}.read`))}
           onSearch={can('alerts.read') ? (t) => nav(`/app/alerts?q=${encodeURIComponent(t)}`) : undefined}
           items={[
             ...NAV_ITEMS.filter((i) => !i.cap || can(i.cap)).map((i) => ({ label: i.label, hint: 'Go to page', run: () => nav(i.to) })),
-            { label: dark ? 'Switch to light theme' : 'Switch to dark theme', hint: 'Action', run: toggleTheme },
-            { label: 'Sign out', hint: 'Action', run: () => void signOut() },
+            { label: dark ? 'Switch to light theme' : 'Switch to dark theme', hint: 'Action', kind: 'action', run: toggleTheme },
+            { label: 'Sign out', hint: 'Action', kind: 'action', run: () => void signOut() },
           ]}
         />
       )}
