@@ -68,7 +68,11 @@ export function CommandPalette({ items, onClose, onSearch, onNavigate, recordTyp
     <Dialog.Portal>
       <Dialog.Overlay className="palette-backdrop" />
       <Dialog.Content className="palette" aria-describedby={undefined}>
-        <Dialog.Title className="sr-only">Search workspace</Dialog.Title>
+        <div className="palette-banner">
+          <span className="palette-banner-mark" aria-hidden="true"><Command size={20} /></span>
+          <div><Dialog.Title>Search workspace</Dialog.Title><p>Jump to a page or investigate a record</p></div>
+          <span className="palette-banner-shortcut" aria-hidden="true"><kbd>Ctrl K</kbd></span>
+        </div>
         <div className="palette-search-row">
           <Search size={21} aria-hidden="true" />
           <input ref={ref} value={q} onChange={(event) => setQ(event.target.value)} placeholder={recordTypes.length ? `Search pages, ${recordTypes.join(', ')}…` : 'Search pages and actions…'} aria-label="Command"
@@ -94,7 +98,7 @@ export function CommandPalette({ items, onClose, onSearch, onNavigate, recordTyp
           {!list.length && <li className="palette-empty">{pending ? 'Looking for matches…' : 'No matches. Try another name or search category.'}</li>}
           {list.map((item, n) => {
             const Icon = icons[item.area];
-            return <li key={item.key} id={`${listId}-${n}`} role="option" aria-selected={n === selected} className={n === selected ? 'on' : ''} onMouseEnter={() => setI(n)} onClick={() => go(item)}>
+            return <li key={item.key} id={`${listId}-${n}`} role="option" aria-selected={n === selected} className={n === selected ? 'on' : ''} data-area={item.area} onMouseEnter={() => setI(n)} onClick={() => go(item)}>
               <span className="palette-result-icon"><Icon size={17} aria-hidden="true" /></span>
               <span className="palette-result-copy"><span>{item.label}</span><small>{item.hint}</small></span>
               <ArrowUpRight className="palette-result-arrow" size={16} aria-hidden="true" />
