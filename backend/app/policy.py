@@ -20,6 +20,7 @@ CAPABILITIES: dict[str, str] = {
     "alerts.read": "viewer",
     "alerts.triage": "l1",
     "alerts.tune": "l2",
+    "alerts.delete": "admin",
     "cases.read": "viewer",
     "cases.write": "l1",
     "cases.close": "l2",

@@ -4,8 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Chips } from '../components/manage';
-import { Drawer, Empty, ErrorBox, Field, PageHead, Pager, SearchBox, Sev, Status, useToast } from '../components/ui';
+import { Drawer, Empty, ErrorBox, Field, PageHead, Pager, Modal, SearchBox, Sev, Status, useToast } from '../components/ui';
 import { get, patch, post, type Page } from '../lib/api';
+import { useAct } from '../lib/mut';
 import { useAuth } from '../lib/auth';
 import { SEVERITIES, ago, when } from '../lib/format';
 import { RequestActionModal } from './Response';
@@ -15,6 +16,7 @@ type Alert = any;
 export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' | 'siem' | 'hunting' }) {
   const [sp, setSp] = useSearchParams();
   const [page, setPage] = useState(1);
+  const [deleting, setDeleting] = useState<string[] | null>(null);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const f = { severity: sp.getAll('severity'), status: sp.get('status') ?? '', q: sp.get('q') ?? '', category: sp.get('category') ?? '',
     source: sp.get('source') ?? '', host: sp.get('host') ?? '', client_id: sp.get('client_id') ?? '',
@@ -23,6 +25,8 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
   };
   const setF = (k: string, v: string) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); setSp(n, { replace: true }); setPage(1); };
   const q = useQuery({ queryKey: ['alerts', f, page], queryFn: () => get<Page<Alert>>('/api/alerts', { ...f, status: f.status ? [f.status] : [], page, limit: 50 }) });
+  const total = q.data?.total;
+  useEffect(() => { if (total !== undefined) setPage((current) => Math.min(current, Math.max(1, Math.ceil(total / 50)))); }, [total]);
   const scoped = Boolean(f.source || f.host || f.since || f.client_id || f.unassigned_client);
   const sources = useQuery({ queryKey: ['alert-sources'], queryFn: () => get<string[]>('/api/alerts/sources'), enabled: workspace !== 'alerts' });
   const { can } = useAuth();
@@ -106,15 +110,17 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
               </tr>))}</tbody>
           </table></div>
           <Pager page={page} limit={50} total={q.data!.total} set={changePage} />
-          {can('alerts.triage') && sel.size > 0 && (
+          {(can('alerts.triage') || can('alerts.delete')) && sel.size > 0 && (
             <div className="bulkbar"><b>{sel.size} selected</b><span style={{ flex: 1 }} />
-              <button className="btn small" disabled={bulk.isPending} onClick={() => bulk.mutate('acknowledged')}>Acknowledge</button>
-              <button className="btn small" disabled={bulk.isPending} onClick={() => bulk.mutate('investigating')}>Investigate</button>
-              <button className="btn small" disabled={bulk.isPending} onClick={() => bulk.mutate('resolved')}>Resolve</button>
+              {can('alerts.triage') && <button className="btn small" disabled={bulk.isPending} onClick={() => bulk.mutate('acknowledged')}>Acknowledge</button>}
+              {can('alerts.triage') && <button className="btn small" disabled={bulk.isPending} onClick={() => bulk.mutate('investigating')}>Investigate</button>}
+              {can('alerts.triage') && <button className="btn small" disabled={bulk.isPending} onClick={() => bulk.mutate('resolved')}>Resolve</button>}
+              {can('alerts.delete') && <button className="btn small danger" disabled={bulk.isPending} onClick={() => setDeleting([...sel])}>Delete selected</button>}
               <button className="btn small" onClick={() => setSel(new Set())}>Clear</button></div>
           )}
         </>
       )}
+      {deleting && <DeleteAlertsModal ids={deleting} onClose={() => setDeleting(null)} onDeleted={() => { setDeleting(null); setSel(new Set()); setCur(-1); setPage(1); }} />}
       {open && <AlertDrawer key={open} id={open} onClose={() => { const n = new URLSearchParams(sp); n.delete('open'); setSp(n); }} />}
     </>
   );
@@ -128,6 +134,7 @@ function AlertDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const nav = useNavigate();
   const [note, setNote] = useState('');
   const [block, setBlock] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const a = q.data;
   const upd = useMutation({
     mutationFn: (body: Record<string, unknown>) => patch(`/api/alerts/${id}`, { version: a.version, ...body }),
@@ -147,7 +154,9 @@ function AlertDrawer({ id, onClose }: { id: string; onClose: () => void }) {
             {can('cases.write') && !a.case_id && <button className="btn small" onClick={() => toCase.mutate()}>Create case</button>}
             {can('response.request') && a.src_ip && <button className="btn small danger" onClick={() => setBlock(true)}>Request IP block</button>}
             {can('intel.enrich') && a.src_ip && <button className="btn small" onClick={() => enrich.mutate(a.src_ip)}>Enrich IP</button>}
+            {can('alerts.delete') && <button className="btn small danger" onClick={() => setDeleting(true)}>Delete alert</button>}
           </div>
+          {deleting && <DeleteAlertsModal ids={[id]} onClose={() => setDeleting(false)} onDeleted={onClose} />}
           <dl className="kv">
             <dt>Status</dt><dd><Status v={a.status} /></dd><dt>Source</dt><dd>{a.source} · rule {a.rule_id || '—'}</dd><dt>Host</dt><dd>{a.host || '—'}</dd>
             <dt>Source IP</dt><dd className="mono">{a.src_ip || '—'}</dd><dt>User</dt><dd>{a.username || '—'}</dd><dt>First seen</dt><dd>{when(a.first_seen)}</dd><dt>Occurrences</dt><dd>{a.count}</dd>
@@ -176,4 +185,21 @@ function AlertDrawer({ id, onClose }: { id: string; onClose: () => void }) {
       )}
     </Drawer>
   );
+}
+
+function DeleteAlertsModal({ ids, onClose, onDeleted }: { ids: string[]; onClose: () => void; onDeleted: () => void }) {
+  const qc = useQueryClient();
+  const label = ids.length === 1 ? 'Delete alert' : `Delete ${ids.length} alerts`;
+  const remove = useAct(() => post('/api/alerts/bulk-delete', { ids }), [], ids.length === 1 ? 'Alert deleted' : `${ids.length} alerts deleted`, () => {
+    onDeleted();
+    void qc.invalidateQueries();
+  });
+  return <Modal title={label} onClose={() => { if (!remove.isPending) onClose(); }}>
+    <p>Permanently delete {ids.length === 1 ? 'this alert' : `these ${ids.length} alerts`} from the workspace? This action cannot be undone.</p>
+    {remove.error && <ErrorBox error={remove.error} />}
+    <div className="row">
+      <button className="btn" disabled={remove.isPending} onClick={onClose}>Cancel</button>
+      <button className="btn danger" disabled={remove.isPending} onClick={() => remove.mutate(undefined)}>{remove.isPending ? 'Deleting…' : label}</button>
+    </div>
+  </Modal>;
 }

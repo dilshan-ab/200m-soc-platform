@@ -160,7 +160,7 @@ def correlate_kill_chain(
         for a in recent:
             if a.host:
                 by_host[a.host].append(a)
-        groups_iter = by_host.values()
+        groups_iter = list(by_host.values())
     else:
         groups_iter = [recent]
 

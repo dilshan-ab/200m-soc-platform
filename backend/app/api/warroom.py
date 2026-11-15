@@ -4,7 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .. import audit
@@ -27,6 +27,13 @@ def _out(w: WarRoom, *, message_count: int = 0) -> dict[str, Any]:
 
 def _msg_out(m: WarRoomMessage) -> dict[str, Any]:
     return {"id": m.id, "war_room_id": m.war_room_id, "author_id": m.author_id, "author_label": m.author_label, "kind": m.kind, "content": m.content, "pinned": m.pinned, "created_at": iso(m.created_at)}
+
+
+def _get_room(db: Session, wid: str, p: Principal) -> WarRoom:
+    room = db.get(WarRoom, wid)
+    if room is None or (room.client_id is not None and not p.can_see_client(room.client_id)):
+        raise HTTPException(404, "not found")
+    return room
 
 
 @router.get("")
@@ -53,6 +60,8 @@ class WarRoomIn(BaseModel):
 @router.post("", status_code=201)
 def create_warroom(body: WarRoomIn, p: Principal = Depends(require("warroom.write")), db: Session = Depends(get_db)) -> dict[str, Any]:
     client_id = body.client_id
+    if client_id is not None and not p.can_see_client(client_id):
+        raise HTTPException(403, "client is outside your scope")
     if body.case_id:
         case = scoped_get(db, Case, body.case_id, p)
         client_id = client_id or case.client_id
@@ -71,7 +80,7 @@ def create_warroom(body: WarRoomIn, p: Principal = Depends(require("warroom.writ
 
 @router.get("/{wid}")
 def get_warroom(wid: str, p: Principal = Depends(require("warroom.read")), db: Session = Depends(get_db)) -> dict[str, Any]:
-    w = scoped_get(db, WarRoom, wid, p)
+    w = _get_room(db, wid, p)
     msgs = db.execute(select(WarRoomMessage).where(WarRoomMessage.war_room_id == wid).order_by(WarRoomMessage.created_at)).scalars().all()
     out = _out(w, message_count=len(msgs))
     out["messages"] = [_msg_out(m) for m in msgs]
@@ -80,7 +89,7 @@ def get_warroom(wid: str, p: Principal = Depends(require("warroom.read")), db: S
 
 @router.post("/{wid}/join")
 def join_warroom(wid: str, p: Principal = Depends(require("warroom.write")), db: Session = Depends(get_db)) -> dict[str, Any]:
-    w = scoped_get(db, WarRoom, wid, p)
+    w = _get_room(db, wid, p)
     if not any(part.get("user_id") == p.user.id for part in w.participants):
         w.participants = [*w.participants, {"user_id": p.user.id, "label": p.label, "role": "member"}]
         db.add(WarRoomMessage(war_room_id=w.id, kind="system", author_label="system", content=f"{p.label} joined."))
@@ -94,7 +103,7 @@ class MessageIn(BaseModel):
 
 @router.post("/{wid}/messages", status_code=201)
 def post_message(wid: str, body: MessageIn, p: Principal = Depends(require("warroom.write")), db: Session = Depends(get_db)) -> dict[str, Any]:
-    w = scoped_get(db, WarRoom, wid, p)
+    w = _get_room(db, wid, p)
     if w.status != "active":
         raise HTTPException(409, "this war room has been stood down")
     m = WarRoomMessage(war_room_id=w.id, author_id=p.user.id, author_label=p.label, content=body.content)
@@ -106,7 +115,7 @@ def post_message(wid: str, body: MessageIn, p: Principal = Depends(require("warr
 
 @router.post("/{wid}/messages/{mid}/pin")
 def pin_message(wid: str, mid: str, p: Principal = Depends(require("warroom.write")), db: Session = Depends(get_db)) -> dict[str, Any]:
-    w = scoped_get(db, WarRoom, wid, p)
+    w = _get_room(db, wid, p)
     m = db.get(WarRoomMessage, mid)
     if m is None or m.war_room_id != w.id:
         raise HTTPException(404, "not found")
@@ -121,7 +130,7 @@ class StandDownIn(BaseModel):
 
 @router.post("/{wid}/stand-down")
 def stand_down(wid: str, body: StandDownIn, p: Principal = Depends(require("warroom.manage")), db: Session = Depends(get_db)) -> dict[str, Any]:
-    w = scoped_get(db, WarRoom, wid, p)
+    w = _get_room(db, wid, p)
     if w.status != "active":
         raise HTTPException(409, "already stood down")
     w.status, w.closed_at, w.summary = "stood_down", utcnow(), body.summary
@@ -129,3 +138,15 @@ def stand_down(wid: str, body: StandDownIn, p: Principal = Depends(require("warr
     audit.record(db, "warroom.stand_down", actor=p.label, actor_id=p.user.id, resource_type="war_room", resource_id=w.id, ip=p.ip)
     events.publish(db, "warroom.message", id=w.id, client_id=w.client_id)
     return _out(w)
+
+
+@router.delete("/{wid}", status_code=204)
+def delete_warroom(wid: str, p: Principal = Depends(require("warroom.write")), db: Session = Depends(get_db)) -> None:
+    room = _get_room(db, wid, p)
+    if room.created_by != p.user.id and not p.can("warroom.manage"):
+        raise HTTPException(403, "only the creator or a war room manager can delete this room")
+    audit.record(db, "warroom.delete", actor=p.label, actor_id=p.user.id, resource_type="war_room", resource_id=room.id,
+                 client_id=room.client_id, ip=p.ip, meta={"title": room.title})
+    events.publish(db, "warroom.deleted", id=room.id, client_id=room.client_id)
+    db.execute(delete(WarRoomMessage).where(WarRoomMessage.war_room_id == room.id))
+    db.delete(room)
