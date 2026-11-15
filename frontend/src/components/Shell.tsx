@@ -1,3 +1,4 @@
+import { KeyboardHelp, NotificationPanel, Pulse } from './Interactive';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useQuery } from '@tanstack/react-query';
 import { Activity, AlertTriangle, Bell, BookMarked, Bot, Check, ChevronLeft, ChevronRight, Crosshair, FileCode2, FileText, Flame, GitMerge, Globe, HeartPulse, MessagesSquare, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Repeat2, Search, Server, Settings, Share2, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react'; // Building2 removed with the Clients & MSSP nav entry below — re-add it when un-commenting
@@ -80,6 +81,8 @@ export function Shell() {
   const [navClosed, setNavClosed] = useState(() => { try { return localStorage.getItem('200m-nav-closed') === '1'; } catch { return false; } });
   const [account, setAccount] = useState(false);
   const [palette, setPalette] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [kbdHelp, setKbdHelp] = useState(false);
   const [dark, setDark] = useState(() => document.documentElement.dataset.theme === 'dark');
   const authConfig = useQuery({ queryKey: ['auth-config'], queryFn: () => get<{ auth_mode: string; account_url: string | null }>('/api/auth/config') });
   const approvals = useQuery({ queryKey: ['approvals'], queryFn: () => get('/api/approvals'), enabled: can('response.approve'), refetchInterval: 15000 });
@@ -93,7 +96,7 @@ export function Shell() {
     window.scrollTo(0, 0);
   }, [loc.pathname]);
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (!e.repeat && !account && !mobile && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((p) => !p); } };
+    const h = (e: KeyboardEvent) => { if (e.repeat) return; if (!account && !mobile && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((p) => !p); } if (e.key === '?' && !(e.target as HTMLElement).closest('input, textarea, select, [contenteditable]') && !account && !mobile && !palette) setKbdHelp((v) => !v); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, [account, mobile]);
@@ -192,7 +195,7 @@ export function Shell() {
             <Button variant="ghost" className="workspace-search" aria-label="Search workspace (Ctrl+K)" onClick={() => setPalette(true)}><Search size={18} aria-hidden="true" /><span>Search workspace</span><kbd>Ctrl K</kbd></Button>
             <span className={'demo-pill' + (live ? '' : ' off')}><Activity size={11} style={{ verticalAlign: -1, marginRight: 5 }} />{live ? 'Live' : 'Offline'}</span>
             <Button variant="ghost" aria-label={dark ? 'Use light theme' : 'Use dark theme'} onClick={toggleTheme}>{dark ? <Sun size={18} /> : <Moon size={18} />}</Button>
-            {can('response.approve') && <Button variant="ghost" aria-label={`Approvals${pending ? ` (${pending} pending)` : ''}`} onClick={() => nav('/app/approvals')} className="bell"><Bell size={18} />{pending > 0 && <i />}</Button>}
+            {can('alerts.read') && <span style={{ position: "relative", display: "inline-flex" }}><Button variant="ghost" aria-label={`Notifications${(pending + newAlerts) ? ` (${pending + newAlerts})` : ""}`} onClick={() => setNotifOpen((v) => !v)} className="bell"><Bell size={18} /><Pulse active={newAlerts > 0 || pending > 0} /></Button>{notifOpen && <NotificationPanel onClose={() => setNotifOpen(false)} />}</span>}
             <button type="button" className="avatar workspace-account" aria-label="Open account menu" onClick={() => { setMobile(false); setAccount(true); }}>{initials(name)}</button>
           </div>
         </header>
@@ -232,6 +235,7 @@ export function Shell() {
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
+      {kbdHelp && <KeyboardHelp onClose={() => setKbdHelp(false)} />}
     </>
   );
 }

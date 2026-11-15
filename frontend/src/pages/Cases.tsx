@@ -1,3 +1,4 @@
+import { LiveTimer, Skeleton, TaskProgress } from '../components/Interactive';
 import { SavedViews } from '../components/SavedViews';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, Clock, FileText, Link2, Package, Shield } from 'lucide-react';
@@ -7,7 +8,7 @@ import { Chips } from '../components/manage';
 import { Drawer, Empty, ErrorBox, Field, Loading, Modal, PageHead, Pager, SearchBox, Sev, Status } from '../components/ui';
 import { get, patch, post, type Page } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { SEVERITIES, ago, until, when } from '../lib/format';
+import { SEVERITIES, ago, when } from '../lib/format';
 import { useAct } from '../lib/mut';
 
 export default function Cases() {
@@ -41,11 +42,11 @@ export default function Cases() {
         <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={f.mine} onChange={(e) => setF('mine', e.target.checked ? '1' : '')} /> Mine</label>
         {(f.q || f.status || f.severity || f.mine) && <button className="btn" onClick={() => { setSp(new URLSearchParams(), { replace: true }); setPage(1); }}>Clear filters</button>}
       </div>
-      {q.isLoading ? <Loading /> : q.error ? <ErrorBox error={q.error} /> : q.data!.items.length === 0 ? <Empty>No cases match.</Empty> : (
+      {q.isLoading ? <Skeleton lines={6} /> : q.error ? <ErrorBox error={q.error} /> : q.data!.items.length === 0 ? <Empty>No cases match.</Empty> : (
         <>
           <div className="table-wrap"><table><thead><tr><th>#</th><th>Title</th><th>Severity</th><th>Status</th><th>Resolve SLA</th><th>Sync</th><th>Created</th></tr></thead>
             <tbody>{q.data!.items.map((c) => <tr key={c.id} tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => openCase(c.id)} onKeyDown={(e) => e.key === 'Enter' && openCase(c.id)}>
-              <td className="mono">{c.number}</td><td className="wrap">{c.title}</td><td><Sev v={c.severity} /></td><td><Status v={c.status} /></td><td>{c.status === 'closed' || c.status === 'resolved' ? '—' : until(c.resolve_due)}</td><td>{c.sync_status}</td><td>{ago(c.created_at)}</td></tr>)}</tbody></table></div>
+              <td className="mono">{c.number}</td><td className="wrap">{c.title}</td><td><Sev v={c.severity} /></td><td><Status v={c.status} /></td><td><LiveTimer deadline={c.resolve_due} done={c.status === 'closed' || c.status === 'resolved'} /></td><td>{c.sync_status}</td><td>{ago(c.created_at)}</td></tr>)}</tbody></table></div>
           <Pager page={page} limit={50} total={q.data!.total} set={setPage} />
         </>
       )}
@@ -103,7 +104,7 @@ function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const write = can('cases.write') && c.status !== 'closed';
   return (
     <Drawer title={<>#{c.number} {c.title}</>} onClose={onClose}>
-      <div className="row" style={{ marginBottom: 10 }}><Sev v={c.severity} /><Status v={c.status} /><span>TLP:{c.tlp}</span><span className="spacer" /><span>Resolve due {until(c.resolve_due)}</span></div>
+      <div className="row" style={{ marginBottom: 10 }}><Sev v={c.severity} /><Status v={c.status} /><span>TLP:{c.tlp}</span><span className="spacer" /><LiveTimer deadline={c.resolve_due} done={c.status === 'closed' || c.status === 'resolved'} /></div>
       {c.description && <p style={{ whiteSpace: 'pre-wrap' }}>{c.description}</p>}
       {c.sync_status === 'failed' && <div className="error">Ticket sync failed: {c.sync_error}</div>}
       {write && (
@@ -114,6 +115,7 @@ function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
         </div>
       )}
 
+      {c.tasks?.length > 0 && <TaskProgress tasks={c.tasks} />}
       <div className="tabs" style={{ marginBottom: 12, marginTop: 12 }}>
         <button className={section === 'timeline' ? 'active' : ''} onClick={() => setSection('timeline')}>Timeline ({c.timeline?.length ?? 0})</button>
         <button className={section === 'evidence' ? 'active' : ''} onClick={() => setSection('evidence')}>Evidence ({c.evidence?.length ?? 0})</button>
