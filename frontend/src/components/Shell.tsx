@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, AlertTriangle, Bell, BookMarked, Bot, Check, ChevronRight, Crosshair, FileCode2, FileText, Flame, GitMerge, Globe, HeartPulse, MessagesSquare, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Repeat2, Search, Server, Settings, Share2, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react'; // Building2 removed with the Clients & MSSP nav entry below — re-add it when un-commenting
+import { Activity, AlertTriangle, Bell, BookMarked, Bot, Check, ChevronLeft, ChevronRight, Crosshair, FileCode2, FileText, Flame, GitMerge, Globe, HeartPulse, MessagesSquare, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Repeat2, Search, Server, Settings, Share2, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react'; // Building2 removed with the Clients & MSSP nav entry below — re-add it when un-commenting
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { get } from '../lib/api';
@@ -116,9 +116,10 @@ export function Shell() {
   return (
     <>
       <a className="skip-workspace" href="#workspace-main">Skip to content</a>
-      {!navClosed && (
-        <aside className={'sidebar ' + (mobile ? 'open' : '')}>
-          <button type="button" className="sidebar-close" aria-label="Hide navigation" onClick={toggleNav}><X size={16} aria-hidden="true" /></button>
+      <aside className={'sidebar ' + (mobile ? 'open ' : '') + (navClosed ? 'collapsed' : '')}>
+        <button type="button" className="sidebar-toggle" aria-label={navClosed ? 'Show navigation' : 'Hide navigation'} onClick={toggleNav}>
+          {navClosed ? <ChevronRight size={16} aria-hidden="true" /> : <ChevronLeft size={16} aria-hidden="true" />}
+        </button>
           <Link to="/app" className="brand" aria-label="200M home"><CircuitLogo className="workspace-brand-logo" strokeWidth={7} /><span>SOC</span></Link>
           <div className="workspace"><span className="workspace-avatar"><Shield size={16} aria-hidden="true" /></span><div>Security operations<small>200M workspace</small></div></div>
           <nav id="workspace-navigation" aria-label="Main">
@@ -128,8 +129,8 @@ export function Shell() {
                 <div key={g.group}>
                   <div className="nav-label">{g.group}</div>
                   {items.map((i) => (
-                    <NavLink key={i.to} to={i.to} end={i.to === '/app'} className={({ isActive }) => (isActive ? 'active' : '')}>
-                      <i.icon size={17} />{i.label}
+                    <NavLink key={i.to} to={i.to} end={i.to === '/app'} title={i.label} className={({ isActive }) => (isActive ? 'active' : '')}>
+                      <i.icon size={17} aria-hidden="true" /><span>{i.label}</span>
                       {i.to === '/app/alerts' && newAlerts > 0 && <span className="nav-count">{newAlerts}</span>}
                       {i.to === '/app/approvals' && pending > 0 && <span className="nav-count hot">{pending}</span>}
                     </NavLink>
@@ -155,14 +156,10 @@ export function Shell() {
           {can('alerts.read') && <div className={`soc-sidebar-health ${live ? 'online' : 'offline'}`}>
             <Activity size={15} aria-hidden="true" /><span>{live ? 'SOC stream online' : 'SOC stream offline'}</span>
           </div>}
-          <button className="user" onClick={() => setAccount(true)}>
+          <button className="user" title={firstName(me?.name) || me?.email} onClick={() => setAccount(true)}>
             <span className="avatar">{initials(name)}</span><span>{firstName(me?.name) || me?.email}<small>{ROLE_LABEL[me?.role ?? ''] ?? me?.role}</small></span><ChevronRight size={16} />
           </button>
         </aside>
-      )}
-      {!mobile && navClosed && (
-        <button type="button" className="sidebar-reopen" aria-label="Show navigation" onClick={toggleNav}><Menu size={18} aria-hidden="true" /></button>
-      )}
       {mobile && <button className="mobile-backdrop" aria-label="Close navigation" onClick={() => setMobile(false)} />}
       <div className={'main-shell' + (navClosed ? ' nav-closed' : '')}>
         <header>
