@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, ClipboardList, Eye, Plus, Send, UserCheck } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Drawer, Empty, ErrorBox, Field, Loading, Modal, PageHead, Status } from '../components/ui';
 import { get, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -61,8 +61,12 @@ function HandoffCard({ h, onOpen }: { h: Handoff; onOpen: () => void }) {
 }
 
 function ItemsEditor({ label, hint, value, onChange }: { label: string; hint: string; value: Item[]; onChange: (v: Item[]) => void }) {
-  const text = value.map((i) => i.title).join('\n');
-  return <Field label={label} hint={hint}><textarea rows={4} value={text} onChange={(e) => onChange(e.target.value.split('\n').filter((l) => l.trim()).map((title) => ({ title: title.trim(), priority: 'medium' as const })))} /></Field>;
+  const id = useId();
+  const [text, setText] = useState(() => value.map((i) => i.title).join('\n'));
+  return <Field id={id} label={label} hint={hint}><textarea id={id} rows={4} value={text} onChange={(e) => {
+    setText(e.target.value);
+    onChange(e.target.value.split('\n').filter((line) => line.trim()).map((title) => ({ title: title.trim(), priority: 'medium' as const })));
+  }} /></Field>;
 }
 
 function CreateHandoff({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {

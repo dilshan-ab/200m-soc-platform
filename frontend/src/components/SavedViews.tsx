@@ -6,7 +6,7 @@ import { Button } from './Button';
 
 type SavedView = { name: string; query: string };
 const allowedFilters = {
-  alerts: ['severity', 'status', 'q', 'category'],
+  alerts: ['severity', 'status', 'q', 'category', 'source', 'host', 'client_id', 'unassigned_client', 'since'],
   cases: ['severity', 'status', 'q', 'mine'],
 };
 

@@ -4,6 +4,7 @@ import { Activity, ArrowRight, Check, Moon, Sun, X } from 'lucide-react';
 import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
+import { Loading } from '../components/ui';
 import { CompanyLogo } from '../components/CompanyLogo';
 import { LoginGlobe } from '../components/LoginGlobe';
 import { ApiError, get } from '../lib/api';
@@ -23,13 +24,16 @@ export default function Login() {
   const [totp, setTotp] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  if (loading) return null;
+  const requested = new URLSearchParams(location.search).get('next') ?? (location.state as { from?: string } | null)?.from;
+  const destination = requested && /^\/app(?:[/?#]|$)/.test(requested) ? requested : '/app';
+  const ssoReturn = `/login?${new URLSearchParams({ entry: '1', next: destination })}`;
+  if (loading) return <Loading />;
   if (me) {
     const showIntro = entered || busy || new URLSearchParams(location.search).get('entry') === '1';
     if (showIntro && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      return <WorkspaceIntro onComplete={() => nav('/app', { replace: true })} />;
+      return <WorkspaceIntro onComplete={() => nav(destination, { replace: true })} />;
     }
-    return <Navigate to="/app" replace />;
+    return <Navigate to={destination} replace />;
   }
 
   const toggle = () => {
@@ -70,7 +74,7 @@ export default function Login() {
             <div className="login-symbol"><CompanyLogo /></div>
             <h2>Sign in to 200M</h2>
             <p>Use your organization account to access the SOC.</p>
-            {cfg.isError ? <div className="error" role="alert" style={{ marginTop: 24 }}>The service is unreachable. Check that the backend is running and try again.</div>
+            {cfg.isError ? <div className="error" role="alert" style={{ marginTop: 24 }}>The service is unreachable. <button className="btn small" disabled={cfg.isFetching} onClick={() => void cfg.refetch()}>Try again</button></div>
               : mode === 'oidc' ? (
                 <>
                   <label className="login-organization">
@@ -78,7 +82,7 @@ export default function Login() {
                     <input value="200M" readOnly />
                   </label>
                   <Button asChild className="wide company-sso">
-                    <a href="/api/auth/oidc/login?return_to=%2Flogin%3Fentry%3D1">
+                    <a href={`/api/auth/oidc/login?return_to=${encodeURIComponent(ssoReturn)}`}>
                       Continue with company SSO <ArrowRight size={17} />
                     </a>
                   </Button>

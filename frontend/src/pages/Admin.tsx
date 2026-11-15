@@ -46,6 +46,7 @@ function Users() {
   const revoke = useAct((id: string) => post(`/api/admin/users/${id}/revoke-sessions`), ['users', 'sessions'], 'Sessions revoked');
   const setActive = useAct((a: { id: string; active: boolean }) => patch(`/api/admin/users/${a.id}`, { active: a.active }), ['users'], 'User updated');
   const oidc = me?.auth_mode === 'oidc';
+  const rows = (users.data ?? []).filter((u: any) => (!uq.trim() || `${u.email} ${u.name}`.toLowerCase().includes(uq.trim().toLowerCase())) && (!ur || (ur === 'disabled' ? !u.active : u.role === ur)));
   return (
     <>
       <div className="row" style={{ marginBottom: 8 }}><h2>Users</h2><span className="spacer" />
@@ -57,14 +58,14 @@ function Users() {
             { label: 'Users', value: users.data.length, onClick: () => setUr(''), active: !ur },
             { label: 'Active', value: users.data.filter((u: any) => u.active).length, tone: 'ok' },
             { label: 'Disabled', value: users.data.filter((u: any) => !u.active).length, tone: users.data.some((u: any) => !u.active) ? 'warn' : 'ok', onClick: () => setUr(ur === 'disabled' ? '' : 'disabled'), active: ur === 'disabled' },
-            ...['admin', 'l2', 'l1', 'viewer'].map((r) => ({ label: r === 'admin' ? 'Admins' : r.toUpperCase() + (r === 'viewer' ? 's' : ''), value: users.data.filter((u: any) => u.role === r).length, onClick: () => setUr(ur === r ? '' : r), active: ur === r })),
+            ...['admin', 'l2', 'l1', 'viewer'].map((r) => ({ label: r === 'admin' ? 'Admins' : r === 'viewer' ? 'Viewers' : r.toUpperCase(), value: users.data.filter((u: any) => u.role === r).length, onClick: () => setUr(ur === r ? '' : r), active: ur === r })),
           ]} />
           <div className="filters"><SearchBox value={uq} onChange={setUq} placeholder="Search users…" label="Search users" /></div>
         </>
       )}
-      {users.isLoading ? <Loading /> : users.error ? <ErrorBox error={users.error} /> : (
+      {users.isLoading ? <Loading /> : users.error ? <ErrorBox error={users.error} /> : rows.length === 0 ? <Empty>No users match these filters.</Empty> : (
         <div className="table-wrap"><table><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Scope</th><th>Last login</th><th>State</th><th /></tr></thead>
-          <tbody>{users.data!.filter((u: any) => (!uq || `${u.email} ${u.name}`.toLowerCase().includes(uq.toLowerCase())) && (!ur || (ur === 'disabled' ? !u.active : u.role === ur))).map((u) => <tr key={u.id}><td>{u.email}</td><td>{u.name}</td><td>{u.role}</td><td>{u.all_clients ? 'All clients' : `${u.client_ids.length} client(s)`}</td><td>{ago(u.last_login_at)}</td><td>{u.active ? 'Active' : 'Disabled'}</td>
+          <tbody>{rows.map((u) => <tr key={u.id}><td>{u.email}</td><td>{u.name}</td><td>{u.role}</td><td>{u.all_clients ? 'All clients' : `${u.client_ids.length} client(s)`}</td><td>{ago(u.last_login_at)}</td><td>{u.active ? 'Active' : 'Disabled'}</td>
             <td className="row"><button className="btn small" onClick={() => setEdit(u)}>Edit</button><button className="btn small" onClick={() => revoke.mutate(u.id)}>Sign out everywhere</button>
               {u.id !== me?.id && <button className="btn small" onClick={() => setActive.mutate({ id: u.id, active: !u.active })}>{u.active ? 'Disable' : 'Enable'}</button>}</td></tr>)}</tbody></table></div>
       )}

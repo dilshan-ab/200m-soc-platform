@@ -1,10 +1,9 @@
 import { SavedViews } from '../components/SavedViews';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search as SearchIcon } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Chips } from '../components/manage';
-import { Drawer, Empty, ErrorBox, Field, Loading, PageHead, Pager, Sev, Status, useToast } from '../components/ui';
+import { Drawer, Empty, ErrorBox, Field, Loading, PageHead, Pager, SearchBox, Sev, Status, useToast } from '../components/ui';
 import { get, patch, post, type Page } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { SEVERITIES, ago, until, when } from '../lib/format';
@@ -16,8 +15,6 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
   const [sp, setSp] = useSearchParams();
   const [page, setPage] = useState(1);
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const [searchOpen, setSearchOpen] = useState(false);
-  const searchRef = useRef<HTMLInputElement>(null);
   const f = { severity: sp.getAll('severity'), status: sp.get('status') ?? '', q: sp.get('q') ?? '', category: sp.get('category') ?? '',
     source: sp.get('source') ?? '', host: sp.get('host') ?? '', client_id: sp.get('client_id') ?? '',
     unassigned_client: sp.get('unassigned_client') === 'true' ? true : undefined,
@@ -35,10 +32,12 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
     onSuccess: (r: any) => { toast(`${r.updated} alert(s) updated`); setSel(new Set()); void qc.invalidateQueries({ queryKey: ['alerts'] }); },
     onError: (e: Error) => toast(e.message, true),
   });
-  useEffect(() => { setPage(1); setSel(new Set()); setCur(-1); }, [f.q, f.status, f.category, f.severity.join(','), f.source, f.host, f.since, f.client_id, f.unassigned_client]);
+  const severityKey = f.severity.join(',');
+  useEffect(() => { setPage(1); setSel(new Set()); setCur(-1); }, [f.q, f.status, f.category, severityKey, f.source, f.host, f.since, f.client_id, f.unassigned_client]);
   const open = sp.get('open');
   const [cur, setCur] = useState(-1);
   const items = q.data?.items ?? [];
+  const changePage = (next: number) => { setPage(next); setSel(new Set()); setCur(-1); };
   const openAlert = (id: string | null) => { const n = new URLSearchParams(sp); if (id) n.set('open', id); else n.delete('open'); setSp(n); };
   const allSel = items.length > 0 && items.every((a) => sel.has(a.id));
   const clearAll = () => { setSp(new URLSearchParams(), { replace: true }); setPage(1); setSel(new Set()); };
@@ -52,7 +51,7 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
       else if (e.key === 'k') setCur((c) => Math.max(c - 1, 0));
       else if (e.key === 'Enter' && items[cur]) openAlert(items[cur].id);
       else if (e.key === 'x' && items[cur]) setSel((s) => { const n = new Set(s); if (n.has(items[cur].id)) n.delete(items[cur].id); else n.add(items[cur].id); return n; });
-      else if (e.key === 'a' && can('alerts.triage') && sel.size) bulk.mutate('acknowledged');
+      else if (e.key === 'a' && can('alerts.triage') && sel.size && !bulk.isPending) bulk.mutate('acknowledged');
       else if (e.key === 'Escape') setSel(new Set());
     };
     window.addEventListener('keydown', h);
@@ -76,14 +75,7 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
       ]} />
       <div className="filters">
         <Field label="Search" id="f-q">
-          <div className={`search-box${searchOpen || f.q ? ' open' : ''}`}>
-            <button type="button" className="search-box-icon" aria-label="Search" onClick={() => { setSearchOpen(true); requestAnimationFrame(() => searchRef.current?.focus()); }}><SearchIcon size={16} aria-hidden="true" /></button>
-            <input
-              ref={searchRef} key={f.q} id="f-q" defaultValue={f.q} placeholder="Title, host, IP, user, or rule" maxLength={200}
-              onFocus={() => setSearchOpen(true)} onBlur={(e) => { if (!e.currentTarget.value) setSearchOpen(false); }}
-              onKeyDown={(e) => e.key === 'Enter' && setF('q', e.currentTarget.value)}
-            />
-          </div>
+          <SearchBox id="f-q" value={f.q} onChange={(value) => setF('q', value)} placeholder="Title, host, IP, user, or rule" label="Search alerts" />
         </Field>
         <Field label="Severity" id="f-sev"><select id="f-sev" value={f.severity[0] ?? ''} onChange={(e) => { const n = new URLSearchParams(sp); n.delete('severity'); if (e.target.value) n.set('severity', e.target.value); setSp(n, { replace: true }); setPage(1); }}><option value="">All</option>{SEVERITIES.map((s) => <option key={s}>{s}</option>)}</select></Field>
         <Field label="Status" id="f-st"><select id="f-st" value={f.status} onChange={(e) => setF('status', e.target.value)}><option value="">All</option>{['new', 'acknowledged', 'investigating', 'resolved', 'false_positive'].map((s) => <option key={s}>{s}</option>)}</select></Field>
@@ -105,24 +97,24 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
           <div className="table-wrap"><table>
             <thead><tr><th><input type="checkbox" style={{ width: 'auto' }} aria-label="Select all on this page" checked={allSel} onChange={() => setSel(allSel ? new Set() : new Set(items.map((a) => a.id)))} /></th><th>Severity</th><th>Alert</th><th>Host</th><th>Source IP</th><th>Source</th><th>Status</th><th>Count</th><th>Ack due</th><th>Time</th></tr></thead>
             <tbody>{q.data!.items.map((a) => (
-              <tr key={a.id} className={`clickable${items[cur]?.id === a.id ? ' kbd-focus' : ''}`} onClick={() => openAlert(a.id)}>
+              <tr key={a.id} tabIndex={0} className={`clickable${items[cur]?.id === a.id ? ' kbd-focus' : ''}`} onClick={() => openAlert(a.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && event.key === 'Enter') openAlert(a.id); }}>
                 <td onClick={(e) => e.stopPropagation()}><input type="checkbox" style={{ width: 'auto' }} aria-label={`Select ${a.title}`} checked={sel.has(a.id)} onChange={() => toggle(a.id)} /></td>
                 <td><Sev v={a.severity} /></td><td className="wrap">{a.title}{a.sla_breached && <span className="badge st-failed" style={{ marginLeft: 8 }}>SLA</span>}</td>
                 <td>{a.host || '—'}</td><td className="mono">{a.src_ip || '—'}</td><td>{a.source}</td><td><Status v={a.status} /></td><td>{a.count}</td>
-                <td>{a.acknowledged_at ? '✓' : until(a.ack_due)}</td><td>{ago(a.time)}</td>
+                <td>{a.status !== 'new' ? '✓' : until(a.ack_due)}</td><td>{ago(a.time)}</td>
               </tr>))}</tbody>
           </table></div>
-          <Pager page={page} limit={50} total={q.data!.total} set={setPage} />
+          <Pager page={page} limit={50} total={q.data!.total} set={changePage} />
           {can('alerts.triage') && sel.size > 0 && (
             <div className="bulkbar"><b>{sel.size} selected</b><span style={{ flex: 1 }} />
-              <button className="btn small" onClick={() => bulk.mutate('acknowledged')}>Acknowledge</button>
-              <button className="btn small" onClick={() => bulk.mutate('investigating')}>Investigate</button>
-              <button className="btn small" onClick={() => bulk.mutate('resolved')}>Resolve</button>
+              <button className="btn small" disabled={bulk.isPending} onClick={() => bulk.mutate('acknowledged')}>Acknowledge</button>
+              <button className="btn small" disabled={bulk.isPending} onClick={() => bulk.mutate('investigating')}>Investigate</button>
+              <button className="btn small" disabled={bulk.isPending} onClick={() => bulk.mutate('resolved')}>Resolve</button>
               <button className="btn small" onClick={() => setSel(new Set())}>Clear</button></div>
           )}
         </>
       )}
-      {open && <AlertDrawer id={open} onClose={() => { const n = new URLSearchParams(sp); n.delete('open'); setSp(n); }} />}
+      {open && <AlertDrawer key={open} id={open} onClose={() => { const n = new URLSearchParams(sp); n.delete('open'); setSp(n); }} />}
     </>
   );
 }

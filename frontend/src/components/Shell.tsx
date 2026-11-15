@@ -1,7 +1,7 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { useQuery } from '@tanstack/react-query';
 import { Activity, AlertTriangle, Bell, BookMarked, Bot, Check, ChevronLeft, ChevronRight, Crosshair, FileCode2, FileText, Flame, GitMerge, Globe, HeartPulse, MessagesSquare, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Repeat2, Search, Server, Settings, Share2, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react'; // Building2 removed with the Clients & MSSP nav entry below — re-add it when un-commenting
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { get } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -72,9 +72,10 @@ export function Shell() {
   const { me, can, logout } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
-  const live = useLive(true);
+  const live = useLive(can('alerts.read'));
   const [toolsOpen, setToolsOpen] = useState(() => isToolRoute(loc.pathname));
   const visibleTools = SECURITY_TOOLS.filter((item) => !item.cap || can(item.cap));
+  const mobileMenu = useRef<HTMLButtonElement>(null);
   const [mobile, setMobile] = useState(false);
   const [navClosed, setNavClosed] = useState(() => { try { return localStorage.getItem('200m-nav-closed') === '1'; } catch { return false; } });
   const [account, setAccount] = useState(false);
@@ -92,10 +93,16 @@ export function Shell() {
     window.scrollTo(0, 0);
   }, [loc.pathname]);
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (!e.repeat && !account && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((p) => !p); } };
+    const h = (e: KeyboardEvent) => { if (!e.repeat && !account && !mobile && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((p) => !p); } };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [account]);
+  }, [account, mobile]);
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 651px)');
+    const closeOnDesktop = () => { if (desktop.matches) setMobile(false); };
+    desktop.addEventListener('change', closeOnDesktop);
+    return () => desktop.removeEventListener('change', closeOnDesktop);
+  }, []);
   const toggleNav = () => setNavClosed((v) => {
     const next = !v;
     try { localStorage.setItem('200m-nav-closed', next ? '1' : '0'); } catch { /* storage unavailable */ }
@@ -113,66 +120,80 @@ export function Shell() {
     nav('/');
   };
 
+  const sidebarContent = <>
+        <Link to="/app" className="brand" aria-label="200M home"><CircuitLogo className="workspace-brand-logo" strokeWidth={7} /><span>SOC</span></Link>
+        <div className="workspace"><span className="workspace-avatar"><Shield size={16} aria-hidden="true" /></span><div>Security operations<small>200M workspace</small></div></div>
+        <nav id="workspace-navigation" aria-label="Main">
+          {NAV.map((g) => {
+            const items = g.items.filter((i) => !i.cap || can(i.cap));
+            return items.length ? (
+              <div key={g.group}>
+                <div className="nav-label">{g.group}</div>
+                {items.map((i) => (
+                  <NavLink key={i.to} to={i.to} end={i.to === '/app'} title={i.label} className={({ isActive }) => (isActive ? 'active' : '')}>
+                    <i.icon size={17} aria-hidden="true" /><span>{i.label}</span>
+                    {i.to === '/app/alerts' && newAlerts > 0 && <span className="nav-count">{newAlerts}</span>}
+                    {i.to === '/app/approvals' && pending > 0 && <span className="nav-count hot">{pending}</span>}
+                  </NavLink>
+                ))}
+                {g.group === 'OPERATIONS' && visibleTools.length > 0 && (
+                  <div className="sidebar-tools">
+                    <button type="button" className="sidebar-tools-toggle" aria-expanded={toolsOpen}
+                      aria-controls="sidebar-security-tools" onClick={() => setToolsOpen((open) => !open)}>
+                      <Shield size={17} aria-hidden="true" /><span>Security Tools</span>
+                      <ChevronRight size={15} aria-hidden="true" />
+                    </button>
+                    <div id="sidebar-security-tools" className="sidebar-tools-links" hidden={!toolsOpen}>
+                      {visibleTools.map((item) => (
+                        <NavLink key={item.to} to={item.to}><item.icon size={17} aria-hidden="true" />{item.label}</NavLink>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null;
+          })}
+        </nav>
+        {can('alerts.read') && <div className={`soc-sidebar-health ${live ? 'online' : 'offline'}`}>
+          <Activity size={15} aria-hidden="true" /><span>{live ? 'SOC stream online' : 'SOC stream offline'}</span>
+        </div>}
+        <button className="user" title={firstName(me?.name) || me?.email} onClick={() => { setMobile(false); setAccount(true); }}>
+          <span className="avatar">{initials(name)}</span><span>{firstName(me?.name) || me?.email}<small>{ROLE_LABEL[me?.role ?? ''] ?? me?.role}</small></span><ChevronRight size={16} />
+        </button>
+  </>;
+
   return (
     <>
       <a className="skip-workspace" href="#workspace-main">Skip to content</a>
-      <aside className={'sidebar ' + (mobile ? 'open ' : '') + (navClosed ? 'collapsed' : '')}>
-        <button type="button" className="sidebar-toggle" aria-label={navClosed ? 'Show navigation' : 'Hide navigation'} onClick={toggleNav}>
-          {navClosed ? <ChevronRight size={16} aria-hidden="true" /> : <ChevronLeft size={16} aria-hidden="true" />}
-        </button>
-          <Link to="/app" className="brand" aria-label="200M home"><CircuitLogo className="workspace-brand-logo" strokeWidth={7} /><span>SOC</span></Link>
-          <div className="workspace"><span className="workspace-avatar"><Shield size={16} aria-hidden="true" /></span><div>Security operations<small>200M workspace</small></div></div>
-          <nav id="workspace-navigation" aria-label="Main">
-            {NAV.map((g) => {
-              const items = g.items.filter((i) => !i.cap || can(i.cap));
-              return items.length ? (
-                <div key={g.group}>
-                  <div className="nav-label">{g.group}</div>
-                  {items.map((i) => (
-                    <NavLink key={i.to} to={i.to} end={i.to === '/app'} title={i.label} className={({ isActive }) => (isActive ? 'active' : '')}>
-                      <i.icon size={17} aria-hidden="true" /><span>{i.label}</span>
-                      {i.to === '/app/alerts' && newAlerts > 0 && <span className="nav-count">{newAlerts}</span>}
-                      {i.to === '/app/approvals' && pending > 0 && <span className="nav-count hot">{pending}</span>}
-                    </NavLink>
-                  ))}
-                  {g.group === 'OPERATIONS' && visibleTools.length > 0 && (
-                    <div className="sidebar-tools">
-                      <button type="button" className="sidebar-tools-toggle" aria-expanded={toolsOpen}
-                        aria-controls="sidebar-security-tools" onClick={() => setToolsOpen((open) => !open)}>
-                        <Shield size={17} aria-hidden="true" /><span>Security Tools</span>
-                        <ChevronRight size={15} aria-hidden="true" />
-                      </button>
-                      <div id="sidebar-security-tools" className="sidebar-tools-links" hidden={!toolsOpen}>
-                        {visibleTools.map((item) => (
-                          <NavLink key={item.to} to={item.to}><item.icon size={17} aria-hidden="true" />{item.label}</NavLink>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : null;
-            })}
-          </nav>
-          {can('alerts.read') && <div className={`soc-sidebar-health ${live ? 'online' : 'offline'}`}>
-            <Activity size={15} aria-hidden="true" /><span>{live ? 'SOC stream online' : 'SOC stream offline'}</span>
-          </div>}
-          <button className="user" title={firstName(me?.name) || me?.email} onClick={() => setAccount(true)}>
-            <span className="avatar">{initials(name)}</span><span>{firstName(me?.name) || me?.email}<small>{ROLE_LABEL[me?.role ?? ''] ?? me?.role}</small></span><ChevronRight size={16} />
+      {mobile ? <Dialog.Root open onOpenChange={setMobile}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="mobile-backdrop" />
+          <Dialog.Content className="sidebar open" aria-describedby={undefined} onCloseAutoFocus={(event) => { event.preventDefault(); mobileMenu.current?.focus(); }}>
+            <Dialog.Title className="sr-only">Workspace navigation</Dialog.Title>
+            <Dialog.Close className="close mobile-nav-close" aria-label="Close navigation"><X size={20} /></Dialog.Close>
+            {sidebarContent}
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root> : (
+        <aside className={'sidebar' + (navClosed ? ' collapsed' : '')}>
+          <button type="button" className="sidebar-toggle" aria-label={navClosed ? 'Show navigation' : 'Hide navigation'} onClick={toggleNav}>
+            {navClosed ? <ChevronRight size={16} aria-hidden="true" /> : <ChevronLeft size={16} aria-hidden="true" />}
           </button>
+          {sidebarContent}
         </aside>
-      {mobile && <button className="mobile-backdrop" aria-label="Close navigation" onClick={() => setMobile(false)} />}
+      )}
       <div className={'main-shell' + (navClosed ? ' nav-closed' : '')}>
         <header>
           <div className="crumb">
-            <Button variant="ghost" className="mobile-menu" aria-label="Open navigation" aria-expanded={mobile} aria-controls="workspace-navigation" onClick={() => setMobile(true)}><Menu size={20} /></Button>
+            <Button variant="ghost" className="mobile-menu" ref={mobileMenu} aria-label="Open navigation" aria-expanded={mobile} aria-controls="workspace-navigation" onClick={() => setMobile(true)}><Menu size={20} /></Button>
             <span>Workspace</span><ChevronRight size={14} /><strong>{title}</strong>
           </div>
           <div className="header-actions">
-            <Button variant="ghost" aria-label="Search workspace (Ctrl+K)" onClick={() => setPalette(true)}><Search size={18} aria-hidden="true" /></Button>
+            <Button variant="ghost" className="workspace-search" aria-label="Search workspace (Ctrl+K)" onClick={() => setPalette(true)}><Search size={18} aria-hidden="true" /><span>Search workspace</span><kbd>Ctrl K</kbd></Button>
             <span className={'demo-pill' + (live ? '' : ' off')}><Activity size={11} style={{ verticalAlign: -1, marginRight: 5 }} />{live ? 'Live' : 'Offline'}</span>
             <Button variant="ghost" aria-label={dark ? 'Use light theme' : 'Use dark theme'} onClick={toggleTheme}>{dark ? <Sun size={18} /> : <Moon size={18} />}</Button>
             {can('response.approve') && <Button variant="ghost" aria-label={`Approvals${pending ? ` (${pending} pending)` : ''}`} onClick={() => nav('/app/approvals')} className="bell"><Bell size={18} />{pending > 0 && <i />}</Button>}
-            <button type="button" className="avatar workspace-account" aria-label="Open account menu" onClick={() => setAccount(true)}>{initials(name)}</button>
+            <button type="button" className="avatar workspace-account" aria-label="Open account menu" onClick={() => { setMobile(false); setAccount(true); }}>{initials(name)}</button>
           </div>
         </header>
         <main id="workspace-main" tabIndex={-1} className="content" key={loc.pathname}><Outlet context={{ dark, live }} /></main>

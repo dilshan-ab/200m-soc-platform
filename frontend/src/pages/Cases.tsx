@@ -1,7 +1,7 @@
 import { SavedViews } from '../components/SavedViews';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, Clock, FileText, Link2, Package, Shield } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Chips } from '../components/manage';
 import { Drawer, Empty, ErrorBox, Field, Loading, Modal, PageHead, Pager, SearchBox, Sev, Status } from '../components/ui';
@@ -18,6 +18,7 @@ export default function Cases() {
   const f = { status: sp.get('status') ?? '', severity: sp.get('severity') ?? '', mine: sp.get('mine') === '1', q: sp.get('q') ?? '' };
   const setF = (k: string, v: string) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); setSp(n, { replace: true }); setPage(1); };
   const q = useQuery({ queryKey: ['cases', f, page], queryFn: () => get<Page<any>>('/api/cases', { status: f.status ? [f.status] : [], severity: f.severity, mine: f.mine, q: f.q, page, limit: 50 }) });
+  useEffect(() => { setPage(1); }, [f.status, f.severity, f.mine, f.q]);
   const open = sp.get('open');
   const openCase = (id: string | null) => { const n = new URLSearchParams(sp); if (id) n.set('open', id); else n.delete('open'); setSp(n, { replace: true }); };
   return (
@@ -38,6 +39,7 @@ export default function Cases() {
         <select aria-label="Status" value={f.status} onChange={(e) => setF('status', e.target.value)}><option value="">Any status</option>{['open', 'in_progress', 'resolved', 'closed'].map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}</select>
         <select aria-label="Severity" value={f.severity} onChange={(e) => setF('severity', e.target.value)}><option value="">Any severity</option>{SEVERITIES.filter((s) => s !== 'info').map((s) => <option key={s}>{s}</option>)}</select>
         <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={f.mine} onChange={(e) => setF('mine', e.target.checked ? '1' : '')} /> Mine</label>
+        {(f.q || f.status || f.severity || f.mine) && <button className="btn" onClick={() => { setSp(new URLSearchParams(), { replace: true }); setPage(1); }}>Clear filters</button>}
       </div>
       {q.isLoading ? <Loading /> : q.error ? <ErrorBox error={q.error} /> : q.data!.items.length === 0 ? <Empty>No cases match.</Empty> : (
         <>
@@ -47,7 +49,7 @@ export default function Cases() {
           <Pager page={page} limit={50} total={q.data!.total} set={setPage} />
         </>
       )}
-      {open && <CaseDrawer id={open} onClose={() => openCase(null)} />}
+      {open && <CaseDrawer key={open} id={open} onClose={() => openCase(null)} />}
       {creating && <CreateCase onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); openCase(id); }} />}
     </>
   );
@@ -121,7 +123,7 @@ function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
 
       {section === 'timeline' && (
         <>
-          {write && <div className="row" style={{ marginBottom: 8 }}><input placeholder="Add a note…" aria-label="Note" value={note} onChange={(e) => setNote(e.target.value)} /><button className="btn small" disabled={!note.trim()} onClick={() => addNote.mutate(undefined)}>Post</button></div>}
+          {write && <div className="row" style={{ marginBottom: 8 }}><input placeholder="Add a note…" aria-label="Note" value={note} onChange={(e) => setNote(e.target.value)} /><button className="btn small" disabled={!note.trim() || addNote.isPending} onClick={() => addNote.mutate(undefined)}>Post</button></div>}
           <div style={{ position: 'relative', paddingLeft: 24 }}>
             <div style={{ position: 'absolute', left: 8, top: 0, bottom: 0, width: 2, background: 'var(--border)' }} />
             {[...c.timeline].reverse().map((e: any) => {
@@ -195,7 +197,7 @@ function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
               <input type="checkbox" aria-label={t.title} disabled={!write} checked={t.status === 'done'} onChange={(e) => setTaskStatus.mutate({ tid: t.id, status: e.target.checked ? 'done' : 'todo' })} />
               <span style={{ textDecoration: t.status === 'done' ? 'line-through' : 'none' }}>{t.title}{t.required && ' *'}</span>
             </li>))}</ul>}
-          {write && <div className="row"><input placeholder="Add task…" aria-label="New task" value={task} onChange={(e) => setTask(e.target.value)} /><button className="btn small" disabled={!task.trim()} onClick={() => addTask.mutate(undefined)}>Add</button></div>}
+          {write && <div className="row"><input placeholder="Add task…" aria-label="New task" value={task} onChange={(e) => setTask(e.target.value)} /><button className="btn small" disabled={!task.trim() || addTask.isPending} onClick={() => addTask.mutate(undefined)}>Add</button></div>}
         </>
       )}
 
@@ -212,7 +214,7 @@ function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
           {write && <div className="row" style={{ marginTop: 8 }}>
             <select aria-label="Observable type" value={obs.type} onChange={(e) => setObs({ ...obs, type: e.target.value })}>{['ip', 'domain', 'hash', 'url', 'user', 'email', 'host'].map((t) => <option key={t}>{t}</option>)}</select>
             <input placeholder="Value" aria-label="Observable value" value={obs.value} onChange={(e) => setObs({ ...obs, value: e.target.value })} />
-            <button className="btn small" disabled={!obs.value.trim()} onClick={() => addObs.mutate(undefined)}>Add</button></div>}
+            <button className="btn small" disabled={!obs.value.trim() || addObs.isPending} onClick={() => addObs.mutate(undefined)}>Add</button></div>}
         </>
       )}
 
@@ -251,7 +253,10 @@ function CustodyModal({ evidence, caseId, onClose }: { evidence: any; caseId: st
   const [action, setAction] = useState('');
   const [custodyNote, setCustodyNote] = useState('');
   const addCustody = useAct(() => post(`/api/cases/${caseId}/evidence/${evidence.id}/custody`, { action, note: custodyNote }), ['case', 'cases'], 'Custody entry added', () => { setAction(''); setCustodyNote(''); });
-  const chain = evidence.chain_of_custody || [];
+  const { can } = useAuth();
+  const currentCase = useQuery({ queryKey: ['case', caseId], queryFn: () => get<any>(`/api/cases/${caseId}`) });
+  const currentEvidence = currentCase.data?.evidence?.find((item: any) => item.id === evidence.id) ?? evidence;
+  const chain = currentEvidence.chain_of_custody || [];
   return (
     <Modal title={`Chain of custody: ${evidence.name}`} onClose={onClose}>
       {evidence.hash_sha256 && <div style={{ marginBottom: 12, padding: '8px 12px', background: 'var(--surface)', borderRadius: 6 }}><small style={{ color: 'var(--muted)' }}>SHA-256</small><div className="mono" style={{ fontSize: 12, wordBreak: 'break-all' }}>{evidence.hash_sha256}</div></div>}
@@ -271,14 +276,14 @@ function CustodyModal({ evidence, caseId, onClose }: { evidence: any; caseId: st
           </div>
         ))}
       </div>
-      <div className="row" style={{ gap: 6 }}>
+      {can('evidence.write') && <div className="row" style={{ gap: 6 }}>
         <select aria-label="Action" value={action} onChange={(e) => setAction(e.target.value)} style={{ flex: 1 }}>
           <option value="">Select action…</option>
           {['accessed', 'transferred', 'analyzed', 'copied', 'archived', 'exported', 'verified'].map((a) => <option key={a}>{a}</option>)}
         </select>
         <input placeholder="Note (optional)" aria-label="Note" value={custodyNote} onChange={(e) => setCustodyNote(e.target.value)} style={{ flex: 2 }} />
         <button className="btn small" disabled={!action || addCustody.isPending} onClick={() => addCustody.mutate(undefined)}>Add</button>
-      </div>
+      </div>}
       {addCustody.error && <ErrorBox error={addCustody.error} />}
     </Modal>
   );

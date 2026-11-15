@@ -31,7 +31,7 @@ export default function Assets({ endpoint = false }: { endpoint?: boolean }) {
           <div className="table-wrap"><table><thead><tr><th>Name</th><th>OS</th><th>Kind</th><th>Department</th><th>Agent</th><th>Criticality</th><th>Patch</th><th>Last seen</th>{endpoint && canSeeAlerts && <th>Activity</th>}</tr></thead>
             <tbody>{q.data!.items.map((a) => <tr key={a.id} tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => setSel(a.id)} onKeyDown={(e) => e.target === e.currentTarget && e.key === 'Enter' && setSel(a.id)}>
               <td>{a.name}</td><td>{a.os || '—'}</td><td>{a.kind}</td><td>{a.department || '—'}</td><td><Status v={a.agent_status} /></td><td><Sev v={a.criticality} /></td><td>{a.patch_status || '—'}</td><td>{ago(a.last_seen)}</td>
-              {endpoint && canSeeAlerts && <td onClick={(e) => e.stopPropagation()}><Link className="record-link" to={`/app/hunting?q=${encodeURIComponent(a.hostname || a.name)}`}>Hunt host</Link></td>}</tr>)}</tbody></table></div>
+              {endpoint && canSeeAlerts && <td onClick={(e) => e.stopPropagation()}><Link className="record-link" to={`/app/siem?host=${encodeURIComponent(a.hostname || a.name)}`}>Hunt host</Link></td>}</tr>)}</tbody></table></div>
           <Pager page={page} limit={50} total={q.data!.total} set={setPage} />
         </>
       )}

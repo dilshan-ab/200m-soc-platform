@@ -244,7 +244,7 @@ def oidc_callback(request: Request, code: str = "", state: str = "", error: str 
         audit.record(db, "auth.step_up", actor=user.email, actor_id=user.id, ip=ip)
         return RedirectResponse(oidc.safe_return_to(st.return_to), status_code=302)
     raw, rec = create_session(
-        db, user, ip=ip, user_agent=request.headers.get("user-agent", ""), step_up=claims.get("acr") == s.oidc_step_up_acr,
+        db, user, ip=ip, user_agent=request.headers.get("user-agent", ""), step_up=False,  # step-up is never auto-granted on login; admin actions trigger explicit re-auth
         oidc_sid=claims.get("sid"),
     )
     audit.record(db, "auth.login", actor=user.email, actor_id=user.id, ip=ip, resource_type="session", resource_id=rec.id)

@@ -20,7 +20,7 @@ export default function Servers() {
   const up = all.filter((s) => s.status === 'up');
   const gaps = all.filter((s) => s.coverage.missing.length > 0);
   const down = all.filter((s) => s.status !== 'up');
-  const rows = all.filter((s) => (!fq || `${s.name} ${s.host}`.toLowerCase().includes(fq.toLowerCase())) && (!fs || (fs === 'gaps' ? gaps.includes(s) : down.includes(s))));
+  const rows = all.filter((s) => (!fq || `${s.name} ${s.host}`.toLowerCase().includes(fq.trim().toLowerCase())) && (!fs || (fs === 'gaps' ? gaps.includes(s) : down.includes(s))));
   return (
     <>
       <PageHead title="Servers" sub="Every server in the estate, its role, health and monitoring coverage.">
@@ -32,8 +32,8 @@ export default function Servers() {
         { label: 'Not up', value: down.length, tone: down.length ? 'bad' : 'ok', onClick: () => setFs(fs === 'down' ? '' : 'down'), active: fs === 'down' },
         { label: 'Monitoring gaps', value: gaps.length, tone: gaps.length ? 'warn' : 'ok', onClick: () => setFs(fs === 'gaps' ? '' : 'gaps'), active: fs === 'gaps' },
       ]} />}
-      {all.length > 0 && <div className="filters"><SearchBox value={fq} onChange={setFq} placeholder="Search servers…" label="Search servers" /></div>}
-      {q.isLoading ? <Loading /> : q.error ? <ErrorBox error={q.error} /> : q.data!.length === 0 ? <Empty>No servers registered yet.</Empty> : (
+      {all.length > 0 && <div className="filters"><SearchBox value={fq} onChange={setFq} placeholder="Search servers…" label="Search servers" />{(fq || fs) && <button className="btn" onClick={() => { setFq(''); setFs(''); }}>Clear filters</button>}</div>}
+      {q.isLoading ? <Loading /> : q.error ? <ErrorBox error={q.error} /> : q.data!.length === 0 ? <Empty>No servers registered yet.</Empty> : rows.length === 0 ? <Empty>No servers match these filters.</Empty> : (
         <div className="table-wrap"><table><thead><tr><th>Name</th><th>Host</th><th>Role</th><th>Environment</th><th>Criticality</th><th>Status</th><th>Coverage</th></tr></thead>
           <tbody>{rows.map((s) => <tr key={s.id} tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => setSel(s.id)} onKeyDown={(e) => e.key === 'Enter' && setSel(s.id)}>
             <td>{s.name}</td><td className="mono">{s.host}</td><td>{titleCase(s.role)}</td><td>{s.environment}</td><td><Sev v={s.criticality} /></td><td><Status v={s.status} /></td>
