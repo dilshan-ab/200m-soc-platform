@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pin, Send, ShieldCheck, Trash2, Users } from 'lucide-react';
+import { Flame, Pin, Plus, Send, ShieldCheck, Trash2, Users } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Empty, ErrorBox, Field, Loading, Modal, PageHead, Sev } from '../components/ui';
 import { del, get, post } from '../lib/api';
@@ -14,8 +14,10 @@ type WarRoomDetail = WarRoomSummary & { messages: Message[] };
 const initials = (name: string) => name.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((x) => x[0]?.toUpperCase()).join('') || '?';
 
 export default function WarRoom() {
+  const { can } = useAuth();
   const rooms = useQuery({ queryKey: ['warrooms'], queryFn: () => get<WarRoomSummary[]>('/api/warrooms'), refetchInterval: 10000 });
   const [selected, setSelected] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const current = rooms.data?.find((room) => room.id === selected) ?? rooms.data?.find((room) => room.status === 'active') ?? rooms.data?.[0];
 
@@ -24,9 +26,11 @@ export default function WarRoom() {
 
   return (
     <>
-      <PageHead title="War Room" sub="Real-time collaboration space for a major incident — chat, pinned actions, and a clean record for the post-mortem." eyebrow="OPERATIONS" />
+      <PageHead title="War Room" sub="Real-time collaboration space for a major incident — chat, pinned actions, and a clean record for the post-mortem." eyebrow="OPERATIONS">
+        {can('warroom.write') && <button className="btn primary" onClick={() => setCreating(true)}><Plus size={16} /> Start war room</button>}
+      </PageHead>
 
-      {rooms.isLoading ? <Loading /> : rooms.error ? <ErrorBox error={rooms.error} /> : rooms.data!.length === 0 ? <Empty>No war rooms yet.</Empty> : (
+      {rooms.isLoading ? <Loading /> : rooms.error ? <ErrorBox error={rooms.error} /> : rooms.data!.length === 0 ? <Empty>No war rooms yet. Start one when an incident needs real-time coordination.</Empty> : (
         <div className="warroom-layout">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {active.length > 0 && <div>
@@ -41,6 +45,7 @@ export default function WarRoom() {
           {current ? <ChatPanel key={current.id} id={current.id} onDeleted={() => setSelected(null)} /> : <Empty>Select a war room.</Empty>}
         </div>
       )}
+      {creating && <CreateWarRoom onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); setSelected(id); }} />}
     </>
   );
 }
@@ -51,6 +56,20 @@ function RoomListItem({ r, selected, onClick }: { r: WarRoomSummary; selected: b
       <span className="row" style={{ gap: 6 }}>{r.status === 'active' && <span className="live-dot" />}<span className="wr-title">{r.title}</span></span>
       <span className="row" style={{ gap: 8, fontSize: 11, color: 'var(--muted)' }}><Sev v={r.severity} /><span>{r.message_count} messages</span><span className="spacer" /><span>{ago(r.created_at)}</span></span>
     </button>
+  );
+}
+
+function CreateWarRoom({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+  const [v, setV] = useState({ title: '', severity: 'critical', case_id: '' });
+  const create = useAct(() => post<WarRoomSummary>('/api/warrooms', { title: v.title, severity: v.severity, case_id: v.case_id || null }), ['warrooms'], 'War room opened', (r) => onCreated(r.id));
+  return (
+    <Modal title="Start a war room" onClose={onClose}>
+      <Field label="Title" id="wt" hint="What's happening, in a few words."><input id="wt" value={v.title} onChange={(e) => setV({ ...v, title: e.target.value })} placeholder="Ransomware activity on finance segment" /></Field>
+      <Field label="Severity" id="ws"><select id="ws" value={v.severity} onChange={(e) => setV({ ...v, severity: e.target.value })}>{['critical', 'high', 'medium'].map((s) => <option key={s}>{s}</option>)}</select></Field>
+      <Field label="Linked case ID (optional)" id="wc"><input id="wc" value={v.case_id} onChange={(e) => setV({ ...v, case_id: e.target.value })} /></Field>
+      {create.error && <ErrorBox error={create.error} />}
+      <button className="btn primary" disabled={create.isPending || v.title.trim().length < 2} onClick={() => create.mutate(undefined)}><Flame size={14} /> Open war room</button>
+    </Modal>
   );
 }
 
