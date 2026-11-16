@@ -207,3 +207,81 @@ html .login.neon-login :is(a, button, input):focus-visible { outline: 2px solid 
 @keyframes login-radar-ping { from { transform: scale(.35); opacity: .6; } to { transform: scale(1.1); opacity: 0; } }
 @keyframes login-logo-energize { 0%, 100% { filter: drop-shadow(0 0 2px #279cff30); } 50% { filter: drop-shadow(0 0 7px #279cff90); } }
 @media (max-width: 850px) { .login-signals { opacity: .35; } }
+
+/* Sign-in shares the workspace palette and square interface surfaces. */
+html .login.neon-login {
+  --login-ink: var(--text);
+  --login-muted: var(--muted);
+  --login-blue: var(--accent);
+  --login-control: var(--bg);
+  --login-border: var(--control-border);
+  --login-card: var(--surface);
+  --login-base: var(--bg);
+  color-scheme: inherit;
+  background: var(--bg);
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 24px;
+}
+html .login.neon-login::before { opacity: .18; background: repeating-linear-gradient(0deg, transparent 0 47px, var(--border) 47px 48px), repeating-linear-gradient(90deg, transparent 0 47px, var(--border) 47px 48px); mask-image: linear-gradient(90deg, #000, transparent 72%); }
+html .login.neon-login .login-story,
+html .login.neon-login .login-form { padding: clamp(24px, 4vw, 56px); }
+html .login.neon-login .story-content { padding-top: 30px; margin-block: auto; }
+html .login.neon-login .story-content h1 { font-size: clamp(36px, 4vw, 60px); font-weight: 650; letter-spacing: -.045em; text-shadow: none; }
+html .login.neon-login .story-content p { font-size: 15px; text-shadow: none; max-width: 38ch; }
+html .login.neon-login .login-logo { color: var(--accent); }
+html .login.neon-login .orbit { height: auto; width: min(100%, 520px); margin: 12px auto 0; }
+html .login.neon-login .login-globe::before { opacity: .18; }
+html .login.neon-login .orbit-chip { border-radius: 0; background: var(--surface); color: var(--text); border-color: var(--control-border); box-shadow: var(--console-shadow); }
+html .login.neon-login .orbit-chip svg { color: var(--accent); }
+html .login.neon-login .login-tools,
+html .login.neon-login .login-bottom { width: min(100%, 460px); }
+html .login.neon-login .login-card { width: 100%; max-width: 460px; padding: clamp(24px, 3vw, 36px); border-radius: 0; border: 1px solid var(--border); background: var(--surface); box-shadow: var(--console-shadow); }
+html .login.neon-login .login-symbol { border-radius: 0; background: var(--soft); border-color: var(--border); margin-bottom: 24px; }
+html .login.neon-login .login-card h2 { font-size: 30px; letter-spacing: -.04em; }
+html .login.neon-login .login-card > p { font-size: 13px; }
+html .login.neon-login :is(.button, .btn, input) { border-radius: 0; }
+html .login.neon-login .login-card input { width: 100%; min-height: 44px; border: 1px solid var(--login-border); padding: 11px 12px; color: var(--text); background: var(--bg); }
+html .login.neon-login .login-card .wide { min-height: 44px; border-color: var(--accent); background: var(--accent); color: var(--accent-ink); box-shadow: none; }
+html .login.neon-login .login-card .wide:hover { background: var(--accent); filter: brightness(1.08); }
+html .login.neon-login .login-card .login-note { font-size: 11px; line-height: 1.6; margin-top: 18px; }
+html .login.neon-login .login-tools { gap: 8px; }
+html .login.neon-login .login-tools .button { min-height: 40px; padding: 8px; font-size: 11px; color: var(--muted); }
+html .login.neon-login .login-tools .button:hover { background: var(--soft); color: var(--text); }
+.login-password-field { margin-bottom: 18px; }
+.login-password-control { position: relative; margin-top: 8px; }
+html .login.neon-login .login-password-control input { padding-right: 46px; margin: 0; }
+.login-password-control button { position: absolute; inset: 1px 1px 1px auto; width: 42px; display: grid; place-items: center; border: 0; background: transparent; color: var(--muted); }
+.login-password-control button:hover { color: var(--accent); background: var(--soft); }
+html .login.neon-login .login-bottom { margin-top: 14px; }
+html .login.neon-login .login-bottom button { min-height: 40px; font-size: 12px; }
+html .login.neon-login .login-brand-footer { bottom: 28px; font-size: 11px; }
+.login.neon-login.motion-paused :is(.login-signals, .login-story, .login-symbol), .login.neon-login.motion-paused :is(.login-signals, .login-story, .login-symbol) *, .login.neon-login.motion-paused :is(.login-signals, .login-story, .login-symbol) *::before, .login.neon-login.motion-paused :is(.login-signals, .login-story, .login-symbol) *::after { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: no-preference) {
+  .login.neon-login .login-card { animation: login-surface-enter .35s ease-out both; }
+  .login.neon-login :is(.button, input) { transition: background-color .16s, border-color .16s, box-shadow .16s; }
+}
+@keyframes login-surface-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 850px) {
+  html .login.neon-login { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  html .login.neon-login .login-story { padding-bottom: 12px; }
+  html .login.neon-login .story-content { padding: 20px 0 0; }
+  html .login.neon-login .story-content h1 { font-size: clamp(30px, 6vw, 42px); }
+  html .login.neon-login .orbit { width: min(80%, 300px); margin-top: 8px; }
+  html .login.neon-login .login-form { padding-top: 0; padding-bottom: 76px; }
+  html .login.neon-login .login-brand-footer { left: 24px; bottom: 24px; }
+}
+@media (max-width: 450px) {
+  html .login.neon-login .login-story { padding: 24px 20px 12px; }
+  html .login.neon-login .login-form { padding-inline: 20px; }
+  html .login.neon-login .orbit { width: 230px; max-width: 100%; }
+  html .login.neon-login .login-card { padding: 24px 20px; }
+  .login-motion-toggle span { display: none; }
+}
+@media (pointer: coarse) { html .login.neon-login .login-tools .button, html .login.neon-login .login-bottom button { min-height: 44px; } }
+
+html[data-theme=dark] .login.neon-login {
+  --login-base: var(--bg);
+  --login-card: var(--surface);
+  --login-control: var(--bg);
+  --login-border: var(--control-border);
+}
