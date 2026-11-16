@@ -1,7 +1,7 @@
 import { KeyboardHelp, NotificationPanel, Pulse } from './Interactive';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, AlertTriangle, Bell, BookMarked, Bot, Check, ChevronLeft, ChevronRight, Crosshair, FileCode2, FileText, Flame, GitMerge, Globe, HeartPulse, MessagesSquare, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Repeat2, Search, Server, Settings, Share2, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react'; // Building2 removed with the Clients & MSSP nav entry below — re-add it when un-commenting
+import { Activity, AlertTriangle, Bell, BookMarked, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Crosshair, FileCode2, FileText, Flame, GitMerge, Globe, HeartPulse, MessagesSquare, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Repeat2, Search, Server, Settings, Share2, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react'; // Building2 removed with the Clients & MSSP nav entry below — re-add it when un-commenting
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { get } from '../lib/api';
@@ -74,6 +74,8 @@ export function Shell() {
   const nav = useNavigate();
   const loc = useLocation();
   const live = useLive(can('alerts.read'));
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
+  const home = loc.pathname.replace(/\/$/, '') === '/app';
   const [toolsOpen, setToolsOpen] = useState(() => isToolRoute(loc.pathname));
   const visibleTools = SECURITY_TOOLS.filter((item) => !item.cap || can(item.cap));
   const mobileMenu = useRef<HTMLButtonElement>(null);
@@ -92,6 +94,13 @@ export function Shell() {
 
   useEffect(() => {
     setMobile(false);
+    setCollapsedGroups((current) => {
+      const group = NAV.find((section) => section.items.some((item) => item.to === loc.pathname) || (section.group === 'OPERATIONS' && isToolRoute(loc.pathname)));
+      if (!group || !current.has(group.group)) return current;
+      const next = new Set(current);
+      next.delete(group.group);
+      return next;
+    });
     if (isToolRoute(loc.pathname)) setToolsOpen(true);
     window.scrollTo(0, 0);
   }, [loc.pathname]);
@@ -139,8 +148,13 @@ export function Shell() {
           {NAV.map((g) => {
             const items = g.items.filter((i) => !i.cap || can(i.cap));
             return items.length ? (
-              <div key={g.group}>
-                <div className="nav-label">{g.group}</div>
+              <div className="nav-group" key={g.group}>
+                <button type="button" className="nav-group-toggle" aria-expanded={(!mobile && navClosed) || !collapsedGroups.has(g.group)} aria-controls={`nav-${g.group.replace(/\s+/g, '-').toLowerCase()}`} onClick={() => setCollapsedGroups((current) => {
+                  const next = new Set(current);
+                  if (next.has(g.group)) next.delete(g.group); else next.add(g.group);
+                  return next;
+                })}><span>{g.group}</span><ChevronDown size={13} aria-hidden="true" /></button>
+                <div id={`nav-${g.group.replace(/\s+/g, '-').toLowerCase()}`} hidden={(mobile || !navClosed) && collapsedGroups.has(g.group)}>
                 {items.map((i) => (
                   <NavLink key={i.to} to={i.to} end={i.to === '/app'} title={i.label} className={({ isActive }) => (isActive ? 'active' : '')}>
                     <i.icon size={17} aria-hidden="true" /><span>{i.label}</span>
@@ -162,6 +176,7 @@ export function Shell() {
                     </div>
                   </div>
                 )}
+                </div>
               </div>
             ) : null;
           })}
@@ -195,13 +210,13 @@ export function Shell() {
         </aside>
       )}
       <div className={'main-shell' + (navClosed ? ' nav-closed' : '')}>
-        <header>
+        <header className={home ? 'home-header' : undefined}>
           <div className="crumb">
             <Button variant="ghost" className="mobile-menu" ref={mobileMenu} aria-label="Open navigation" aria-expanded={mobile} aria-controls="workspace-navigation" onClick={() => setMobile(true)}><Menu size={20} /></Button>
             <span>Workspace</span><ChevronRight size={14} /><strong>{title}</strong>
           </div>
           <div className="header-actions">
-            <Button variant="ghost" className="workspace-search" aria-label="Search workspace (Ctrl+K)" aria-haspopup="dialog" aria-expanded={palette} onClick={() => setPalette(true)}><i className="workspace-search-symbol" aria-hidden="true"><Search size={17} /></i><span className="workspace-search-copy"><strong>Search workspace</strong><small>Pages · Alerts · Cases · Assets</small></span><kbd>Ctrl K</kbd></Button>
+            {!home && <Button variant="ghost" className="workspace-search" aria-label="Search workspace (Ctrl+K)" aria-haspopup="dialog" aria-expanded={palette} onClick={() => setPalette(true)}><i className="workspace-search-symbol" aria-hidden="true"><Search size={17} /></i><span className="workspace-search-copy"><strong>Search workspace</strong><small>Pages · Alerts · Cases · Assets</small></span><kbd>Ctrl K</kbd></Button>}
             <span className={'demo-pill' + (live ? '' : ' off')}><Activity size={11} style={{ verticalAlign: -1, marginRight: 5 }} />{live ? 'Live' : 'Offline'}</span>
             <Button variant="ghost" aria-label={dark ? 'Use light theme' : 'Use dark theme'} onClick={toggleTheme}>{dark ? <Sun size={18} /> : <Moon size={18} />}</Button>
             {can('alerts.read') && <span style={{ position: "relative", display: "inline-flex" }}><Button variant="ghost" aria-label={`Notifications${(pending + newAlerts) ? ` (${pending + newAlerts})` : ""}`} onClick={() => setNotifOpen((v) => !v)} className="bell"><Bell size={18} /><Pulse active={newAlerts > 0 || pending > 0} /></Button>{notifOpen && <NotificationPanel onClose={() => setNotifOpen(false)} />}</span>}
