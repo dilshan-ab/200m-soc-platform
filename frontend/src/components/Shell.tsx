@@ -1,7 +1,7 @@
 import { KeyboardHelp, NotificationPanel, Pulse } from './Interactive';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, AlertTriangle, Bell, BookMarked, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Crosshair, FileCode2, FileText, Flame, GitMerge, Globe, HeartPulse, MessagesSquare, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Repeat2, Search, Server, Settings, Share2, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react'; // Building2 removed with the Clients & MSSP nav entry below — re-add it when un-commenting
+import { Activity, ArrowUp, AlertTriangle, Bell, BookMarked, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Crosshair, FileCode2, FileText, Flame, GitMerge, Globe, HeartPulse, MessagesSquare, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Repeat2, Search, Server, Settings, Share2, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react'; // Building2 removed with the Clients & MSSP nav entry below — re-add it when un-commenting
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { get } from '../lib/api';
@@ -82,6 +82,7 @@ export function Shell() {
   const [mobile, setMobile] = useState(false);
   const [navClosed, setNavClosed] = useState(() => { try { return localStorage.getItem('200m-nav-closed') === '1'; } catch { return false; } });
   const [account, setAccount] = useState(false);
+  const [backToTop, setBackToTop] = useState(false);
   const [palette, setPalette] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [kbdHelp, setKbdHelp] = useState(false);
@@ -123,6 +124,12 @@ export function Shell() {
     const closeOnDesktop = () => { if (desktop.matches) setMobile(false); };
     desktop.addEventListener('change', closeOnDesktop);
     return () => desktop.removeEventListener('change', closeOnDesktop);
+  }, []);
+  useEffect(() => {
+    const update = () => setBackToTop(window.scrollY > 600);
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    return () => window.removeEventListener('scroll', update);
   }, []);
   const toggleNav = () => setNavClosed((v) => {
     const next = !v;
@@ -224,6 +231,7 @@ export function Shell() {
           </div>
         </header>
         <main id="workspace-main" tabIndex={-1} className="content" key={loc.pathname}><Outlet context={{ dark, live }} /></main>
+        {backToTop && <button type="button" className="back-to-top" onClick={() => { document.getElementById('workspace-main')?.focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }); }}><ArrowUp size={15} aria-hidden="true" />Back to top</button>}
       </div>
       {palette && (
         <CommandPalette

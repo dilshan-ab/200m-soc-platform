@@ -1,13 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import { Activity, ArrowRight, Bell, Clock, ExternalLink, Globe, Layers, PieChart, Plug, Plus, RefreshCw, Shield, Wrench, X } from 'lucide-react';
+import { Activity, ArrowRight, Bell, Clock, ExternalLink, Globe, Layers, Plug, Plus, RefreshCw, Shield, Wrench, X } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
+import { ThreatCategories } from '../components/ThreatCategories';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 import { Button } from '../components/Button';
 import { ErrorBox, Field, Loading, Modal, PageHead, Sev, Status } from '../components/ui';
 import { del, get, post, type Page } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { ago, firstName, titleCase, until, when } from '../lib/format';
+import { ago, firstName, until } from '../lib/format';
 import { useAct } from '../lib/mut';
 import type { Point } from '../Trend';
 import type { MapData } from './ThreatMap';
@@ -61,15 +62,11 @@ export default function Dashboard() {
 
   return (
     <div className="ops-overview">
-      <div className={`soc-hero command-hero ${live ? 'connected' : 'disconnected'}`}>
-        <div className="command-radar" aria-hidden="true"><span /><span /><i /></div>
-        <div className="soc-hero-copy"><Shield size={42} aria-hidden="true" /><div>
-          <PageHead eyebrow="SECURITY OPERATIONS OVERVIEW" title="Security command center" sub={`${me?.name ? `Welcome back, ${firstName(me.name)}. ` : ''}Monitor detections, investigations, and response across your workspace.`} />
-        </div></div>
-        <div className="soc-telemetry">
-          <div className={`soc-telemetry-stream ${live ? 'online' : 'offline'}`}><Activity size={19} aria-hidden="true" /><span>Event stream<strong>{live ? 'Connected' : 'Disconnected'}</strong></span></div>
+      <div className="overview-heading">
+        <PageHead eyebrow="OPERATIONS" title="Security overview" sub={`${me?.name ? `Welcome back, ${firstName(me.name)}. ` : ''}Detections, investigations, and response at a glance.`} />
+        <div className="overview-status">
+          <span className={`overview-stream ${live ? 'online' : 'offline'}`}><Activity size={15} aria-hidden="true" />{live ? 'Stream connected' : 'Stream disconnected'}</span>
           <DualClock live={live} />
-          {data && <div><Clock size={19} aria-hidden="true" /><span>Last refresh<strong>{when(new Date(query.dataUpdatedAt).toISOString())}</strong></span></div>}
         </div>
       </div>
       <div className="soc-period">
@@ -289,42 +286,5 @@ function AddDashboardLink({ onClose }: { onClose: () => void }) {
       {add.error && <ErrorBox error={add.error} />}
       <button className="btn primary" disabled={add.isPending || name.trim().length < 1 || !urlValid} onClick={() => add.mutate(undefined)}>Add link</button>
     </Modal>
-  );
-}
-
-const CATEGORY_COLORS = ['#ff4665', '#ffa035', '#328eff', '#8c63f5', '#7788a5'];
-
-function ThreatCategories({ categories }: { categories: NonNullable<DashboardData['categories']> }) {
-  const ranked = categories.filter(({ count }) => count > 0).sort((a, b) => b.count - a.count);
-  const total = ranked.reduce((sum, item) => sum + item.count, 0);
-  const remainder = ranked.slice(4).reduce((sum, item) => sum + item.count, 0);
-  const slices = ranked.slice(0, 4).map(({ name, count }, index) => ({
-    key: `category:${name}`, label: titleCase(name || 'Uncategorized'), count, color: CATEGORY_COLORS[index],
-  }));
-  if (remainder > 0) slices.push({ key: 'remainder', label: 'Other categories', count: remainder, color: CATEGORY_COLORS[4] });
-  let cumulative = 0;
-  const stops = slices.map(({ color, count }) => {
-    const start = cumulative;
-    cumulative += count;
-    return `${color} ${100 * start / total}% ${100 * cumulative / total}%`;
-  });
-  const percent = new Intl.NumberFormat(undefined, { style: 'percent', maximumFractionDigits: 1 });
-
-  return (
-    <section className="panel">
-      <div className="panel-title"><div><h2><PieChart size={18} aria-hidden="true" /> Top Threat Categories</h2><p>Alert breakdown for the selected period</p></div></div>
-      {total === 0 ? <p className="empty">No alerts to categorize in this period.</p> : (
-        <div className="soc-category-chart">
-          <div className="soc-category-donut" style={{ background: slices.length === 1 ? slices[0].color : `conic-gradient(${stops.join(', ')})` }}>
-            <div><strong>{number.format(total)}</strong><span>Alerts</span></div>
-          </div>
-          <ul className="soc-category-legend" aria-label="Alert categories by share">
-            {slices.map(({ key, label, count, color }) => (
-              <li key={key}><i style={{ background: color }} aria-hidden="true" /><span>{label}</span><strong title={`${number.format(count)} alerts`}>{percent.format(count / total)}</strong></li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </section>
   );
 }
