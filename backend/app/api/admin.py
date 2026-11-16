@@ -22,7 +22,7 @@ from ..security import hash_password, new_token, new_totp_secret, password_polic
 from ..services.settings_svc import get_setting, set_setting
 from ..sessions import revoke_all
 from ..sla import active_policy
-from .approvals import create_change
+from .approvals import create_change, supersede_changes
 from .auth import get_http
 from .common import iso, page_out, paginate
 
@@ -135,13 +135,16 @@ def patch_user(uid: str, body: UserPatch, p: Principal = Depends(require_admin_s
             u.role = body.role
             revoke_all(db, u.id)
             meta["role"] = body.role
-        elif body.role == "admin":
+        elif body.role == "admin" and not p.is_superadmin:
             cr = create_change(db, "user.role", {"user_id": u.id, "role": "admin"}, p.user, f"Promote {u.email} to admin")
             result_note["pending_approval"] = cr.id
         else:
             u.role = body.role
             revoke_all(db, u.id)
             meta["role"] = body.role
+    if body.role and "pending_approval" not in result_note:
+        supersede_changes(db, "user.role", "user_id", u.id, p)
+        meta["superadmin_override"] = p.is_superadmin
     if body.grants is not None or body.denied is not None:
         if not p.can("users.provision"):
             raise HTTPException(403, "only the super admin can change permissions")
@@ -350,12 +353,17 @@ def put_retention(body: RetentionIn, p: Principal = Depends(require_admin_step_u
     if body.days < MIN_DAYS[body.dataset]:
         raise HTTPException(400, f"minimum retention for {body.dataset} is {MIN_DAYS[body.dataset]} days")
     cur = db.execute(select(RetentionPolicy).where(RetentionPolicy.dataset == body.dataset)).scalar_one_or_none()
-    if cur is None or body.days < cur.days or (cur.legal_hold and not body.legal_hold):
+    needs_approval = cur is None or body.days < cur.days or (cur.legal_hold and not body.legal_hold)
+    if needs_approval and not p.is_superadmin:
         cr = create_change(db, "retention.update", body.model_dump(), p.user, f"Retention {body.dataset} -> {body.days}d")
         audit.record(db, "retention.requested", actor=p.label, actor_id=p.user.id, ip=p.ip, meta=body.model_dump())
         return {"pending_approval": cr.id}
+    if cur is None:
+        cur = RetentionPolicy(dataset=body.dataset)
+        db.add(cur)
     cur.days, cur.legal_hold = body.days, body.legal_hold
-    audit.record(db, "retention.update", actor=p.label, actor_id=p.user.id, ip=p.ip, meta=body.model_dump())
+    supersede_changes(db, "retention.update", "dataset", body.dataset, p)
+    audit.record(db, "retention.update", actor=p.label, actor_id=p.user.id, ip=p.ip, meta={**body.model_dump(), "superadmin_override": needs_approval and p.is_superadmin})
     return {"dataset": cur.dataset, "days": cur.days, "legal_hold": cur.legal_hold}
 
 

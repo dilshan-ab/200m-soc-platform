@@ -476,7 +476,7 @@ class ApprovalRequest(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     payload_hash: Mapped[str] = mapped_column(String(64))
     requester_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
-    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|approved|rejected|applied|expired|failed
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|approved|rejected|applied|expired|failed|superseded
     reason: Mapped[str] = mapped_column(Text, default="")
     approvals_required: Mapped[int] = mapped_column(Integer, default=1)
     approvers: Mapped[list[Any]] = mapped_column(JSON, default=list)

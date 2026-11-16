@@ -37,6 +37,7 @@ function Users() {
   const users = useQuery({ queryKey: ['users'], queryFn: () => get<any[]>('/api/admin/users') });
   const authConfig = useQuery({ queryKey: ['auth-config'], queryFn: () => get<{ auth_mode: string; user_provisioning: boolean }>('/api/auth/config') });
   const provisioning = authConfig.data?.user_provisioning ?? true;
+  const canProvision = me?.role === 'superadmin' && provisioning;
   const clients = useQuery({ queryKey: ['clients'], queryFn: () => get<any[]>('/api/clients') });
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => get<any[]>('/api/admin/sessions') });
   const [add, setAdd] = useState(false);
@@ -51,7 +52,7 @@ function Users() {
     <>
       <div className="row" style={{ marginBottom: 8 }}><h2>Users</h2><span className="spacer" />
         {oidc && <span style={{ color: 'var(--muted)' }}>{provisioning ? 'Roles are managed in Keycloak.' : 'Accounts and roles are managed in your identity provider; users appear here after their first sign-in.'}</span>}
-        {provisioning && <button className="btn small" onClick={() => setAdd(true)}>Add user</button>}</div>
+        {canProvision && <button className="btn small" onClick={() => setAdd(true)}>Add user</button>}</div>
       {users.data && (
         <>
           <Summary items={[
@@ -66,13 +67,13 @@ function Users() {
       {users.isLoading ? <Loading /> : users.error ? <ErrorBox error={users.error} /> : rows.length === 0 ? <Empty>No users match these filters.</Empty> : (
         <div className="table-wrap"><table><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Scope</th><th>Last login</th><th>State</th><th /></tr></thead>
           <tbody>{rows.map((u) => <tr key={u.id}><td>{u.email}</td><td>{u.name}</td><td>{u.role}</td><td>{u.all_clients ? 'All clients' : `${u.client_ids.length} client(s)`}</td><td>{ago(u.last_login_at)}</td><td>{u.active ? 'Active' : 'Disabled'}</td>
-            <td className="row"><button className="btn small" onClick={() => setEdit(u)}>Edit</button><button className="btn small" onClick={() => revoke.mutate(u.id)}>Sign out everywhere</button>
-              {u.id !== me?.id && <button className="btn small" onClick={() => setActive.mutate({ id: u.id, active: !u.active })}>{u.active ? 'Disable' : 'Enable'}</button>}</td></tr>)}</tbody></table></div>
+            <td className="row">{u.id !== me?.id && u.role !== 'superadmin' && <button className="btn small" onClick={() => setEdit(u)}>Edit</button>}<button className="btn small" onClick={() => revoke.mutate(u.id)}>Sign out everywhere</button>
+              {u.id !== me?.id && u.role !== 'superadmin' && <button className="btn small" onClick={() => setActive.mutate({ id: u.id, active: !u.active })}>{u.active ? 'Disable' : 'Enable'}</button>}</td></tr>)}</tbody></table></div>
       )}
       <h2 style={{ margin: '22px 0 8px' }}>Active sessions</h2>
       {sessions.data && sessions.data.length ? <div className="table-wrap"><table><thead><tr><th>User</th><th>IP</th><th>Started</th><th>Last seen</th></tr></thead><tbody>{sessions.data.map((s) => <tr key={s.id}><td>{s.user}</td><td className="mono">{s.ip}</td><td>{ago(s.created_at)}</td><td>{ago(s.last_seen_at)}</td></tr>)}</tbody></table></div> : <Empty>No active sessions.</Empty>}
       {add && <AddUser oidc={oidc} clients={clients.data ?? []} onClose={() => setAdd(false)} onSecret={(s) => toast(`Authenticator secret (shown once): ${s}`)} />}
-      {edit && <EditUser u={edit} oidc={oidc} clients={clients.data ?? []} onClose={() => setEdit(null)} />}
+      {edit && <EditUser u={edit} canChangeRole={!oidc || canProvision} clients={clients.data ?? []} onClose={() => setEdit(null)} />}
     </>
   );
 }
@@ -89,29 +90,29 @@ function ClientPicker({ clients, sel, all, onSel, onAll }: { clients: any[]; sel
 function AddUser({ oidc, clients, onClose, onSecret }: { oidc: boolean; clients: any[]; onClose: () => void; onSecret: (s: string) => void }) {
   const [v, setV] = useState({ email: '', name: '', role: 'viewer', password: '', all_clients: false, client_ids: [] as string[] });
   const [secret, setSecret] = useState<string | null>(null);
-  const m = useAct(() => post('/api/admin/users', { ...v, password: oidc ? null : v.password }), ['users'], 'User created', (r) => { if (r.totp_secret) { setSecret(r.totp_secret); onSecret(r.totp_secret); } else onClose(); });
+  const m = useAct(() => post('/api/admin/users', v), ['users'], 'User created', (r) => { if (r.totp_secret) { setSecret(r.totp_secret); onSecret(r.totp_secret); } else onClose(); });
   if (secret) return <Modal title="User created" onClose={onClose}><div className="notice"><b>Authenticator secret (shown once)</b><div className="mono wrap">{secret}</div><p>Give this to the user over a secure channel to enrol their authenticator app.</p></div><button className="btn primary" onClick={onClose}>Done</button></Modal>;
   return (
     <Modal title="Add user" onClose={onClose}>
       <Field label="Email" id="ue"><input id="ue" type="email" value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} /></Field>
       <Field label="Name" id="un"><input id="un" value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} /></Field>
-      <Field label="Role" id="ur" hint="Admins are promoted afterwards and need a second admin's approval."><select id="ur" value={v.role} onChange={(e) => setV({ ...v, role: e.target.value })}>{['viewer', 'l1', 'l2'].map((r) => <option key={r}>{r}</option>)}</select></Field>
-      {!oidc && <Field label="Initial password (12+ chars, upper, lower, digit)" id="up"><input id="up" type="password" autoComplete="new-password" value={v.password} onChange={(e) => setV({ ...v, password: e.target.value })} /></Field>}
+      <Field label="Role" id="ur" hint="Super admins can create administrators directly."><select id="ur" value={v.role} onChange={(e) => setV({ ...v, role: e.target.value })}>{['viewer', 'l1', 'l2', 'admin'].map((r) => <option key={r}>{r}</option>)}</select></Field>
+      <Field label={oidc ? "Temporary password (12+ chars, upper, lower, digit)" : "Initial password (12+ chars, upper, lower, digit)"} id="up"><input id="up" type="password" autoComplete="new-password" value={v.password} onChange={(e) => setV({ ...v, password: e.target.value })} /></Field>
       <ClientPicker clients={clients} sel={v.client_ids} all={v.all_clients} onSel={(s) => setV({ ...v, client_ids: s })} onAll={(b) => setV({ ...v, all_clients: b })} />
       {m.error && <ErrorBox error={m.error} />}
-      <button className="btn primary" disabled={m.isPending || !v.email.includes('@') || (!oidc && v.password.length < 12)} onClick={() => m.mutate(undefined)}>Create</button>
+      <button className="btn primary" disabled={m.isPending || !v.email.includes('@') || v.password.length < 12} onClick={() => m.mutate(undefined)}>Create</button>
     </Modal>
   );
 }
 
-function EditUser({ u, oidc, clients, onClose }: { u: any; oidc: boolean; clients: any[]; onClose: () => void }) {
+function EditUser({ u, canChangeRole, clients, onClose }: { u: any; canChangeRole: boolean; clients: any[]; onClose: () => void }) {
   const toast = useToast();
   const [v, setV] = useState({ name: u.name, role: u.role, all_clients: u.all_clients, client_ids: u.client_ids as string[] });
-  const m = useAct(() => patch(`/api/admin/users/${u.id}`, { name: v.name, ...(oidc || v.role === u.role ? {} : { role: v.role }), all_clients: v.all_clients, client_ids: v.client_ids }), ['users'], undefined, (r) => { toast(r.pending_approval ? 'Admin promotion sent for second-admin approval' : 'User updated'); onClose(); });
+  const m = useAct(() => patch(`/api/admin/users/${u.id}`, { name: v.name, ...(!canChangeRole || v.role === u.role ? {} : { role: v.role }), all_clients: v.all_clients, client_ids: v.client_ids }), ['users', 'approvals'], undefined, (r) => { toast(r.pending_approval ? 'Admin promotion sent for second-admin approval' : 'User updated'); onClose(); });
   return (
     <Modal title={`Edit ${u.email}`} onClose={onClose}>
       <Field label="Name" id="en"><input id="en" value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} /></Field>
-      <Field label="Role" id="er"><select id="er" disabled={oidc} value={v.role} onChange={(e) => setV({ ...v, role: e.target.value })}>{['viewer', 'l1', 'l2', 'admin'].map((r) => <option key={r}>{r}</option>)}</select></Field>
+      <Field label="Role" id="er"><select id="er" disabled={!canChangeRole} value={v.role} onChange={(e) => setV({ ...v, role: e.target.value })}>{['viewer', 'l1', 'l2', 'admin'].map((r) => <option key={r}>{r}</option>)}</select></Field>
       <ClientPicker clients={clients} sel={v.client_ids} all={v.all_clients} onSel={(s) => setV({ ...v, client_ids: s })} onAll={(b) => setV({ ...v, all_clients: b })} />
       <p style={{ color: 'var(--muted)', fontSize: 13 }}>Per-user permission overrides are managed on the <strong>Permissions</strong> tab.</p>
       {m.error && <ErrorBox error={m.error} />}
