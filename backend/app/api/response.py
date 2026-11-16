@@ -35,7 +35,7 @@ def req_out(db: Session, r: ActionRequest, detail: bool = False) -> dict[str, An
 
 @router.get("/catalogue")
 def catalogue(p: Principal = Depends(require("response.read"))) -> list[dict[str, Any]]:
-    return [{"key": a.key, "label": a.label, "system": a.system, "risk": a.risk, "reversible": a.reversible, "approvals": a.approvals, "target_kind": a.target_kind, "params": a.params, "capability": a.capability} for a in ACTIONS.values()]
+    return [{"key": a.key, "label": a.label, "system": a.system, "risk": a.risk, "reversible": a.reversible, "approvals": 0 if p.is_superadmin else a.approvals, "target_kind": a.target_kind, "params": a.params, "capability": a.capability} for a in ACTIONS.values()]
 
 
 @router.get("/requests")

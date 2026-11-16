@@ -107,11 +107,16 @@ def create_request(
             raise ResponseError("cannot determine client scope for target", 403)
         if not scope.can_see_client(cid):
             raise ResponseError("not found", 404)
+    owner_override = bool(spec.approvals and scope is not None and scope.is_superadmin and scope.user.id == requester.id and automation_rule_id is None)
+    if owner_override:
+        from ..deps import require_step_up
+
+        require_step_up(scope)
     window = int(get_setting(db, "approval_window_minutes", 240))
     req = ActionRequest(
         action_key=action_key, targets=clean, params=params, payload_hash=payload_hash({"a": action_key, "t": clean, "p": params, "c": cid}), requester_id=requester.id,
         reason=reason.strip(), case_id=case_id, alert_id=alert_id, client_id=cid, idempotency_key=idempotency_key,
-        approvals_required=spec.approvals, policy_version=int(get_setting(db, "response_policy_version", 1)),
+        approvals_required=0 if owner_override else spec.approvals, policy_version=int(get_setting(db, "response_policy_version", 1)),
         expires_at=utcnow() + timedelta(minutes=window), automation_rule_id=automation_rule_id,
     )
     rm = params.get("revert_minutes")
@@ -124,8 +129,8 @@ def create_request(
     except IntegrityError:
         ex2 = db.execute(select(ActionRequest).where(ActionRequest.requester_id == requester.id, ActionRequest.idempotency_key == idempotency_key)).scalar_one()
         return ex2
-    audit.record(db, "response.request", actor=requester.email, actor_id=requester.id, resource_type="action_request", resource_id=req.id, client_id=cid, meta={"action": action_key, "targets": clean})
-    if spec.approvals == 0:
+    audit.record(db, "response.request", actor=requester.email, actor_id=requester.id, resource_type="action_request", resource_id=req.id, client_id=cid, meta={"action": action_key, "targets": clean, "superadmin_override": owner_override})
+    if req.approvals_required == 0:
         req.status = "approved"
         events.enqueue(db, "action.execute", {"request_id": req.id})
     else:
@@ -143,7 +148,7 @@ def decide(db: Session, p: Principal, req: ActionRequest, decision: str, reason:
     if req.expires_at <= utcnow():
         req.status = "expired"
         raise ResponseError("approval window expired", 409)
-    if req.requester_id == p.user.id:
+    if req.requester_id == p.user.id and not p.is_superadmin:
         raise ResponseError("you cannot approve your own request", 403)
     cap = "response.approve_critical" if spec.risk == "critical" else "response.approve"
     if not p.can(cap):
@@ -157,18 +162,20 @@ def decide(db: Session, p: Principal, req: ActionRequest, decision: str, reason:
     if req.policy_version != int(get_setting(db, "response_policy_version", 1)):
         req.status = "expired"
         raise ResponseError("policy changed; request must be re-submitted", 409)
-    try:
-        with db.begin_nested():
-            db.add(Approval(request_id=req.id, approver_id=p.user.id, decision=decision, reason=reason.strip(), payload_hash=req.payload_hash))
-            db.flush()
-    except IntegrityError as e:
-        raise ResponseError("you have already decided on this request", 409) from e
-    audit.record(db, f"response.{decision}", actor=p.label, actor_id=p.user.id, resource_type="action_request", resource_id=req.id, client_id=req.client_id, ip=p.ip, meta={"reason": reason[:200]})
+    previous = db.execute(select(Approval).where(Approval.request_id == req.id, Approval.approver_id == p.user.id)).scalar_one_or_none() if p.is_superadmin else None
+    if previous is None:
+        try:
+            with db.begin_nested():
+                db.add(Approval(request_id=req.id, approver_id=p.user.id, decision=decision, reason=reason.strip(), payload_hash=req.payload_hash))
+                db.flush()
+        except IntegrityError as e:
+            raise ResponseError("you have already decided on this request", 409) from e
+    audit.record(db, f"response.{decision}", actor=p.label, actor_id=p.user.id, resource_type="action_request", resource_id=req.id, client_id=req.client_id, ip=p.ip, meta={"reason": reason[:200], "superadmin_override": p.is_superadmin})
     if decision == "reject":
         req.status = "rejected"
     else:
         n = db.execute(select(func.count(Approval.id)).where(Approval.request_id == req.id, Approval.decision == "approve")).scalar_one()
-        if n >= req.approvals_required:
+        if p.is_superadmin or n >= req.approvals_required:
             req.status = "approved"
             events.enqueue(db, "action.execute", {"request_id": req.id})
     events.publish(db, "action.updated", id=req.id, client_id=req.client_id)
