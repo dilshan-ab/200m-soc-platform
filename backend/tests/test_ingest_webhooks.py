@@ -132,7 +132,17 @@ def test_poller_checkpoint_and_idempotent_replay():
 
     mock_http(handler)
     with dbmod.session_scope() as db:
+        # First poll ever only seeds the checkpoint at the current newest alert
+        # (so a freshly-enabled connector tails new alerts instead of backfilling
+        # the entire historical index from the beginning) — it creates nothing yet.
         r = polling.poll_tool(db, db.get(Tool, tid))
+        assert r["ok"] and r["created"] == 0
+    with dbmod.session_scope() as db:
+        st = db.get(Tool, tid).state
+        assert st.checkpoint["ts"] and st.error_count == 0 and st.items_total == 0
+    assert "sort" in seen_bodies[0] and "query" not in seen_bodies[0]  # seed query: just the latest alert
+    with dbmod.session_scope() as db:
+        r = polling.poll_tool(db, db.get(Tool, tid))  # second poll: actually fetches alerts since the seeded checkpoint
         assert r["ok"] and r["created"] >= 1
     with dbmod.session_scope() as db:
         st = db.get(Tool, tid).state
