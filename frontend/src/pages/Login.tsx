@@ -1,7 +1,7 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, ArrowRight, Check, Moon, Sun, X } from 'lucide-react';
-import { useState } from 'react';
+import { Activity, ArrowRight, Check, Eye, EyeOff, Moon, Pause, Play, Sun, X } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Loading } from '../components/ui';
@@ -18,6 +18,9 @@ export default function Login() {
   const [entered, setEntered] = useState(false);
   const cfg = useQuery({ queryKey: ['auth-config'], queryFn: () => get<{ auth_mode: 'dev' | 'oidc' }>('/api/auth/config'), retry: 3 });
   const [dark, setDark] = useState(() => document.documentElement.dataset.theme === 'dark');
+  const [paused, setPaused] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const helpButton = useRef<HTMLButtonElement>(null);
   const [help, setHelp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -49,7 +52,7 @@ export default function Login() {
   const mode = cfg.data?.auth_mode;
   return (
     <div className="app">
-      <main className="login neon-login">
+      <main className={`login neon-login${paused ? ' motion-paused' : ''}`}>
         <div className="login-signals" aria-hidden="true">
           <svg viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice" fill="none">
             <g className="login-signal-grid">
@@ -79,7 +82,7 @@ export default function Login() {
             </div>
             <div className="orbit" aria-hidden="true">
               <div className="login-radar"><span /><span /></div>
-              <div className="orbit-ring" /><div className="orbit-ring second" /><LoginGlobe />
+              <div className="orbit-ring" /><div className="orbit-ring second" /><LoginGlobe paused={paused} />
               <span className="orbit-chip one"><Activity size={16} />Detection</span>
               <span className="orbit-chip two"><Check size={16} />Response</span>
             </div>
@@ -87,6 +90,7 @@ export default function Login() {
         </section>
         <section className="login-form">
           <div className="login-tools">
+            <Button variant="ghost" className="login-motion-toggle" aria-label={paused ? 'Resume animation' : 'Pause animation'} aria-pressed={paused} title={paused ? 'Resume animation' : 'Pause animation'} onClick={() => setPaused((value) => !value)}>{paused ? <Play size={15} /> : <Pause size={15} />}<span>{paused ? 'Resume animation' : 'Pause animation'}</span></Button>
             <Button variant="ghost" aria-label={dark ? 'Use light theme' : 'Use dark theme'} onClick={toggle}>{dark ? <Sun size={18} /> : <Moon size={18} />}</Button>
           </div>
           <div className="login-card">
@@ -107,23 +111,23 @@ export default function Login() {
                 <>
                   <form onSubmit={submit}>
                     <label>Email<input id="em" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
-                    <label>Password<input id="pw" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
+                    <div className="login-password-field"><label htmlFor="pw">Password</label><div className="login-password-control"><input id="pw" type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></div>
                     <label>Authenticator code<input id="tp" inputMode="numeric" autoComplete="one-time-code" maxLength={8} value={totp} onChange={(e) => setTotp(e.target.value)} required /></label>
                     {err && <div className="error" role="alert" style={{ marginBottom: 14 }}>{err}</div>}
-                    <Button className="wide" type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'} <ArrowRight size={17} /></Button>
+                    <Button className="wide" type="submit" disabled={busy} aria-busy={busy}>{busy ? 'Signing in…' : 'Sign in'} <ArrowRight size={17} /></Button>
                   </form>
                   <p className="login-note">Local sign-in is for development only. Production uses company SSO.</p>
                 </>
-              ) : <p style={{ marginTop: 24 }}>Loading…</p>}
+              ) : <p role="status" style={{ marginTop: 24 }}>Loading sign-in options…</p>}
           </div>
-          <div className="login-bottom"><button onClick={() => setHelp(true)}>Need help?</button></div>
+          <div className="login-bottom"><button ref={helpButton} onClick={() => setHelp(true)}>Need help?</button></div>
         </section>
         <small className="login-brand-footer">200M · Security Operations Center</small>
       </main>
       <Dialog.Root open={help} onOpenChange={setHelp}>
         <Dialog.Portal>
           <Dialog.Overlay className="overlay" />
-          <Dialog.Content className="modal">
+          <Dialog.Content className="modal" onCloseAutoFocus={(event) => { event.preventDefault(); helpButton.current?.focus(); }}>
             <Dialog.Close className="close" aria-label="Close dialog"><X /></Dialog.Close>
             <Dialog.Title>Getting started</Dialog.Title>
             <Dialog.Description>Use your company account. The first time you sign in you will be asked to set up an authenticator app. If you cannot sign in, your SOC administrator can reset your access.</Dialog.Description>
