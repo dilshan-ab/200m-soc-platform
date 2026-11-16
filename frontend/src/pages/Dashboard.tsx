@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Activity, ArrowRight, Bell, Clock, ExternalLink, Globe, Layers, PieChart, Plug, Plus, RefreshCw, Shield, Wrench, X } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
+import { AnimatedNumber } from '../components/AnimatedNumber';
 import { Button } from '../components/Button';
 import { ErrorBox, Field, Loading, Modal, PageHead, Sev, Status } from '../components/ui';
 import { del, get, post, type Page } from '../lib/api';
@@ -60,9 +61,10 @@ export default function Dashboard() {
 
   return (
     <div className="ops-overview">
-      <div className="soc-hero">
+      <div className={`soc-hero command-hero ${live ? 'connected' : 'disconnected'}`}>
+        <div className="command-radar" aria-hidden="true"><span /><span /><i /></div>
         <div className="soc-hero-copy"><Shield size={42} aria-hidden="true" /><div>
-          <PageHead eyebrow="SECURITY OPERATIONS OVERVIEW" title={me?.name ? `Welcome back, ${firstName(me.name)}` : 'Security operations'} sub="Monitor detections, active investigations, and response across your workspace." />
+          <PageHead eyebrow="SECURITY OPERATIONS OVERVIEW" title="Security command center" sub={`${me?.name ? `Welcome back, ${firstName(me.name)}. ` : ''}Monitor detections, investigations, and response across your workspace.`} />
         </div></div>
         <div className="soc-telemetry">
           <div className={`soc-telemetry-stream ${live ? 'online' : 'offline'}`}><Activity size={19} aria-hidden="true" /><span>Event stream<strong>{live ? 'Connected' : 'Disconnected'}</strong></span></div>
@@ -72,10 +74,10 @@ export default function Dashboard() {
       </div>
       <div className="soc-period">
         {allowed && <>
-          <select aria-label="Reporting period" value={days} onChange={(event) => setDays(Number(event.target.value))} className="select">
-            <option value={1}>Last 24 hours</option><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option>
-          </select>
-          <Button variant="outline" disabled={query.isFetching} onClick={() => void query.refetch()}><RefreshCw size={16} />{query.isFetching ? 'Updating…' : 'Refresh'}</Button>
+          <div className="period-switch" role="group" aria-label="Reporting period">
+            {[[1, '24 hours'], [7, '7 days'], [30, '30 days']].map(([value, label]) => <button key={value} type="button" aria-pressed={days === value} onClick={() => setDays(Number(value))}>{label}</button>)}
+          </div>
+          <Button variant="outline" disabled={query.isFetching} onClick={() => void query.refetch()}><RefreshCw className={query.isFetching ? 'console-refreshing' : undefined} size={16} />{query.isFetching ? 'Updating…' : 'Refresh'}</Button>
         </>}
       </div>
       {!allowed && <p className="notice">Use the navigation to open the areas assigned to your role.</p>}
@@ -141,10 +143,10 @@ function OverviewData({ data, dark, map, recent, cases }: {
   const m = data.metrics;
   const open = ['new', 'acknowledged', 'investigating'].reduce((count, status) => count + (m.alerts_by_status[status] ?? 0), 0);
   const cards = [
-    { tone: 'red', label: 'Active alerts', value: number.format(open), note: 'In the selected reporting window', icon: Bell, to: '/app/alerts', cap: 'alerts.read' },
-    { tone: 'amber', label: 'Open incidents', value: number.format(m.open_cases), note: 'Across your assigned scope', icon: Layers, to: '/app/cases', cap: 'cases.read' },
-    { tone: 'blue', label: 'Mean time to acknowledge', value: m.mtta_minutes == null ? '—' : `${m.mtta_minutes} min`, note: `${number.format(m.sla_breached)} SLA breaches in this period`, icon: Clock },
-    { tone: 'teal', label: 'Endpoint coverage', value: m.assets_total ? `${m.agent_coverage_pct}%` : '—', note: `${m.agents_active} of ${m.assets_total} agents active`, icon: Shield, to: '/app/assets', cap: 'assets.read' },
+    { tone: 'red', label: 'Active alerts', value: <AnimatedNumber value={open} />, note: 'In the selected reporting window', icon: Bell, to: '/app/alerts', cap: 'alerts.read' },
+    { tone: 'amber', label: 'Open incidents', value: <AnimatedNumber value={m.open_cases} />, note: 'Across your assigned scope', icon: Layers, to: '/app/cases', cap: 'cases.read' },
+    { tone: 'blue', label: 'Mean time to acknowledge', value: <AnimatedNumber value={m.mtta_minutes} suffix=" min" />, note: `${number.format(m.sla_breached)} SLA breaches in this period`, icon: Clock },
+    { tone: 'teal', label: 'Endpoint coverage', value: <AnimatedNumber value={m.assets_total ? m.agent_coverage_pct : null} suffix="%" />, note: `${m.agents_active} of ${m.assets_total} agents active`, icon: Shield, to: '/app/assets', cap: 'assets.read' },
   ];
   const categories = data.categories ?? [];
   const connectors = [...data.sources].sort((a, b) => Number(b.error_count > 0) - Number(a.error_count > 0)
@@ -153,8 +155,8 @@ function OverviewData({ data, dark, map, recent, cases }: {
   return (
     <>
       <div className="metrics ops-metrics">
-        {cards.filter(({ cap }) => cap !== 'cases.read' || can(cap)).map(({label, value, note, icon: Icon, to, cap, tone}) => {
-          const body = <><span className="ops-kpi-label"><Icon size={17} aria-hidden="true" />{label}</span><strong>{value}</strong><small>{note}</small></>;
+        {cards.filter(({ cap }) => cap !== 'cases.read' || can(cap)).map(({label, value, note, icon: Icon, to, cap, tone}, index) => {
+          const body = <><span className="ops-kpi-index" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span><span className="ops-kpi-label"><Icon size={17} aria-hidden="true" />{label}</span><strong>{value}</strong><small>{note}</small></>;
           return to && cap && can(cap)
             ? <Link className="metric ops-kpi" data-tone={tone} key={label} to={to}>{body}</Link>
             : <article className="metric ops-kpi" data-tone={tone} key={label}>{body}</article>;
