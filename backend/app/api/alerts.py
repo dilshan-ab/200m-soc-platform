@@ -267,6 +267,16 @@ def bulk_delete(body: DeleteAlertsIn, p: Principal = Depends(require("alerts.del
     return {"deleted": _delete_alerts(db, p, body.ids)}
 
 
+@router.post("/delete-all")
+def delete_all(p: Principal = Depends(require("alerts.delete")), db: Session = Depends(get_db)) -> dict[str, int]:
+    """Delete every alert in the caller's scope (not just the current page/filter)."""
+    all_ids = db.execute(select(Alert.id).where(p.scope(Alert.client_id))).scalars().all()
+    deleted = 0
+    for i in range(0, len(all_ids), 200):
+        deleted += _delete_alerts(db, p, all_ids[i:i + 200])
+    return {"deleted": deleted}
+
+
 @router.delete("/{alert_id}", status_code=204)
 def delete_alert(alert_id: str, p: Principal = Depends(require("alerts.delete")), db: Session = Depends(get_db)) -> None:
     _delete_alerts(db, p, [alert_id])

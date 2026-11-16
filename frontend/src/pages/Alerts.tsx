@@ -17,6 +17,7 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
   const [sp, setSp] = useSearchParams();
   const [page, setPage] = useState(1);
   const [deleting, setDeleting] = useState<string[] | null>(null);
+  const [deletingAll, setDeletingAll] = useState(false);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const f = { severity: sp.getAll('severity'), status: sp.get('status') ?? '', q: sp.get('q') ?? '', category: sp.get('category') ?? '',
     source: sp.get('source') ?? '', host: sp.get('host') ?? '', client_id: sp.get('client_id') ?? '',
@@ -68,7 +69,11 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
       <PageHead title={workspace === 'siem' ? 'SIEM' : workspace === 'hunting' ? 'Threat Hunting' : 'Alerts'}
         sub={workspace === 'siem' ? 'Search normalized security alerts across connected sources.'
           : workspace === 'hunting' ? 'Hunt by hostname, IP address, username, or detection rule across normalized alerts.'
-          : 'Normalised, de-duplicated alerts from every connected source'} />
+          : 'Normalised, de-duplicated alerts from every connected source'}>
+        {workspace === 'alerts' && can('alerts.delete') && (q.data?.total ?? 0) > 0 && (
+          <button className="btn small danger" onClick={() => setDeletingAll(true)}>Delete all alerts</button>
+        )}
+      </PageHead>
       {scoped && <p className="notice">Filtered telemetry{f.host ? ` · Host: ${f.host}` : ''}{f.source ? ` · Source: ${f.source}` : ''}{f.since ? ` · Since ${when(f.since)}` : ''}</p>}
       <SavedViews area="alerts" onApply={() => { setPage(1); setSel(new Set()); setCur(-1); }} />
       <Chips items={[
@@ -121,6 +126,7 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
         </>
       )}
       {deleting && <DeleteAlertsModal ids={deleting} onClose={() => setDeleting(null)} onDeleted={() => { setDeleting(null); setSel(new Set()); setCur(-1); setPage(1); }} />}
+      {deletingAll && <DeleteAllAlertsModal total={q.data?.total ?? 0} onClose={() => setDeletingAll(false)} onDeleted={() => { setDeletingAll(false); setSel(new Set()); setCur(-1); setPage(1); }} />}
       {open && <AlertDrawer key={open} id={open} onClose={() => { const n = new URLSearchParams(sp); n.delete('open'); setSp(n); }} />}
     </>
   );
@@ -200,6 +206,28 @@ function DeleteAlertsModal({ ids, onClose, onDeleted }: { ids: string[]; onClose
     <div className="row">
       <button className="btn" disabled={remove.isPending} onClick={onClose}>Cancel</button>
       <button className="btn danger" disabled={remove.isPending} onClick={() => remove.mutate(undefined)}>{remove.isPending ? 'Deleting…' : label}</button>
+    </div>
+  </Modal>;
+}
+
+function DeleteAllAlertsModal({ total, onClose, onDeleted }: { total: number; onClose: () => void; onDeleted: () => void }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [confirmText, setConfirmText] = useState('');
+  const remove = useAct(() => post<{ deleted: number }>('/api/alerts/delete-all'), [], undefined, (r) => {
+    toast(`${r.deleted} alert${r.deleted === 1 ? '' : 's'} deleted`);
+    onDeleted();
+    void qc.invalidateQueries();
+  });
+  return <Modal title={`Delete all ${total} alerts`} onClose={() => { if (!remove.isPending) onClose(); }}>
+    <p>Permanently delete every alert in your scope (not just this page or filter) — {total} alert{total === 1 ? '' : 's'} in total. This action cannot be undone.</p>
+    <Field label="Type DELETE to confirm" id="confirm-delete-all">
+      <input id="confirm-delete-all" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="DELETE" autoFocus />
+    </Field>
+    {remove.error && <ErrorBox error={remove.error} />}
+    <div className="row">
+      <button className="btn" disabled={remove.isPending} onClick={onClose}>Cancel</button>
+      <button className="btn danger" disabled={remove.isPending || confirmText !== 'DELETE'} onClick={() => remove.mutate(undefined)}>{remove.isPending ? 'Deleting…' : 'Delete all alerts'}</button>
     </div>
   </Modal>;
 }
