@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     session_idle_minutes: int = 15
     session_absolute_hours: int = 8
     max_sessions_per_user: int = 3
-    step_up_minutes: int = 5
+    step_up_minutes: int = 20
     allowed_origins: list[str] = ["http://localhost:5173", "http://localhost:8000"]
 
     # --- Secrets / crypto -----------------------------------------------
