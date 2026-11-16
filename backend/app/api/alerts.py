@@ -5,13 +5,13 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import distinct, func, select
+from sqlalchemy import distinct, func, select, update
 from sqlalchemy.orm import Session
 
 from .. import audit
 from ..db import get_db
 from ..deps import Principal, require, scoped_get
-from ..models import Alert, SavedView, User, utcnow
+from ..models import ActionRequest, Alert, AlertReceipt, Case, CaseEvidence, EnrichmentJob, Incident, NotificationDelivery, RetentionPolicy, SavedView, ShiftHandoff, User, utcnow
 from ..policy import SEVERITIES
 from ..services import cases as cases_svc
 from ..services import events
@@ -223,6 +223,63 @@ def bulk(body: BulkIn, p: Principal = Depends(require("alerts.triage")), db: Ses
         _apply_patch(db, p, a, AlertPatch(version=a.version, status=body.status, assignee_id=body.assignee_id))
         done += 1
     return {"updated": done, "skipped": skipped}
+
+
+class DeleteAlertsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ids: list[str] = Field(min_length=1, max_length=100)
+
+
+def _delete_alerts(db: Session, p: Principal, ids: list[str]) -> int:
+    policy = db.execute(select(RetentionPolicy).where(RetentionPolicy.dataset == "alerts")).scalar_one_or_none()
+    if policy and policy.legal_hold:
+        raise HTTPException(409, "alerts are under legal hold; an administrator must release the hold before deletion")
+    unique_ids = set(ids)
+    alerts = db.execute(select(Alert).where(Alert.id.in_(unique_ids), p.scope(Alert.client_id)).with_for_update()).scalars().all()
+    if len(alerts) != len(unique_ids):
+        raise HTTPException(404, "one or more alerts were not found in your scope; no alerts were deleted")
+
+    for model in (ActionRequest, AlertReceipt, CaseEvidence, EnrichmentJob, NotificationDelivery):
+        db.execute(update(model).where(model.alert_id.in_(unique_ids)).values(alert_id=None))
+    for incident in db.execute(select(Incident).where(p.scope(Incident.client_id)).with_for_update()).scalars():
+        if unique_ids.intersection(incident.alert_ids):
+            incident.alert_ids = [aid for aid in incident.alert_ids if aid not in unique_ids]
+            incident.alert_count = len(incident.alert_ids)
+            times = db.execute(select(func.min(Alert.time), func.max(Alert.time)).where(Alert.id.in_(incident.alert_ids))).one()
+            incident.first_alert_time, incident.last_alert_time = times
+    for handoff in db.execute(select(ShiftHandoff).where(p.scope(ShiftHandoff.client_id) | ShiftHandoff.client_id.is_(None)).with_for_update()).scalars():
+        if unique_ids.intersection(handoff.alert_ids):
+            handoff.alert_ids = [aid for aid in handoff.alert_ids if aid not in unique_ids]
+    for alert in alerts:
+        if alert.case_id:
+            case = db.get(Case, alert.case_id)
+            if case:
+                cases_svc.add_event(db, case, p.label, "alert", f"Alert deleted: {alert.title}", {"alert_id": alert.id})
+        audit.record(db, "alert.delete", actor=p.label, actor_id=p.user.id, resource_type="alert", resource_id=alert.id,
+                     client_id=alert.client_id, ip=p.ip, meta={"title": alert.title, "case_id": alert.case_id})
+        events.publish(db, "alert.deleted", id=alert.id, client_id=alert.client_id)
+        db.delete(alert)
+    return len(alerts)
+
+
+@router.post("/bulk-delete")
+def bulk_delete(body: DeleteAlertsIn, p: Principal = Depends(require("alerts.delete")), db: Session = Depends(get_db)) -> dict[str, int]:
+    return {"deleted": _delete_alerts(db, p, body.ids)}
+
+
+@router.post("/delete-all")
+def delete_all(p: Principal = Depends(require("alerts.delete")), db: Session = Depends(get_db)) -> dict[str, int]:
+    """Delete every alert in the caller's scope (not just the current page/filter)."""
+    all_ids = db.execute(select(Alert.id).where(p.scope(Alert.client_id))).scalars().all()
+    deleted = 0
+    for i in range(0, len(all_ids), 200):
+        deleted += _delete_alerts(db, p, all_ids[i:i + 200])
+    return {"deleted": deleted}
+
+
+@router.delete("/{alert_id}", status_code=204)
+def delete_alert(alert_id: str, p: Principal = Depends(require("alerts.delete")), db: Session = Depends(get_db)) -> None:
+    _delete_alerts(db, p, [alert_id])
 
 
 class CaseFromAlerts(BaseModel):
