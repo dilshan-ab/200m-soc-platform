@@ -66,7 +66,14 @@ class WazuhIndexer(Connector):
 
     def poll(self, checkpoint: dict[str, Any], limit: int = 500) -> PollResult:
         ts = checkpoint.get("ts")
-        q: dict[str, Any] = {"range": {"timestamp": {"gte": ts}}} if ts else {"match_all": {}}
+        if ts is None:
+            # First poll ever: seed the checkpoint at the current newest alert instead of
+            # crawling the entire historical backlog from the beginning forward.
+            latest = self._search({"size": 1, "sort": [{"timestamp": "desc"}]})
+            hits = latest.get("hits", {}).get("hits", [])
+            seed = hits[0].get("_source", {}).get("timestamp") if hits else None
+            return PollResult(checkpoint={"ts": seed} if seed else {})
+        q: dict[str, Any] = {"range": {"timestamp": {"gt": ts}}}
         d = self._search({"size": limit, "sort": [{"timestamp": "asc"}], "query": q})
         out: list[NormAlert] = []
         last = ts
