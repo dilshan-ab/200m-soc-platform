@@ -1,11 +1,3 @@
-# 200M Security Operations Center: full stack (PostgreSQL, Redis, Keycloak SSO, API, web UI).
-#
-#   sh scripts/setup.sh            # generates .env with random secrets (once)
-#   docker compose up --build   # then open http://localhost:8080
-#
-# Web UI -> http://localhost:8080   Keycloak -> http://localhost:8081
-# For production put your TLS reverse proxy in front of `web` and `keycloak`, and set the
-# public URLs in .env (see .env.example).
 name: soc
 
 x-hardening: &hardening

@@ -1,32 +1,25 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Flame, Pin, Plus, Send, ShieldCheck, Users } from 'lucide-react';
+import { Flame, Pin, Plus, Send, ShieldCheck, Trash2, Users } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Empty, ErrorBox, Field, Loading, Modal, PageHead, Sev } from '../components/ui';
-import { get, post } from '../lib/api';
+import { del, get, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ago, when } from '../lib/format';
-import { useLive } from '../lib/live';
 import { useAct } from '../lib/mut';
 
 type Message = { id: string; author_id: string | null; author_label: string; kind: string; content: string; pinned: boolean; created_at: string };
-type WarRoomSummary = { id: string; title: string; status: 'active' | 'stood_down'; severity: string; participants: { user_id: string; label: string; role: string }[]; message_count: number; created_at: string; closed_at: string | null; summary: string };
+type WarRoomSummary = { id: string; created_by: string; title: string; status: 'active' | 'stood_down'; severity: string; participants: { user_id: string; label: string; role: string }[]; message_count: number; created_at: string; closed_at: string | null; summary: string };
 type WarRoomDetail = WarRoomSummary & { messages: Message[] };
 
 const initials = (name: string) => name.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((x) => x[0]?.toUpperCase()).join('') || '?';
 
 export default function WarRoom() {
   const { can } = useAuth();
-  const live = useLive(can('alerts.read'));
   const rooms = useQuery({ queryKey: ['warrooms'], queryFn: () => get<WarRoomSummary[]>('/api/warrooms'), refetchInterval: 10000 });
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
-    if (!selected && rooms.data) {
-      const firstActive = rooms.data.find((r) => r.status === 'active');
-      if (firstActive) setSelected(firstActive.id);
-    }
-  }, [rooms.data, selected]);
+  const current = rooms.data?.find((room) => room.id === selected) ?? rooms.data?.find((room) => room.status === 'active') ?? rooms.data?.[0];
 
   const active = rooms.data?.filter((r) => r.status === 'active') ?? [];
   const stoodDown = rooms.data?.filter((r) => r.status === 'stood_down') ?? [];
@@ -34,7 +27,6 @@ export default function WarRoom() {
   return (
     <>
       <PageHead title="War Room" sub="Real-time collaboration space for a major incident — chat, pinned actions, and a clean record for the post-mortem." eyebrow="OPERATIONS">
-        <span className={'demo-pill' + (live ? '' : ' off')}>{live ? 'Live' : 'Offline'}</span>
         {can('warroom.write') && <button className="btn primary" onClick={() => setCreating(true)}><Plus size={16} /> Start war room</button>}
       </PageHead>
 
@@ -43,14 +35,14 @@ export default function WarRoom() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {active.length > 0 && <div>
               <div className="nav-label" style={{ padding: '0 0 8px' }}>ACTIVE</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{active.map((r) => <RoomListItem key={r.id} r={r} selected={r.id === selected} onClick={() => setSelected(r.id)} />)}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{active.map((r) => <RoomListItem key={r.id} r={r} selected={r.id === current?.id} onClick={() => setSelected(r.id)} />)}</div>
             </div>}
             {stoodDown.length > 0 && <div>
               <div className="nav-label" style={{ padding: '0 0 8px' }}>STOOD DOWN</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{stoodDown.map((r) => <RoomListItem key={r.id} r={r} selected={r.id === selected} onClick={() => setSelected(r.id)} />)}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{stoodDown.map((r) => <RoomListItem key={r.id} r={r} selected={r.id === current?.id} onClick={() => setSelected(r.id)} />)}</div>
             </div>}
           </div>
-          {selected ? <ChatPanel key={selected} id={selected} /> : <Empty>Select a war room.</Empty>}
+          {current ? <ChatPanel key={current.id} id={current.id} onDeleted={() => setSelected(null)} /> : <Empty>Select a war room.</Empty>}
         </div>
       )}
       {creating && <CreateWarRoom onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); setSelected(id); }} />}
@@ -81,14 +73,21 @@ function CreateWarRoom({ onClose, onCreated }: { onClose: () => void; onCreated:
   );
 }
 
-function ChatPanel({ id }: { id: string }) {
+function ChatPanel({ id, onDeleted }: { id: string; onDeleted: () => void }) {
   const { me, can } = useAuth();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['warroom', id], queryFn: () => get<WarRoomDetail>(`/api/warrooms/${id}`), refetchInterval: 4000 });
   const [draft, setDraft] = useState('');
   const [standingDown, setStandingDown] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const send = useAct(() => post(`/api/warrooms/${id}/messages`, { content: draft }), ['warroom'], undefined, () => setDraft(''));
+  const remove = useAct(() => del(`/api/warrooms/${id}`), [], 'War room deleted', () => {
+    qc.setQueryData<WarRoomSummary[]>(['warrooms'], (rooms) => rooms?.filter((room) => room.id !== id));
+    qc.removeQueries({ queryKey: ['warroom', id], exact: true });
+    onDeleted();
+    void qc.invalidateQueries({ queryKey: ['warrooms'] });
+  });
   const pin = useAct((mid: string) => post(`/api/warrooms/${id}/messages/${mid}/pin`), ['warroom']);
 
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [q.data?.messages.length]);
@@ -112,6 +111,7 @@ function ChatPanel({ id }: { id: string }) {
         </div>
         <div className="row" style={{ gap: 10 }}>
           <div className="participant-row">{room.participants.slice(0, 5).map((p) => <span key={p.user_id} className="participant-chip" title={p.label}>{initials(p.label)}</span>)}</div>
+          {can('warroom.write') && (room.created_by === me?.id || can('warroom.manage')) && <button className="btn small danger" onClick={() => setDeleting(true)}><Trash2 size={13} /> Delete room</button>}
           {room.status === 'active' && can_manage(me) && <button className="btn small" onClick={() => setStandingDown(true)}><ShieldCheck size={13} /> Stand down</button>}
         </div>
       </div>
@@ -140,6 +140,14 @@ function ChatPanel({ id }: { id: string }) {
         </form>
       )}
       {(send.error || pin.error) && <ErrorBox error={send.error || pin.error} />}
+      {deleting && <Modal title="Delete war room" onClose={() => { if (!remove.isPending) setDeleting(false); }}>
+        <p>Permanently delete “{room.title}” and all its messages? This action cannot be undone.</p>
+        {remove.error && <ErrorBox error={remove.error} />}
+        <div className="row">
+          <button className="btn" disabled={remove.isPending} onClick={() => setDeleting(false)}>Cancel</button>
+          <button className="btn danger" disabled={remove.isPending} onClick={() => remove.mutate(undefined)}>{remove.isPending ? 'Deleting…' : 'Delete war room'}</button>
+        </div>
+      </Modal>}
       {standingDown && <StandDownModal id={id} onClose={() => setStandingDown(false)} onDone={() => { setStandingDown(false); void qc.invalidateQueries({ queryKey: ['warrooms'] }); }} />}
     </div>
   );

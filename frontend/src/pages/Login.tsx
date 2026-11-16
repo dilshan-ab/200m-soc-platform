@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Loading } from '../components/ui';
-import { CompanyLogo } from '../components/CompanyLogo';
+import { CircuitLogo } from '../components/CircuitLogo';
 import { LoginGlobe } from '../components/LoginGlobe';
 import { ApiError, get } from '../lib/api';
 import { WorkspaceIntro } from '../WorkspaceIntro';
@@ -50,37 +50,52 @@ export default function Login() {
   return (
     <div className="app">
       <main className="login neon-login">
+        <div className="login-signals" aria-hidden="true">
+          <svg viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice" fill="none">
+            <g className="login-signal-grid">
+              <path d="M0 150H175L260 235H430M0 600H130L235 495H390M1200 190H1040L950 280H830M1200 660H1090L980 550H850M100 0V65L355 320V480M1110 0V90L1000 200M200 800V690L370 520M1120 800V735L930 545" />
+            </g>
+            <g className="login-signal-flow">
+              <path d="M0 150H175L260 235H430" />
+              <path d="M0 600H130L235 495H390" />
+              <path d="M1200 190H1040L950 280H830" />
+              <path d="M1200 660H1090L980 550H850" />
+              <path d="M100 0V65L355 320V480" />
+              <path d="M1120 800V735L930 545" />
+            </g>
+            <g className="login-signal-nodes">
+              <circle cx="175" cy="150" r="4" /><circle cx="235" cy="495" r="4" />
+              <circle cx="1040" cy="190" r="4" /><circle cx="980" cy="550" r="4" />
+              <circle cx="355" cy="320" r="4" /><circle cx="930" cy="545" r="4" />
+            </g>
+          </svg>
+        </div>
         <section className="login-story">
-          <a className="brand" href="/"><CompanyLogo /><span>SECURITY OPERATIONS CENTER</span></a>
+          <a className="brand" href="/" aria-label="200M home"><CircuitLogo className="login-logo" /></a>
           <div className="story-content">
             <div className="story-copy">
-              <span className="eyebrow">200M SOC</span>
               <h1>Security<br />operations center</h1>
               <p>Investigate alerts, manage cases, and coordinate response.</p>
             </div>
             <div className="orbit" aria-hidden="true">
+              <div className="login-radar"><span /><span /></div>
               <div className="orbit-ring" /><div className="orbit-ring second" /><LoginGlobe />
               <span className="orbit-chip one"><Activity size={16} />Detection</span>
               <span className="orbit-chip two"><Check size={16} />Response</span>
             </div>
           </div>
-          <small>200M · Security Operations Center</small>
         </section>
         <section className="login-form">
           <div className="login-tools">
             <Button variant="ghost" aria-label={dark ? 'Use light theme' : 'Use dark theme'} onClick={toggle}>{dark ? <Sun size={18} /> : <Moon size={18} />}</Button>
           </div>
           <div className="login-card">
-            <div className="login-symbol"><CompanyLogo /></div>
-            <h2>Sign in to 200M</h2>
+            <div className="login-symbol" role="img" aria-label="200M logo"><CircuitLogo className="login-logo" /></div>
+            <h2>Sign in</h2>
             <p>Use your organization account to access the SOC.</p>
             {cfg.isError ? <div className="error" role="alert" style={{ marginTop: 24 }}>The service is unreachable. <button className="btn small" disabled={cfg.isFetching} onClick={() => void cfg.refetch()}>Try again</button></div>
               : mode === 'oidc' ? (
                 <>
-                  <label className="login-organization">
-                    Organization
-                    <input value="200M" readOnly />
-                  </label>
                   <Button asChild className="wide company-sso">
                     <a href={`/api/auth/oidc/login?return_to=${encodeURIComponent(ssoReturn)}`}>
                       Continue with company SSO <ArrowRight size={17} />
@@ -101,8 +116,9 @@ export default function Login() {
                 </>
               ) : <p style={{ marginTop: 24 }}>Loading…</p>}
           </div>
-          <div className="login-bottom">200M Security Operations<button onClick={() => setHelp(true)}>Need help?</button></div>
+          <div className="login-bottom"><button onClick={() => setHelp(true)}>Need help?</button></div>
         </section>
+        <small className="login-brand-footer">200M · Security Operations Center</small>
       </main>
       <Dialog.Root open={help} onOpenChange={setHelp}>
         <Dialog.Portal>

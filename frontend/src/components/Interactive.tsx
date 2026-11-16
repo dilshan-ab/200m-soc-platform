@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Bell, CheckCircle2, Clock, Keyboard, X } from 'lucide-react';
+import { AlertTriangle, Bell, CheckCircle2, Clock, X } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { get } from '../lib/api';
-import { Sev } from './ui';
+import { useAuth } from '../lib/auth';
+import { Modal, Sev } from './ui';
 
 /* ── LiveTimer ─────────────────────────────────────────────────────── */
 function fmt(ms: number): string {
@@ -55,6 +56,7 @@ export function Pulse({ active, color }: { active: boolean; color?: string }) {
 
 /* ── NotificationPanel ─────────────────────────────────────────────── */
 export function NotificationPanel({ onClose }: { onClose: () => void }) {
+  const { can } = useAuth();
   const alerts = useQuery({
     queryKey: ['notif-alerts'],
     queryFn: () => get<{ items: any[] }>('/api/alerts', { severity: ['critical'], status: ['new'], limit: 5 }),
@@ -62,6 +64,7 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
   });
   const approvals = useQuery({
     queryKey: ['notif-approvals'],
+    enabled: can('response.approve'),
     queryFn: () => get<{ actions: any[]; changes: any[] }>('/api/approvals'),
     refetchInterval: 30_000,
   });
@@ -122,31 +125,17 @@ const SHORTCUTS: { key: string; label: string; scope?: string }[] = [
 ];
 
 export function KeyboardHelp({ onClose }: { onClose: () => void }) {
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [onClose]);
-
-  return (
-    <div className="kbd-help-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="kbd-help">
-        <div className="kbd-help-header">
-          <Keyboard size={18} /> <strong>Keyboard shortcuts</strong>
-          <button className="notif-close" onClick={onClose} aria-label="Close"><X size={16} /></button>
+  return <Modal title="Keyboard shortcuts" onClose={onClose}>
+    <div className="kbd-help-list">
+      {SHORTCUTS.map((shortcut) => (
+        <div key={shortcut.key} className="kbd-help-row">
+          <kbd>{shortcut.key}</kbd>
+          <span>{shortcut.label}</span>
+          {shortcut.scope && <span className="kbd-help-scope">{shortcut.scope}</span>}
         </div>
-        <div className="kbd-help-list">
-          {SHORTCUTS.map((s) => (
-            <div key={s.key} className="kbd-help-row">
-              <kbd>{s.key}</kbd>
-              <span>{s.label}</span>
-              {s.scope && <span className="kbd-help-scope">{s.scope}</span>}
-            </div>
-          ))}
-        </div>
-      </div>
+      ))}
     </div>
-  );
+  </Modal>;
 }
 
 /* ── HoverActions ──────────────────────────────────────────────────── */

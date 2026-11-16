@@ -72,29 +72,37 @@ html[data-theme=dark] .sidebar nav a.active {
   box-shadow: 0 0 10px #00e676;
 }
 
-.main-shell>header .header-actions {
-  flex: 1;
-  min-width: 0;
-  justify-content: flex-end;
-}
-
-.main-shell>header .workspace-search {
+.main-shell > header { column-gap: clamp(14px, 2vw, 28px); }
+.main-shell > header .crumb { min-width: 0; flex: 0 1 auto; white-space: nowrap; }
+.main-shell > header .crumb strong { overflow: hidden; text-overflow: ellipsis; }
+.main-shell > header .header-actions { flex: 1; min-width: 0; justify-content: flex-end; gap: 10px; }
+.main-shell > header .workspace-search {
   order: -1;
-  margin-right: auto;
-  width: min(100%, 510px);
+  flex: 1 1 280px;
+  min-width: 42px;
+  max-width: 510px;
+  margin-inline: 0 auto;
+  min-height: 42px;
+  padding-inline: 14px;
+  border: 1px solid var(--control-border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  transition: border-color .18s, background-color .18s, box-shadow .18s;
+}
+.main-shell > header .workspace-search svg { flex: none; color: var(--accent); }
+.main-shell > header .workspace-search span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.main-shell > header .workspace-search kbd { margin-inline-start: auto; }
+.main-shell > header .workspace-search:hover,
+.main-shell > header .workspace-search:focus-visible {
+  border-color: var(--accent);
   background: var(--soft);
-  border-color: var(--border);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
 }
-
-.main-shell>header .workspace-search kbd {
-  margin-inline-start: auto;
-}
-
 @media (max-width: 850px) {
-  .main-shell>header .workspace-search {
-    width: auto;
-    margin-right: 0;
-  }
+  .main-shell > header .workspace-search { flex: none; width: 42px; padding-inline: 0; margin-right: 0; justify-content: center; }
+  .main-shell > header .crumb { flex: 1; }
+  .main-shell > header .header-actions { flex: none; }
 }
 
 .soc-hero {
@@ -713,4 +721,50 @@ html[data-theme=dark] .ops-overview :is(.soc-overview-grid, .soc-detail-grid, .s
 
 .soc-category-legend strong {
   font-variant-numeric: tabular-nums;
+}
+/* A connected event stream gives the overview a restrained telemetry sweep. */
+.ops-overview .ops-kpi { position: relative; overflow: hidden; }
+.ops-overview .ops-kpi::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(110deg, transparent 25%, rgb(66 163 255 / 9%) 50%, transparent 75%);
+  transform: translateX(-120%);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ops-overview:has(.soc-telemetry-stream.online) .ops-kpi::after { animation: soc-telemetry-sweep 12s ease-in-out infinite; }
+  .ops-overview .ops-kpi:nth-child(2)::after { animation-delay: 1s; }
+  .ops-overview .ops-kpi:nth-child(3)::after { animation-delay: 2s; }
+  .ops-overview .ops-kpi:nth-child(4)::after { animation-delay: 3s; }
+  .ops-overview:has(.soc-telemetry-stream.online) .soc-hero-copy > svg { animation: soc-shield-pulse 5s ease-in-out infinite; }
+}
+@keyframes soc-telemetry-sweep { 0%, 55% { transform: translateX(-120%); } 90%, 100% { transform: translateX(120%); } }
+@keyframes soc-shield-pulse { 0%, 100% { opacity: .7; } 50% { opacity: 1; } }
+
+/* Faceted search launcher echoes the operations console. */
+.main-shell > header .workspace-search {
+  position: relative;
+  min-height: 46px;
+  border-radius: 4px 16px 4px 16px;
+  padding: 5px 12px 5px 7px;
+  gap: 11px;
+  background: linear-gradient(110deg, color-mix(in srgb, var(--accent) 8%, var(--surface)), var(--surface) 70%);
+}
+.main-shell > header .workspace-search .workspace-search-symbol {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+}
+.main-shell > header .workspace-search .workspace-search-copy { display: grid; text-align: left; gap: 2px; }
+.workspace-search-copy strong { font-size: 12px; color: var(--text); font-weight: 600; }
+.workspace-search-copy small { font-size: 10px; color: var(--muted); font-weight: 400; }
+.main-shell > header .workspace-search kbd { padding: 4px 7px; border-radius: 4px 7px 4px 7px; background: var(--surface); }
+.main-shell > header .workspace-search:hover { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent), inset 3px 0 var(--accent); }
+@media (max-width: 1100px) { .workspace-search-copy small { display: none; } }
+@media (max-width: 850px) {
+  .main-shell > header .workspace-search { width: 42px; min-height: 40px; padding: 3px; border-radius: 5px 12px 5px 12px; }
+  .main-shell > header .workspace-search .workspace-search-copy { display: none; }
 }

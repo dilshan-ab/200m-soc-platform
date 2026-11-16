@@ -96,10 +96,19 @@ export function Shell() {
     window.scrollTo(0, 0);
   }, [loc.pathname]);
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.repeat) return; if (!account && !mobile && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((p) => !p); } if (e.key === '?' && !(e.target as HTMLElement).closest('input, textarea, select, [contenteditable]') && !account && !mobile && !palette) setKbdHelp((v) => !v); };
+    const h = (e: KeyboardEvent) => {
+      if (e.repeat || (document.querySelector('[role="dialog"]') && !palette)) return;
+      if (!account && !mobile && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPalette((open) => !open);
+      }
+      if (e.key === '?' && !(e.target as HTMLElement).closest('input, textarea, select, [contenteditable]') && !account && !mobile && !palette) {
+        setKbdHelp(true);
+      }
+    };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [account, mobile]);
+  }, [account, mobile, palette]);
   useEffect(() => {
     const desktop = window.matchMedia('(min-width: 651px)');
     const closeOnDesktop = () => { if (desktop.matches) setMobile(false); };
@@ -192,7 +201,7 @@ export function Shell() {
             <span>Workspace</span><ChevronRight size={14} /><strong>{title}</strong>
           </div>
           <div className="header-actions">
-            <Button variant="ghost" className="workspace-search" aria-label="Search workspace (Ctrl+K)" onClick={() => setPalette(true)}><Search size={18} aria-hidden="true" /><span>Search workspace</span><kbd>Ctrl K</kbd></Button>
+            <Button variant="ghost" className="workspace-search" aria-label="Search workspace (Ctrl+K)" aria-haspopup="dialog" aria-expanded={palette} onClick={() => setPalette(true)}><i className="workspace-search-symbol" aria-hidden="true"><Search size={17} /></i><span className="workspace-search-copy"><strong>Search workspace</strong><small>Pages · Alerts · Cases · Assets</small></span><kbd>Ctrl K</kbd></Button>
             <span className={'demo-pill' + (live ? '' : ' off')}><Activity size={11} style={{ verticalAlign: -1, marginRight: 5 }} />{live ? 'Live' : 'Offline'}</span>
             <Button variant="ghost" aria-label={dark ? 'Use light theme' : 'Use dark theme'} onClick={toggleTheme}>{dark ? <Sun size={18} /> : <Moon size={18} />}</Button>
             {can('alerts.read') && <span style={{ position: "relative", display: "inline-flex" }}><Button variant="ghost" aria-label={`Notifications${(pending + newAlerts) ? ` (${pending + newAlerts})` : ""}`} onClick={() => setNotifOpen((v) => !v)} className="bell"><Bell size={18} /><Pulse active={newAlerts > 0 || pending > 0} /></Button>{notifOpen && <NotificationPanel onClose={() => setNotifOpen(false)} />}</span>}
@@ -204,11 +213,13 @@ export function Shell() {
       {palette && (
         <CommandPalette
           onClose={() => setPalette(false)}
+          onNavigate={(path) => nav(path)}
+          recordTypes={(['alerts', 'cases', 'assets'] as const).filter((area) => can(`${area}.read`))}
           onSearch={can('alerts.read') ? (t) => nav(`/app/alerts?q=${encodeURIComponent(t)}`) : undefined}
           items={[
             ...NAV_ITEMS.filter((i) => !i.cap || can(i.cap)).map((i) => ({ label: i.label, hint: 'Go to page', run: () => nav(i.to) })),
-            { label: dark ? 'Switch to light theme' : 'Switch to dark theme', hint: 'Action', run: toggleTheme },
-            { label: 'Sign out', hint: 'Action', run: () => void signOut() },
+            { label: dark ? 'Switch to light theme' : 'Switch to dark theme', hint: 'Action', kind: 'action', run: toggleTheme },
+            { label: 'Sign out', hint: 'Action', kind: 'action', run: () => void signOut() },
           ]}
         />
       )}

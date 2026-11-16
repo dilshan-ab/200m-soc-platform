@@ -42,7 +42,7 @@ docker compose up --build       # first start takes a few minutes (Keycloak impo
 | Service | URL |
 |---|---|
 | SOC platform | http://localhost:8080 |
-| Keycloak admin console | http://localhost:8081 (user `kcadmin`, password printed by `setup.sh`, also `KC_ADMIN_PASSWORD` in `.env`) |
+| Keycloak admin console | http://localhost:8081 |
 
 There is **one login to start with: the super admin**, whose email and password you enter when running `setup.sh`. Sign in with
 **Continue with company SSO**. On the first sign-in Keycloak makes you change the password and enrol an authenticator app (TOTP); after that you
