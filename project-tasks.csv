@@ -1,0 +1,111 @@
+Task ID,Category,Task Name,Description,Priority,Status,Assignee,Sprint,Estimated Hours,Dependencies,Labels
+T-001,Infrastructure,Initial project scaffolding,"Set up monorepo with backend (FastAPI) and frontend (React+Vite+TypeScript) boilerplate",Critical,Done,Ravishka Dilshan,Sprint 1,16,,setup
+T-002,Infrastructure,Docker Compose stack,"PostgreSQL 16, Redis 7, Keycloak 26, backend, nginx-served frontend with hardened containers",Critical,Done,Ravishka Dilshan,Sprint 1,12,T-001,devops
+T-003,Infrastructure,CI/CD pipeline,"GitHub Actions workflow: build and push backend + frontend images to GHCR, deploy to server via SSH",Critical,Done,Ravishka Dilshan,Sprint 1,8,T-002,devops
+T-004,Infrastructure,Environment setup script,"scripts/setup.sh: generate .env with random secrets, Keycloak realm, print logins",High,Done,Ravishka Dilshan,Sprint 1,4,T-002,devops
+T-005,Infrastructure,Alembic migrations framework,"Set up Alembic for database schema migrations with env.py config",High,Done,Ravishka Dilshan,Sprint 1,4,T-001,database
+T-006,Infrastructure,Database seed CLI,"CLI commands init-db and seed-demo for development data and demo users",High,Done,Ravishka Dilshan,Sprint 1,6,T-005,database
+T-007,Auth,Keycloak OIDC integration,"OIDC auth code + PKCE flow with pinned algorithms, token validation, internal issuer support",Critical,Done,Ravishka Dilshan,Sprint 2,20,T-002,security
+T-008,Auth,Session management,"HttpOnly SameSite=Strict server-side sessions with idle (15m) and absolute (8h) timeouts",Critical,Done,Ravishka Dilshan,Sprint 2,10,T-007,security
+T-009,Auth,CSRF protection,"CSRF token + Origin check on all state-changing requests",Critical,Done,Ravishka Dilshan,Sprint 2,6,T-008,security
+T-010,Auth,RBAC with client scoping,"Role-based access control (superadmin/admin/l2/l1/viewer) with per-client scope isolation",Critical,Done,Ravishka Dilshan,Sprint 2,12,T-007,security
+T-011,Auth,Step-up MFA re-verification,"Fresh TOTP / WebAuthn verification for sensitive actions (acr=mfa-webauthn, auth_time within window)",Critical,Done,Ravishka Dilshan,Sprint 2,10,T-007,security
+T-012,Auth,Local dev auth with TOTP,"Fallback local user authentication with TOTP for SQLite development mode",High,Done,Ravishka Dilshan,Sprint 2,8,T-001,security
+T-013,Auth,Keycloak admin API integration,"Service account (soc-admin) for user management in Keycloak realm",High,Done,Ravishka Dilshan,Sprint 2,8,T-007,security
+T-014,Auth,Extend step-up MFA window,"Increase admin step-up MFA window from 5 to 20 minutes for usability",Medium,Done,Ravishka Dilshan,Sprint 8,2,T-011,security
+T-015,Auth,Fix step-up auth bypass,"Patch security bypass in step-up authentication flow",Critical,Done,Ravishka Dilshan,Sprint 6,4,T-011,security
+T-016,Core - Alerts,Alert ingestion and listing,"Ingest alerts from connected sources, list/filter/search with pagination",Critical,Done,Ravishka Dilshan,Sprint 3,16,T-005,core
+T-017,Core - Alerts,Alert triage queue,"Dedicated triage queue page for L1/L2 analysts to process incoming alerts",High,Done,Ravishka Dilshan,Sprint 3,10,T-016,core
+T-018,Core - Alerts,Alert deletion (single/bulk/delete-all),"Delete individual alerts, bulk-select deletion, and delete-all endpoint",High,Done,Ravishka Dilshan,Sprint 9,8,T-016,core
+T-019,Core - Cases,Case management,"Create, assign, track, and close security cases with status workflow",Critical,Done,Ravishka Dilshan,Sprint 3,16,T-005,core
+T-020,Core - Cases,Case timeline and evidence chain,"Chronological case timeline with evidence attachment and chain-of-custody tracking",High,Done,Ravishka Dilshan,Sprint 5,12,T-019,core
+T-021,Core - Response,Approval-gated response engine,"Request-approve-execute workflow: no self-approval, payload-hash binding, two approvals for critical actions, kill switch",Critical,Done,Ravishka Dilshan,Sprint 4,20,T-010,core
+T-022,Core - Response,Response actions,"Automated and manual response actions (isolate host, block IP, disable account, etc.)",High,Done,Ravishka Dilshan,Sprint 4,14,T-021,core
+T-023,Core - Assets,Asset inventory management,"Track servers, endpoints, network devices with metadata, OS, IP, status",High,Done,Ravishka Dilshan,Sprint 3,10,T-005,core
+T-024,Core - Vulnerabilities,Vulnerability management,"Ingest and display vulnerability scan results, severity tracking, remediation status",High,Done,Ravishka Dilshan,Sprint 3,12,T-005,core
+T-025,Core - Compliance,Compliance dashboard,"Compliance status tracking with framework mapping and control assessments",High,Done,Ravishka Dilshan,Sprint 4,10,T-005,core
+T-026,Detection,Sigma rules management,"Import, create, edit, enable/disable Sigma detection rules",High,Done,Ravishka Dilshan,Sprint 5,12,T-005,detection
+T-027,Detection,Alert correlation engine,"4 correlation strategies for grouping related alerts into incidents",High,Done,Ravishka Dilshan,Sprint 5,16,T-016,detection
+T-028,Detection,Detection workspaces,"Collaborative workspaces for building and testing detection rules",Medium,Done,Ravishka Dilshan,Sprint 6,10,T-026,detection
+T-029,Detection,MITRE ATT&CK mapping,"Map alerts, detections, and techniques to the MITRE ATT&CK framework",High,Done,Ravishka Dilshan,Sprint 5,10,T-016,detection
+T-030,Threat Intel,Threat intelligence feeds,"Ingest, normalize, and display threat intelligence from multiple sources",High,Done,Ravishka Dilshan,Sprint 5,14,T-005,intel
+T-031,Threat Intel,TAXII client integration,"TAXII 2.1 client for pulling STIX indicators from threat intel sharing servers",High,Done,Ravishka Dilshan,Sprint 5,8,T-030,intel
+T-032,Threat Intel,Threat intel sharing and handoff,"Share IOCs and intelligence between teams/tenants with handoff workflow",High,Done,Ravishka Dilshan,Sprint 7,10,T-030,intel
+T-033,Threat Intel,Threat map visualization,"Global threat map showing attack origins, targets, and live activity",Medium,Done,Ravishka Dilshan,Sprint 6,8,T-030,intel
+T-034,Hunting,Threat hunting workbench,"Interactive hunting workspace with query builder, saved hunts, and findings",High,Done,Ravishka Dilshan,Sprint 4,14,T-005,hunting
+T-035,SOAR,Playbook visual builder,"React Flow drag-and-drop SOAR playbook builder with node-based workflow design",High,Done,Ravishka Dilshan,Sprint 5,16,T-021,automation
+T-036,SOAR,Automation engine,"Background task runner for executing playbook actions and automated responses",High,Done,Ravishka Dilshan,Sprint 5,12,T-035,automation
+T-037,SOAR,Runbooks,"Static runbook documentation for SOC procedures and incident types",Medium,Done,Ravishka Dilshan,Sprint 4,6,T-005,documentation
+T-038,Analytics,UEBA behavior analytics,"User and Entity Behavior Analytics with anomaly detection and risk scoring",High,Done,Ravishka Dilshan,Sprint 5,14,T-005,analytics
+T-039,Analytics,Analyst performance metrics,"Track analyst KPIs: response times, case closure rates, alert handling",Medium,Done,Ravishka Dilshan,Sprint 6,8,T-019,analytics
+T-040,Analytics,SOC dashboard,"Main operational dashboard with key metrics, alert trends, case status overview",Critical,Done,Ravishka Dilshan,Sprint 3,12,T-016,analytics
+T-041,Analytics,Reports and report templates,"Generate PDF/HTML reports with customizable templates for incidents and compliance",High,Done,Ravishka Dilshan,Sprint 6,10,T-005,analytics
+T-042,Analytics,Notebooks,"Interactive analysis notebooks for investigation and documentation",Medium,Done,Ravishka Dilshan,Sprint 7,8,T-005,analytics
+T-043,Enrichment,Enrichment framework,"Auto-enrichment pipeline with pluggable providers for IP, domain, hash lookups",High,Done,Ravishka Dilshan,Sprint 5,10,T-016,enrichment
+T-044,Enrichment,Shodan connector,"Shodan API integration for host and service enrichment",Medium,Done,Ravishka Dilshan,Sprint 5,4,T-043,enrichment
+T-045,Enrichment,GeoIP service,"IP geolocation lookups for alert and threat map enrichment",Medium,Done,Ravishka Dilshan,Sprint 5,4,T-043,enrichment
+T-046,Collaboration,War room,"Real-time collaborative incident war room with live status",High,Done,Ravishka Dilshan,Sprint 7,12,T-019,collaboration
+T-047,Collaboration,War room UI fixes,"Fix war room deletion, header live badge, start button, and create form",Medium,Done,Ravishka Dilshan,Sprint 8,4,T-046,collaboration
+T-048,Collaboration,Shift handoff,"SOC shift handoff page for passing context between analyst shifts",Medium,Done,Ravishka Dilshan,Sprint 6,6,T-005,collaboration
+T-049,Collaboration,AI copilot,"LLM-powered SOC assistant for alert triage suggestions, investigation guidance",High,Done,Ravishka Dilshan,Sprint 6,14,T-016,ai
+T-050,Integrations,Wazuh connector,"Ingest alerts and events from Wazuh Manager and Wazuh Indexer",Critical,Done,Ravishka Dilshan,Sprint 3,12,T-005,integration
+T-051,Integrations,TheHive connector,"Bi-directional case sync with TheHive incident response platform",High,Done,Ravishka Dilshan,Sprint 3,10,T-005,integration
+T-052,Integrations,Cortex connector,"Cortex analyzer integration for automated enrichment and response",High,Done,Ravishka Dilshan,Sprint 4,8,T-051,integration
+T-053,Integrations,MISP connector,"MISP threat intelligence platform integration for IOC sharing",High,Done,Ravishka Dilshan,Sprint 4,8,T-030,integration
+T-054,Integrations,Velociraptor connector,"Velociraptor endpoint visibility and response integration",Medium,Done,Ravishka Dilshan,Sprint 4,8,T-005,integration
+T-055,Integrations,OpenVAS/GVM connector,"Vulnerability scan ingestion from OpenVAS/Greenbone",Medium,Done,Ravishka Dilshan,Sprint 4,6,T-024,integration
+T-056,Integrations,Shuffle SOAR connector,"Shuffle workflow orchestration integration",Medium,Done,Ravishka Dilshan,Sprint 5,6,T-036,integration
+T-057,Integrations,Monitoring connectors,"Prometheus, Uptime Kuma integration for infrastructure monitoring",Medium,Done,Ravishka Dilshan,Sprint 5,8,T-005,integration
+T-058,Integrations,Notification connectors,"Slack, Telegram, and email notification integrations",High,Done,Ravishka Dilshan,Sprint 4,10,T-005,integration
+T-059,Integrations,OPSI and Bareos connectors,"OPSI client management and Bareos backup monitoring integrations",Low,Done,Ravishka Dilshan,Sprint 5,6,T-005,integration
+T-060,Integrations,ClickUp connector,"ClickUp project management integration for ticket sync",Low,Done,Ravishka Dilshan,Sprint 5,4,T-005,integration
+T-061,Integrations,Webhook system,"Inbound signed/bearer webhooks with replay protection for event ingestion",High,Done,Ravishka Dilshan,Sprint 4,8,T-005,integration
+T-062,Integrations,Integration health dashboard,"Monitor connector status, last sync, error rates across all integrations",Medium,Done,Ravishka Dilshan,Sprint 6,6,T-050,integration
+T-063,Integrations,Fix Wazuh Indexer backfill,"Fix connector backfilling from beginning of history instead of tailing from now",High,Done,Ravishka Dilshan,Sprint 9,4,T-050,bugfix
+T-064,Integrations,Connector plugin architecture,"Pluggable connector base with security controls and SSRF egress policy",High,Done,Ravishka Dilshan,Sprint 3,10,T-005,integration
+T-065,Admin,User management (Keycloak-synced),"Super admin can add/edit/disable users synced to Keycloak with role assignment",Critical,Done,Ravishka Dilshan,Sprint 3,12,T-013,admin
+T-066,Admin,Client/tenant management,"Multi-tenant client management with scoped data isolation",High,Done,Ravishka Dilshan,Sprint 3,10,T-010,admin
+T-067,Admin,Audit log,"Hash-chained tamper-evident audit log for all security-relevant actions",Critical,Done,Ravishka Dilshan,Sprint 4,10,T-005,security
+T-068,Admin,Platform settings,"System-wide configuration management (SLA, retention, feature toggles)",Medium,Done,Ravishka Dilshan,Sprint 5,6,T-005,admin
+T-069,Admin,IDP provisioning guard,"Prevent unauthorized identity provider provisioning",High,Done,Ravishka Dilshan,Sprint 7,4,T-013,security
+T-070,Admin,Rate limiting,"Request rate limiting per user/endpoint to prevent abuse",High,Done,Ravishka Dilshan,Sprint 4,6,T-008,security
+T-071,Admin,Secrets management,"Fernet encryption for secrets at rest with optional HashiCorp Vault integration",High,Done,Ravishka Dilshan,Sprint 4,8,T-005,security
+T-072,Frontend,Application shell and routing,"React Router app shell with sidebar navigation, theme toggle (light/dark)",Critical,Done,Ravishka Dilshan,Sprint 2,12,T-001,frontend
+T-073,Frontend,200M design system,"Custom UI component library (Button, Chart, Interactive, ui.tsx) with 200M branding",High,Done,Ravishka Dilshan,Sprint 2,16,T-072,frontend
+T-074,Frontend,Login page with rotating globe,"Animated 3D globe on sign-in page with SOC telemetry animation",Medium,Done,Ravishka Dilshan,Sprint 3,8,T-072,frontend
+T-075,Frontend,Login branding iterations,"Restore and refine sign-in logo, header, footer across multiple iterations",Low,Done,Ravishka Dilshan,Sprint 7,4,T-074,frontend
+T-076,Frontend,Command palette,"Global search / command palette for quick navigation and actions",Medium,Done,Ravishka Dilshan,Sprint 6,6,T-072,frontend
+T-077,Frontend,Workspace search console,"Live interactive workspace search with distinctive console design and record results",Medium,Done,Ravishka Dilshan,Sprint 8,6,T-076,frontend
+T-078,Frontend,Saved views,"User-customizable saved filter views across alert and case lists",Medium,Done,Ravishka Dilshan,Sprint 6,6,T-072,frontend
+T-079,Frontend,Live interactive components,"Add live interactive components across the SOC platform (real-time updates)",High,Done,Ravishka Dilshan,Sprint 6,10,T-072,frontend
+T-080,Frontend,Landing page,"Public-facing landing page for the SOC platform",Low,Done,Ravishka Dilshan,Sprint 3,4,T-072,frontend
+T-081,Frontend,API client and auth hooks,"Typed API client (api.ts) with auth context, token refresh, and mutation helpers",High,Done,Ravishka Dilshan,Sprint 2,8,T-072,frontend
+T-082,Frontend,Live event streaming,"Server-sent events / WebSocket client for real-time dashboard and alert updates",High,Done,Ravishka Dilshan,Sprint 4,8,T-081,frontend
+T-083,Frontend,SOC stream status indicator,"Collapsed-rail dot indicator for SOC data stream health",Low,Done,Ravishka Dilshan,Sprint 7,2,T-082,frontend
+T-084,Infrastructure,Nginx reverse proxy config,"Nginx configuration for frontend serving, API proxy, Keycloak proxy, security headers",High,Done,Ravishka Dilshan,Sprint 2,8,T-002,devops
+T-085,Infrastructure,Keycloak realm import,"Automated Keycloak realm configuration via JSON import on first startup",High,Done,Ravishka Dilshan,Sprint 2,6,T-002,devops
+T-086,Infrastructure,Keycloak proxy routing fixes,"Fix nginx proxy routes for Keycloak paths, duplicate location blocks, dynamic resolver",Medium,Done,Ravishka Dilshan,Sprint 3,4,T-084,bugfix
+T-087,Infrastructure,CSP and security headers,"Content Security Policy and security headers configuration in nginx",High,Done,Ravishka Dilshan,Sprint 4,4,T-084,security
+T-088,Testing,Backend test suite,"pytest test suite covering auth, permissions, services, deletion, connectors, integrations",High,Done,Ravishka Dilshan,Sprint 3,20,T-001,testing
+T-089,Testing,Frontend test suite,"Vitest tests for API client, auth hooks, format utilities, MITRE ATT&CK page",Medium,Done,Ravishka Dilshan,Sprint 4,8,T-072,testing
+T-090,Testing,Type checking and linting,"mypy + ruff for backend, TypeScript strict mode + ESLint for frontend",High,Done,Ravishka Dilshan,Sprint 2,4,T-001,testing
+T-091,Services,Event processing service,"Background event processing and normalization pipeline",High,Done,Ravishka Dilshan,Sprint 3,10,T-005,backend
+T-092,Services,Polling service,"Scheduled polling for connector data ingestion on configurable intervals",High,Done,Ravishka Dilshan,Sprint 3,8,T-064,backend
+T-093,Services,Metrics service,"Internal metrics collection for dashboard and analytics",Medium,Done,Ravishka Dilshan,Sprint 4,6,T-040,backend
+T-094,Services,SLA engine,"SLA tracking and breach alerting for cases and response times",Medium,Done,Ravishka Dilshan,Sprint 5,6,T-019,backend
+T-095,Services,Notification service,"Multi-channel notification dispatch (Slack, Telegram, email, in-app)",High,Done,Ravishka Dilshan,Sprint 4,8,T-058,backend
+T-096,Simulation,Attack simulation,"Simulated attack scenarios for SOC training and playbook validation",Medium,Done,Ravishka Dilshan,Sprint 7,8,T-005,training
+T-097,Future,Production hardening checklist,"TLS termination, secure cookies, PostgreSQL-only, OIDC-only, secrets validation",High,To Do,,Sprint 10,8,,production
+T-098,Future,Setup wizard UI,"Web-based setup wizard for first-run configuration (currently API-only)",Medium,To Do,,Sprint 10,12,,production
+T-099,Future,Horizontal scaling,"Stateless backend with Redis sessions for multi-instance deployment",Medium,To Do,,Sprint 11,16,,scalability
+T-100,Future,Backup and disaster recovery,"Automated database backup, volume snapshots, and restore procedures",High,To Do,,Sprint 10,10,,production
+T-101,Future,Monitoring and observability,"Application-level metrics (Prometheus), structured logging, distributed tracing",Medium,To Do,,Sprint 11,12,,production
+T-102,Future,E2E test suite,"Playwright end-to-end tests covering critical user journeys",Medium,To Do,,Sprint 11,16,,testing
+T-103,Future,API documentation,"OpenAPI/Swagger documentation for all backend endpoints",Medium,To Do,,Sprint 10,8,,documentation
+T-104,Future,Mobile-responsive optimization,"Optimize frontend for tablet and mobile SOC operator use",Low,To Do,,Sprint 12,12,,frontend
+T-105,Future,RBAC granular permissions,"Fine-grained permission system beyond role-based (per-action, per-resource)",Medium,To Do,,Sprint 11,14,,security
+T-106,Future,Multi-language support,"i18n framework for frontend internationalization",Low,To Do,,Sprint 12,10,,frontend
+T-107,Future,Data retention policies,"Automated data retention and purge policies with configurable schedules",Medium,To Do,,Sprint 11,8,,compliance
+T-108,Future,SOC metrics reporting,"Scheduled SOC operational metrics reports (MTTR, MTTD, alert volume trends)",Medium,To Do,,Sprint 11,8,,analytics
+T-109,Future,Custom dashboard builder,"Drag-and-drop dashboard builder for personalized SOC operator views",Medium,To Do,,Sprint 12,16,,frontend
+T-110,Future,Incident post-mortem module,"Structured post-mortem workflow with root cause analysis and lessons learned",Medium,To Do,,Sprint 12,10,,core
