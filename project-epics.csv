@@ -1,0 +1,14 @@
+Epic ID,Epic Name,Description,Priority,Status,Owner,Start Sprint,End Sprint,Total Hours,Main Tasks,Progress
+E-001,Platform Foundation,"Core infrastructure, DevOps pipeline, database, and deployment stack for the SOC platform",Critical,Done,Ravishka Dilshan,Sprint 1,Sprint 2,124,"T-001, T-002, T-016",100%
+E-002,SOC Core Operations,"Alert lifecycle, case management, approval-gated response, asset inventory, and vulnerability tracking — the daily operational backbone",Critical,Done,Ravishka Dilshan,Sprint 3,Sprint 5,140,"T-003, T-004, T-005, T-006",100%
+E-003,Detection & Threat Intelligence,"Sigma rules, correlation engine, MITRE ATT&CK mapping, threat hunting, intel feeds, TAXII, sharing, and global threat map",High,Done,Ravishka Dilshan,Sprint 4,Sprint 7,92,"T-007, T-008",100%
+E-004,SOAR & Enrichment,"Visual playbook builder, automation engine, runbooks, auto-enrichment pipeline with Shodan and GeoIP",High,Done,Ravishka Dilshan,Sprint 4,Sprint 5,52,"T-009, T-011",100%
+E-005,Analytics & Reporting,"SOC dashboard, UEBA behavior analytics, analyst performance metrics, report generation, and notebooks",High,Done,Ravishka Dilshan,Sprint 3,Sprint 7,52,"T-010",100%
+E-006,Collaboration & AI,"Real-time war room, shift handoff, and LLM-powered AI copilot for analyst assistance",High,Done,Ravishka Dilshan,Sprint 6,Sprint 8,36,"T-012",100%
+E-007,Integrations Ecosystem,"Connectors for Wazuh, TheHive, Cortex, MISP, Velociraptor, OpenVAS, Shuffle, Prometheus, Uptime Kuma, Slack, Telegram, email, OPSI, Bareos, ClickUp, plus webhook ingestion and health monitoring",Critical,Done,Ravishka Dilshan,Sprint 3,Sprint 6,104,"T-013",100%
+E-008,Administration & Compliance,"User management (Keycloak-synced), multi-tenant clients, audit log, compliance dashboard, and platform settings",Critical,Done,Ravishka Dilshan,Sprint 3,Sprint 5,42,"T-014",100%
+E-009,Frontend Experience,"200M design system, real-time UI, login branding, command palette, workspace search, saved views, and landing page",Critical,Done,Ravishka Dilshan,Sprint 2,Sprint 8,70,"T-015",100%
+E-010,Production Readiness,"Hardening (TLS, secure cookies, OIDC-only), setup wizard UI, backup and disaster recovery for production deployment",High,To Do,,Sprint 10,Sprint 10,30,"T-017",0%
+E-011,Scale & Observability,"Horizontal scaling, application monitoring with Prometheus/tracing, and scheduled SOC operational metrics reports",Medium,To Do,,Sprint 11,Sprint 11,36,"T-018",0%
+E-012,Quality & Documentation,"End-to-end Playwright test suite and OpenAPI/Swagger API documentation",Medium,To Do,,Sprint 10,Sprint 11,24,"T-019",0%
+E-013,Platform v2 Enhancements,"Granular RBAC, custom dashboard builder, incident post-mortem module, data retention policies, mobile optimization, and i18n",Medium,To Do,,Sprint 11,Sprint 12,70,"T-020, T-021",0%
