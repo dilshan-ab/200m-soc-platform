@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Fragment, useState } from 'react';
-import { CheckCircle, XCircle, Loader, RotateCw, Zap, ArrowLeft, ArrowRight, Play, Pause, RefreshCw, Trash2, Settings, Map, Key, Power, Shield } from 'lucide-react';
+import { CheckCircle, XCircle, Loader, RotateCw, Zap, ArrowLeft, ArrowRight, Play, Pause, RefreshCw, Trash2, Settings, Map, Key, Power, Shield, Eye, EyeOff } from 'lucide-react';
 import { Summary } from '../components/manage';
 import { Drawer, Empty, ErrorBox, Field, Loading, Modal, PageHead, SearchBox, Status, useToast } from '../components/ui';
 import { del, get, post, put } from '../lib/api';
@@ -215,6 +215,18 @@ function PostCreate({ tool, manifest, onDone }: { tool: any; manifest: Manifest;
   );
 }
 
+function MaskedValue({ value }: { value: string }) {
+  const [shown, setShown] = useState(false);
+  return (
+    <span className="row" style={{ gap: 6, alignItems: 'flex-start' }}>
+      <span className="mono wrap" style={{ flex: 1 }}>{shown ? value : '••••••••'}</span>
+      <button type="button" className="btn small" style={{ padding: 4 }} aria-label={shown ? 'Hide' : 'Show'} onClick={() => setShown((s) => !s)}>
+        {shown ? <EyeOff size={14} /> : <Eye size={14} />}
+      </button>
+    </span>
+  );
+}
+
 function ToolDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const q = useQuery({ queryKey: ['tool', id], queryFn: () => get<any>(`/api/integrations/tools/${id}`) });
   const cat = useQuery({ queryKey: ['catalogue'], queryFn: () => get<Manifest[]>('/api/integrations/catalogue') });
@@ -246,9 +258,9 @@ function ToolDrawer({ id, onClose }: { id: string; onClose: () => void }) {
       <dl className="kv"><dt>Last success</dt><dd>{when(t.health?.last_success_at)}</dd><dt>Lag</dt><dd>{t.health?.lag_seconds != null ? `${Math.round(t.health.lag_seconds)}s` : '—'}</dd><dt>Items today / total</dt><dd>{t.health?.items_today ?? 0} / {t.health?.items_total ?? 0}</dd><dt>Consecutive errors</dt><dd>{t.health?.error_count ?? 0}</dd>
         {t.health?.last_error && <><dt>Last error</dt><dd className="wrap text-bad">{t.health.last_error}</dd></>}<dt>Poll interval</dt><dd>{t.poll_interval}s</dd><dt>Capabilities</dt><dd>{t.capabilities.join(', ')}</dd></dl>
       <h3><Settings size={16} /> Configuration</h3>
-      <dl className="kv">{Object.entries(t.config).map(([k, v]) => <Fragment key={k}><dt>{titleCase(k)}</dt><dd className="mono wrap">{Array.isArray(v) ? v.join(', ') : String(v)}</dd></Fragment>)}
+      <dl className="kv">{Object.entries(t.config).map(([k, v]) => <Fragment key={k}><dt>{titleCase(k)}</dt><dd className="mono wrap">{k === 'ca_cert' ? <MaskedValue value={String(v)} /> : Array.isArray(v) ? v.join(', ') : String(v)}</dd></Fragment>)}
         {t.secrets_set.map((s: string) => <Fragment key={s}><dt>{titleCase(s)}</dt><dd className="muted">•••••••• (encrypted)</dd></Fragment>)}</dl>
-      {t.webhook.enabled && <><h3><Key size={16} /> Webhook</h3><dl className="kv"><dt>URL</dt><dd className="mono wrap">{t.webhook.url}</dd><dt>Auth</dt><dd>{t.webhook.auth_mode}</dd><dt>Secret</dt><dd>{t.webhook.secret_set ? 'set' : 'not set'}</dd></dl></>}
+      {t.webhook.enabled && <><h3><Key size={16} /> Webhook</h3><dl className="kv"><dt>URL</dt><dd className="mono wrap"><MaskedValue value={t.webhook.url} /></dd><dt>Auth</dt><dd>{t.webhook.auth_mode}</dd><dt>Secret</dt><dd>{t.webhook.secret_set ? 'set' : 'not set'}</dd></dl></>}
       {secret && <div className="notice"><div className="wizard-webhook-header"><Key size={16} /> <b>New webhook secret (shown once)</b></div><div className="mono wrap">{secret}</div><p className="muted">Update the sending system now.</p></div>}
       {t.setup_hint && <p className="muted wizard-hint">{t.setup_hint}</p>}
       {(checks ?? lt) && (
