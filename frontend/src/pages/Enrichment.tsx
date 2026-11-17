@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Activity, AlertTriangle, CheckCircle2, Clock, Database, ExternalLink, Search, Shield, XCircle } from 'lucide-react';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Drawer, Empty, ErrorBox, Loading, PageHead, Status } from '../components/ui';
 import { get, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -108,11 +108,118 @@ function JobDrawer({ job, onClose }: { job: Job; onClose: () => void }) {
             {name}
             {data.verdict && <span style={{ marginLeft: 'auto', fontSize: 12, color: VERDICT_COLORS[data.verdict] }}>{data.verdict}</span>}
           </summary>
-          <pre className="mono" style={{ whiteSpace: 'pre-wrap', fontSize: 12, marginTop: 8, maxHeight: '30vh', overflow: 'auto' }}>{JSON.stringify(data, null, 2)}</pre>
+          <SourceResult name={name} data={data} />
         </details>
       ))}
     </Drawer>
   );
+}
+
+function Segmented({ segments, total }: { segments: { key: string; label: string; value: number; color: string }[]; total: number }) {
+  const t = total || 1;
+  return (
+    <>
+      <div style={{ display: 'flex', height: 10, borderRadius: 5, overflow: 'hidden', background: 'var(--soft)' }}>
+        {segments.filter((s) => s.value > 0).map((s) => (
+          <div key={s.key} title={`${s.label}: ${s.value}`} style={{ width: `${(s.value / t) * 100}%`, background: s.color }} />
+        ))}
+      </div>
+      <div className="row" style={{ gap: 12, marginTop: 6, fontSize: 12, flexWrap: 'wrap' }}>
+        {segments.map((s) => (
+          <span key={s.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--muted)' }}>
+            <i style={{ width: 8, height: 8, borderRadius: 4, background: s.color, display: 'inline-block' }} />{s.label}: {s.value}
+          </span>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function ScoreBar({ score }: { score: number }) {
+  const color = score >= 50 ? 'var(--bad)' : score > 0 ? 'var(--warn)' : 'var(--ok)';
+  return (
+    <div className="row" style={{ gap: 10, alignItems: 'center' }}>
+      <div style={{ flex: 1, height: 10, borderRadius: 5, background: 'var(--soft)', overflow: 'hidden' }}>
+        <div style={{ width: `${Math.min(100, Math.max(0, score))}%`, height: '100%', background: color }} />
+      </div>
+      <strong style={{ color, fontSize: 13 }}>{score}%</strong>
+    </div>
+  );
+}
+
+function KvFallback({ data }: { data: Record<string, any> }) {
+  const entries = Object.entries(data).filter(([k]) => k !== 'verdict');
+  if (entries.length === 0) return <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 8 }}>No additional detail returned.</p>;
+  return (
+    <dl className="kv" style={{ marginTop: 8 }}>
+      {entries.map(([k, v]) => (
+        <Fragment key={k}>
+          <dt>{k.replace(/_/g, ' ')}</dt>
+          <dd className="wrap">{Array.isArray(v) ? (v.length ? v.join(', ') : '—') : v && typeof v === 'object' ? JSON.stringify(v) : String(v ?? '—')}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  );
+}
+
+function SourceResult({ name, data }: { name: string; data: Record<string, any> }) {
+  if (data.error) return <p style={{ color: 'var(--bad)', fontSize: 13, marginTop: 8 }}>{String(data.error)}</p>;
+
+  if (name === 'VirusTotal' && data.stats) {
+    const stats = data.stats as Record<string, number>;
+    const total = Object.values(stats).reduce((a, b) => a + b, 0);
+    const segments = [
+      { key: 'malicious', label: 'Malicious', value: stats.malicious ?? 0, color: 'var(--bad)' },
+      { key: 'suspicious', label: 'Suspicious', value: stats.suspicious ?? 0, color: 'var(--warn)' },
+      { key: 'harmless', label: 'Harmless', value: stats.harmless ?? 0, color: 'var(--ok)' },
+      { key: 'undetected', label: 'Undetected', value: stats.undetected ?? 0, color: 'var(--muted)' },
+    ];
+    return (
+      <div style={{ marginTop: 8 }}>
+        <Segmented segments={segments} total={total} />
+        <p style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 0' }}>{total} security vendors scanned this indicator.</p>
+      </div>
+    );
+  }
+
+  if (name === 'AbuseIPDB' && data.abuse_score != null) {
+    return (
+      <div style={{ marginTop: 8 }}>
+        <ScoreBar score={data.abuse_score} />
+        <p style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 0' }}>
+          {data.total_reports} report{data.total_reports === 1 ? '' : 's'}{data.isp ? ` · ${data.isp}` : ''}
+        </p>
+      </div>
+    );
+  }
+
+  if (name === 'AlienVault OTX' && data.pulse_count != null) {
+    return <p style={{ fontSize: 13, marginTop: 8 }}><strong>{data.pulse_count}</strong> threat pulse{data.pulse_count === 1 ? '' : 's'} reference this indicator.</p>;
+  }
+
+  if (name === 'Shodan') {
+    const ports: number[] = data.ports ?? [];
+    const vulns: string[] = data.vulns ?? [];
+    return (
+      <div style={{ marginTop: 8 }}>
+        <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: ports.length ? 6 : 0 }}>
+          {ports.length > 0 ? ports.map((p) => <span key={p} className="badge">{p}</span>) : <span style={{ fontSize: 12, color: 'var(--muted)' }}>No open ports found</span>}
+        </div>
+        {vulns.length > 0 && <p style={{ fontSize: 12, color: 'var(--bad)', margin: '0 0 6px' }}>Vulnerabilities: {vulns.join(', ')}</p>}
+        <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>{[data.org, data.isp, data.country].filter(Boolean).join(' · ') || '—'}</p>
+      </div>
+    );
+  }
+
+  if ((name === 'MISP' || name === 'OpenCTI') && data.matches != null) {
+    return (
+      <p style={{ fontSize: 13, marginTop: 8 }}>
+        <strong>{data.matches}</strong> match{data.matches === 1 ? '' : 'es'} found{data.events?.length ? ` across events ${data.events.join(', ')}` : ''}
+      </p>
+    );
+  }
+
+  return <KvFallback data={data} />;
 }
 
 function ProvidersPanel() {
