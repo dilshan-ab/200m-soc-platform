@@ -116,10 +116,11 @@ def _fanout(db: Session, ev: dict[str, Any]) -> None:
     r = get_redis()
     if r is not None:
         r.xadd(STREAM, {"type": str(ev.get("type")), "id": str(ev.get("id", "")), "client_id": str(ev.get("client_id") or "")}, maxlen=100_000, approximate=True)
-    from . import automation, notifications
+    from . import automation, notifications, playbooks_engine
 
     automation.on_event(db, ev)
     notifications.on_event(db, ev)
+    playbooks_engine.on_event(db, ev)
 
 
 def read_stream(group: str, consumer: str, count: int = 100) -> list[tuple[str, dict[str, str]]]:

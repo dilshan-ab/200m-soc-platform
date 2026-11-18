@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 
 from .. import audit
 from ..db import get_db
-from ..deps import Principal, require, scoped_get
-from ..models import Playbook, PlaybookRun, utcnow
-from ..services import events
+from ..deps import Principal, require, require_admin_step_up, scoped_get
+from ..models import Alert, Case, Playbook, PlaybookRun, utcnow
+from ..services import events, playbooks_engine
 from .common import iso, page_out, paginate
 
 router = APIRouter(prefix="/api/playbooks", tags=["playbooks"])
@@ -120,6 +120,11 @@ class PlaybookUpdate(BaseModel):
 @router.patch("/{playbook_id}")
 def update_playbook(playbook_id: str, body: PlaybookUpdate, p: Principal = Depends(require("playbooks.write")), db: Session = Depends(get_db)) -> dict[str, Any]:
     pb = scoped_get(db, Playbook, playbook_id, p)
+    if body.status == "published":
+        try:
+            playbooks_engine.validate_graph(body.nodes if body.nodes is not None else pb.nodes, body.edges if body.edges is not None else pb.edges)
+        except playbooks_engine.EngineError as e:
+            raise HTTPException(400, str(e)) from e
     for field in ("name", "description", "trigger", "nodes", "edges", "status", "enabled"):
         v = getattr(body, field)
         if v is not None:
@@ -138,22 +143,49 @@ def delete_playbook(playbook_id: str, p: Principal = Depends(require("playbooks.
     db.delete(pb)
 
 
+class ExecuteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    alert_id: str | None = None
+    case_id: str | None = None
+
+
 @router.post("/{playbook_id}/execute", status_code=201)
-def execute_playbook(playbook_id: str, p: Principal = Depends(require("playbooks.execute")), db: Session = Depends(get_db)) -> dict[str, Any]:
+def execute_playbook(playbook_id: str, body: ExecuteIn = ExecuteIn(), p: Principal = Depends(require("playbooks.execute")), db: Session = Depends(get_db)) -> dict[str, Any]:
     pb = scoped_get(db, Playbook, playbook_id, p)
     if pb.status != "published":
         raise HTTPException(400, "only published playbooks can be executed")
-    run = PlaybookRun(playbook_id=pb.id, trigger_ref=f"manual:{p.label}", status="running")
-    # Walk nodes in topological order from the start node
-    start_nodes = [n for n in (pb.nodes or []) if n.get("type") == "trigger"]
-    if start_nodes:
-        run.current_node = start_nodes[0].get("id", "")
-    run.execution_log = [{"node_id": run.current_node, "type": "trigger", "status": "completed", "started_at": utcnow().isoformat(), "finished_at": utcnow().isoformat(), "result": "started"}]
-    run.status = "completed"
-    run.finished_at = utcnow()
-    db.add(run)
-    db.flush()
-    audit.record(db, "playbook.execute", actor=p.label, actor_id=p.user.id, resource_type="playbook", resource_id=pb.id, client_id=pb.client_id, ip=p.ip)
+    alert = db.get(Alert, body.alert_id) if body.alert_id else None
+    case = db.get(Case, body.case_id) if body.case_id else None
+    if (body.alert_id and alert is None) or (body.case_id and case is None):
+        raise HTTPException(404, "alert or case not found")
+    if alert is not None and not p.can_see_client(alert.client_id):
+        raise HTTPException(404, "not found")
+    if case is not None and not p.can_see_client(case.client_id):
+        raise HTTPException(404, "not found")
+    trigger_ref = f"alert:{alert.id}" if alert else (f"case:{case.id}" if case else f"manual:{p.label}")
+    run = playbooks_engine.start_run(db, pb, trigger_ref, alert=alert, case=case)
+    audit.record(db, "playbook.execute", actor=p.label, actor_id=p.user.id, resource_type="playbook", resource_id=pb.id, client_id=pb.client_id, ip=p.ip, meta={"run_id": run.id})
+    events.publish(db, "playbook.executed", id=pb.id, run_id=run.id)
+    return run_out(run)
+
+
+class ResumeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    approved: bool
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+@router.post("/{playbook_id}/runs/{run_id}/resume")
+def resume_run(playbook_id: str, run_id: str, body: ResumeIn, p: Principal = Depends(require_admin_step_up("playbooks.execute")), db: Session = Depends(get_db)) -> dict[str, Any]:
+    pb = scoped_get(db, Playbook, playbook_id, p)
+    run = db.get(PlaybookRun, run_id)
+    if run is None or run.playbook_id != pb.id:
+        raise HTTPException(404, "run not found")
+    try:
+        playbooks_engine.resume_run(db, run, approved=body.approved, actor_label=p.label)
+    except playbooks_engine.EngineError as e:
+        raise HTTPException(409, str(e)) from e
+    audit.record(db, "playbook.resume", actor=p.label, actor_id=p.user.id, resource_type="playbook_run", resource_id=run.id, client_id=pb.client_id, ip=p.ip, meta={"approved": body.approved, "reason": body.reason})
     events.publish(db, "playbook.executed", id=pb.id, run_id=run.id)
     return run_out(run)
 

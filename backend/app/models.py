@@ -449,6 +449,8 @@ class ActionRequest(Base):
     external_operation_id: Mapped[str] = mapped_column(String(120), default="")
     result: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     automation_rule_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    playbook_run_id: Mapped[str | None] = mapped_column(ForeignKey("playbook_runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    playbook_node_id: Mapped[str | None] = mapped_column(String(60), nullable=True)
     created_at: Mapped[datetime] = _ts()
     started_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)

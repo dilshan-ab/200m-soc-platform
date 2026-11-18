@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { Fragment, useCallback, useMemo, useState } from 'react';
 import {
   ReactFlow,
   Background,
@@ -25,6 +25,19 @@ import { useAct } from '../lib/mut';
 
 type PB = { id: string; name: string; description: string; trigger: string; status: string; enabled: boolean; version: number; client_id: string | null; created_by: string; created_at: string; updated_at: string; nodes?: any[]; edges?: any[]; runs?: Run[] };
 type Run = { id: string; playbook_id: string; trigger_ref: string; status: string; current_node: string; execution_log: any[]; error: string; started_at: string; finished_at: string | null };
+type ActionSpec = { key: string; label: string; system: string; risk: string; reversible: boolean; approvals: number; target_kind: string; params: string[]; capability: string };
+type Destination = { id: string; name: string; channel: string };
+
+const CONDITION_FIELDS = ['severity', 'source', 'rule_id', 'host', 'category', 'title', 'client_id', 'src_ip', 'username', 'status'];
+const CONDITION_OPS = ['eq', 'ne', 'in', 'gte', 'contains', 'startswith'];
+const ALERT_STATUSES = ['acknowledged', 'investigating', 'false_positive', 'resolved'];
+const ACTION_TYPES = [
+  { value: 'set_status', label: 'Set alert status' },
+  { value: 'add_note', label: 'Add a note to the alert' },
+  { value: 'create_case', label: 'Create a case' },
+  { value: 'enrich', label: 'Enrich the alert indicator' },
+  { value: 'request_action', label: 'Request a response action' },
+];
 
 const NODE_COLORS: Record<string, string> = {
   trigger: '#3b82f6',
@@ -37,14 +50,32 @@ const NODE_COLORS: Record<string, string> = {
 
 type NodeData = { label: string; description?: string;[key: string]: unknown };
 
+function nodeSummary(type: string, data: NodeData): string | null {
+  if (type === 'action') {
+    if (!data.action_type) return 'not configured';
+    if (data.action_type === 'request_action') return `request_action: ${data.action_key || '(no action chosen)'}`;
+    return String(data.action_type);
+  }
+  if (type === 'condition') {
+    if (!data.field || !data.op) return 'not configured';
+    return `${data.field} ${data.op} ${JSON.stringify(data.value)}`;
+  }
+  if (type === 'notification') {
+    return data.destination_id ? 'configured' : 'not configured';
+  }
+  return null;
+}
+
 function BaseNode({ data, type }: NodeProps<Node<NodeData>>) {
   const color = NODE_COLORS[type as string] ?? '#6b7280';
+  const summary = nodeSummary(type as string, data);
   return (
     <div style={{ background: 'var(--card)', border: `2px solid ${color}`, borderRadius: 8, padding: '8px 14px', minWidth: 140, fontSize: 13 }}>
       <Handle type="target" position={Position.Top} style={{ background: color }} />
       <div style={{ fontWeight: 600, color, fontSize: 11, textTransform: 'uppercase', marginBottom: 2 }}>{type as string}</div>
       <div style={{ color: 'var(--fg)' }}>{data.label}</div>
       {data.description && <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2 }}>{data.description}</div>}
+      {summary && <div style={{ color: summary === 'not configured' ? 'var(--danger)' : 'var(--muted)', fontSize: 11, marginTop: 2 }}>{summary}</div>}
       <Handle type="source" position={Position.Bottom} style={{ background: color }} />
     </div>
   );
@@ -61,10 +92,10 @@ const nodeTypes: NodeTypes = {
 
 const DEFAULT_NODES: Node[] = [
   { id: 'trigger-1', type: 'trigger', position: { x: 250, y: 0 }, data: { label: 'Alert created', description: 'When a new alert fires' } },
-  { id: 'action-1', type: 'action', position: { x: 250, y: 120 }, data: { label: 'Enrich IOC', description: 'VirusTotal lookup' } },
-  { id: 'condition-1', type: 'condition', position: { x: 250, y: 240 }, data: { label: 'Is malicious?', description: 'VT score > 5' } },
-  { id: 'action-2', type: 'action', position: { x: 80, y: 370 }, data: { label: 'Create case', description: 'Escalate to IR' } },
-  { id: 'notification-1', type: 'notification', position: { x: 420, y: 370 }, data: { label: 'Notify analyst', description: 'Slack message' } },
+  { id: 'action-1', type: 'action', position: { x: 250, y: 120 }, data: { label: 'Enrich IOC', description: 'VirusTotal/AbuseIPDB lookup on the alert indicator', action_type: 'enrich' } },
+  { id: 'condition-1', type: 'condition', position: { x: 250, y: 240 }, data: { label: 'High severity+?', description: '', field: 'severity', op: 'gte', value: 'high' } },
+  { id: 'action-2', type: 'action', position: { x: 80, y: 370 }, data: { label: 'Create case', description: 'Escalate to IR', action_type: 'create_case' } },
+  { id: 'notification-1', type: 'notification', position: { x: 420, y: 370 }, data: { label: 'Notify analyst', description: '', destination_id: '' } },
   { id: 'end-1', type: 'end', position: { x: 250, y: 500 }, data: { label: 'Done' } },
 ];
 const DEFAULT_EDGES: Edge[] = [
@@ -120,9 +151,15 @@ export default function Playbooks() {
 function PlaybookDetail({ id, onClose, onEdit }: { id: string; onClose: () => void; onEdit: (id: string) => void }) {
   const q = useQuery({ queryKey: ['playbook', id], queryFn: () => get<PB>(`/api/playbooks/${id}`) });
   const { can } = useAuth();
+  const [expanded, setExpanded] = useState<string | null>(null);
   const publish = useAct(() => patch(`/api/playbooks/${id}`, { status: 'published' }), ['playbooks', 'playbook'], 'Published');
   const execute = useAct(() => post(`/api/playbooks/${id}/execute`), ['playbooks', 'playbook'], 'Executed');
   const remove = useAct(() => del(`/api/playbooks/${id}`), ['playbooks'], 'Deleted', onClose);
+  const resume = useAct(
+    (vars: { runId: string; approved: boolean }) => post(`/api/playbooks/${id}/runs/${vars.runId}/resume`, { approved: vars.approved, reason: vars.approved ? 'approved from playbook run history' : 'rejected from playbook run history' }),
+    ['playbooks', 'playbook'],
+    'Resumed',
+  );
 
   if (q.isLoading) return <Drawer title="Playbook" onClose={onClose}><Loading /></Drawer>;
   if (q.error) return <Drawer title="Playbook" onClose={onClose}><ErrorBox error={q.error} /></Drawer>;
@@ -152,15 +189,46 @@ function PlaybookDetail({ id, onClose, onEdit }: { id: string; onClose: () => vo
         <>
           <h4 style={{ marginTop: 16 }}>Recent runs</h4>
           <table className="table">
-            <thead><tr><th>Started</th><th>Trigger</th><th>Status</th><th>Duration</th></tr></thead>
+            <thead><tr><th>Started</th><th>Trigger</th><th>Status</th><th>Duration</th><th /></tr></thead>
             <tbody>
               {pb.runs.map((r) => (
-                <tr key={r.id}>
-                  <td>{new Date(r.started_at).toLocaleString()}</td>
-                  <td>{r.trigger_ref}</td>
-                  <td><Status v={r.status} /></td>
-                  <td>{r.finished_at ? `${((new Date(r.finished_at).getTime() - new Date(r.started_at).getTime()) / 1000).toFixed(1)}s` : '—'}</td>
-                </tr>
+                <Fragment key={r.id}>
+                  <tr>
+                    <td>{new Date(r.started_at).toLocaleString()}</td>
+                    <td>{r.trigger_ref}</td>
+                    <td><Status v={r.status} /></td>
+                    <td>{r.finished_at ? `${((new Date(r.finished_at).getTime() - new Date(r.started_at).getTime()) / 1000).toFixed(1)}s` : '—'}</td>
+                    <td>
+                      <button className="btn small" onClick={() => setExpanded(expanded === r.id ? null : r.id)}>{expanded === r.id ? 'Hide' : 'Details'}</button>
+                      {r.status === 'paused' && can('playbooks.execute') && (
+                        <>
+                          <button className="btn small primary" style={{ marginLeft: 6 }} onClick={() => resume.mutate({ runId: r.id, approved: true })}>Approve &amp; continue</button>
+                          <button className="btn small danger" style={{ marginLeft: 6 }} onClick={() => resume.mutate({ runId: r.id, approved: false })}>Reject</button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                  {expanded === r.id && (
+                    <tr>
+                      <td colSpan={5}>
+                        {r.error && <div style={{ color: 'var(--danger)', marginBottom: 6 }}>{r.error}</div>}
+                        <table className="table">
+                          <thead><tr><th>Node</th><th>Type</th><th>Status</th><th>Result</th></tr></thead>
+                          <tbody>
+                            {r.execution_log.map((l, i) => (
+                              <tr key={i}>
+                                <td>{l.node_id}</td>
+                                <td>{l.type}</td>
+                                <td><Status v={l.status} /></td>
+                                <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{JSON.stringify(l.result)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -217,6 +285,7 @@ function BuilderInner({ pb, onClose }: { pb: PB; onClose: () => void }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState(pb.edges as Edge[] ?? []);
   const [dirty, setDirty] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [configuring, setConfiguring] = useState<Node | null>(null);
 
   const onConnect = useCallback((conn: Connection) => {
     setEdges((eds) => addEdge({ ...conn, markerEnd: { type: MarkerType.ArrowClosed } }, eds));
@@ -242,18 +311,23 @@ function BuilderInner({ pb, onClose }: { pb: PB; onClose: () => void }) {
 
   const addNode = useCallback((type: string) => {
     const id = `${type}-${Date.now()}`;
-    const label = prompt('Node label:');
-    if (!label) return;
     const newNode: Node = {
       id,
       type,
       position: { x: 250, y: (nodes.length) * 120 },
-      data: { label },
+      data: { label: ADD_NODES.find((n) => n.type === type)?.label ?? type },
     };
     setNodes((nds) => [...nds, newNode]);
     setDirty(true);
     setAddOpen(false);
+    setConfiguring(newNode);
   }, [nodes.length, setNodes]);
+
+  const saveNodeData = useCallback((nodeId: string, data: Record<string, unknown>) => {
+    setNodes((nds) => nds.map((n) => (n.id === nodeId ? { ...n, data } : n)));
+    setDirty(true);
+    setConfiguring(null);
+  }, [setNodes]);
 
   const memoTypes = useMemo(() => nodeTypes, []);
 
@@ -290,6 +364,7 @@ function BuilderInner({ pb, onClose }: { pb: PB; onClose: () => void }) {
           onNodesChange={handleNodesChange}
           onEdgesChange={handleEdgesChange}
           onConnect={onConnect}
+          onNodeDoubleClick={(_, n) => setConfiguring(n)}
           nodeTypes={memoTypes}
           fitView
           deleteKeyCode="Delete"
@@ -300,6 +375,112 @@ function BuilderInner({ pb, onClose }: { pb: PB; onClose: () => void }) {
           <MiniMap nodeColor={(n) => NODE_COLORS[n.type ?? ''] ?? '#6b7280'} style={{ background: 'var(--card)' }} />
         </ReactFlow>
       </div>
+      {configuring && <NodeConfigModal node={configuring} onClose={() => setConfiguring(null)} onSave={saveNodeData} />}
     </div>
+  );
+}
+
+function NodeConfigModal({ node, onClose, onSave }: { node: Node; onClose: () => void; onSave: (id: string, data: Record<string, unknown>) => void }) {
+  const [data, setData] = useState<Record<string, unknown>>({ ...node.data });
+  const set = (patch: Record<string, unknown>) => setData((d) => ({ ...d, ...patch }));
+  const type = node.type as string;
+
+  const catalogue = useQuery({ queryKey: ['response-catalogue'], queryFn: () => get<ActionSpec[]>('/api/response/catalogue'), enabled: type === 'action' && data.action_type === 'request_action' });
+  const destinations = useQuery({ queryKey: ['notification-destinations'], queryFn: () => get<Destination[]>('/api/ops/notifications/destinations'), enabled: type === 'notification' });
+  const chosenAction = catalogue.data?.find((a) => a.key === data.action_key);
+
+  return (
+    <Modal title={`Configure: ${type}`} onClose={onClose} wide>
+      <Field label="Label" id="nc-label"><input id="nc-label" value={String(data.label ?? '')} onChange={(e) => set({ label: e.target.value })} /></Field>
+      <Field label="Description" id="nc-desc" hint="optional"><input id="nc-desc" value={String(data.description ?? '')} onChange={(e) => set({ description: e.target.value })} /></Field>
+
+      {type === 'action' && (
+        <>
+          <Field label="Action type" id="nc-atype">
+            <select id="nc-atype" value={String(data.action_type ?? '')} onChange={(e) => set({ action_type: e.target.value })}>
+              <option value="">Select…</option>
+              {ACTION_TYPES.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+            </select>
+          </Field>
+          {data.action_type === 'set_status' && (
+            <Field label="New status" id="nc-status">
+              <select id="nc-status" value={String(data.status ?? '')} onChange={(e) => set({ status: e.target.value })}>
+                <option value="">Select…</option>
+                {ALERT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </Field>
+          )}
+          {data.action_type === 'add_note' && (
+            <Field label="Note text" id="nc-text"><textarea id="nc-text" value={String(data.text ?? '')} onChange={(e) => set({ text: e.target.value })} /></Field>
+          )}
+          {data.action_type === 'create_case' && (
+            <>
+              <Field label="Case title" id="nc-title" hint="optional, defaults to the alert title"><input id="nc-title" value={String(data.title ?? '')} onChange={(e) => set({ title: e.target.value })} /></Field>
+              <Field label="Template" id="nc-template" hint="optional case template id"><input id="nc-template" value={String(data.template ?? '')} onChange={(e) => set({ template: e.target.value })} /></Field>
+            </>
+          )}
+          {data.action_type === 'enrich' && (
+            <p style={{ color: 'var(--muted)', fontSize: 13 }}>Enriches the triggering alert's src_ip or file_hash via the configured intel connectors.</p>
+          )}
+          {data.action_type === 'request_action' && (
+            <>
+              <Field label="Response action" id="nc-action-key" hint="from the response-action catalogue, with its own approval/risk guardrails">
+                <select id="nc-action-key" value={String(data.action_key ?? '')} onChange={(e) => set({ action_key: e.target.value, params: {} })}>
+                  <option value="">Select…</option>
+                  {catalogue.data?.map((a) => <option key={a.key} value={a.key}>{a.label} ({a.risk}{a.approvals ? `, ${a.approvals} approval${a.approvals > 1 ? 's' : ''}` : ''})</option>)}
+                </select>
+              </Field>
+              <Field label="Target field" id="nc-target-field" hint="which alert field supplies the target">
+                <select id="nc-target-field" value={String(data.target_field ?? 'src_ip')} onChange={(e) => set({ target_field: e.target.value })}>
+                  <option value="src_ip">src_ip</option>
+                  <option value="host">host</option>
+                  <option value="username">username</option>
+                </select>
+              </Field>
+              {chosenAction?.params.map((p) => (
+                <Field key={p} label={`Param: ${p}`} id={`nc-param-${p}`}>
+                  <input id={`nc-param-${p}`} value={String((data.params as Record<string, unknown> | undefined)?.[p] ?? '')}
+                    onChange={(e) => set({ params: { ...(data.params as Record<string, unknown> | undefined), [p]: e.target.value } })} />
+                </Field>
+              ))}
+            </>
+          )}
+        </>
+      )}
+
+      {type === 'condition' && (
+        <>
+          <Field label="Field" id="nc-field">
+            <select id="nc-field" value={String(data.field ?? '')} onChange={(e) => set({ field: e.target.value })}>
+              <option value="">Select…</option>
+              {CONDITION_FIELDS.map((f) => <option key={f} value={f}>{f}</option>)}
+            </select>
+          </Field>
+          <Field label="Operator" id="nc-op">
+            <select id="nc-op" value={String(data.op ?? '')} onChange={(e) => set({ op: e.target.value })}>
+              <option value="">Select…</option>
+              {CONDITION_OPS.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </Field>
+          <Field label="Value" id="nc-value" hint="outgoing edges labelled 'Yes'/'No' are followed based on this check">
+            <input id="nc-value" value={String(data.value ?? '')} onChange={(e) => set({ value: e.target.value })} />
+          </Field>
+        </>
+      )}
+
+      {type === 'notification' && (
+        <>
+          <Field label="Destination" id="nc-dest">
+            <select id="nc-dest" value={String(data.destination_id ?? '')} onChange={(e) => set({ destination_id: e.target.value })}>
+              <option value="">Select…</option>
+              {destinations.data?.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.channel})</option>)}
+            </select>
+          </Field>
+          <Field label="Message" id="nc-message"><textarea id="nc-message" value={String(data.message ?? '')} onChange={(e) => set({ message: e.target.value })} /></Field>
+        </>
+      )}
+
+      <button className="btn primary" style={{ marginTop: 12 }} onClick={() => onSave(node.id, data)}>Save node</button>
+    </Modal>
   );
 }
