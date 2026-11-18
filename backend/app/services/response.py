@@ -74,6 +74,7 @@ def _client_for(db: Session, alert: Alert | None, case: Case | None, targets: li
 def create_request(
     db: Session, *, requester: User, action_key: str, targets: list[str], params: dict[str, Any], reason: str,
     alert_id: str | None = None, case_id: str | None = None, client_id: str | None = None, automation_rule_id: str | None = None,
+    playbook_run_id: str | None = None, playbook_node_id: str | None = None,
     scope: Principal | None = None, idempotency_key: str | None = None,
 ) -> ActionRequest:
     spec = ACTIONS.get(action_key)
@@ -113,6 +114,7 @@ def create_request(
         reason=reason.strip(), case_id=case_id, alert_id=alert_id, client_id=cid, idempotency_key=idempotency_key,
         approvals_required=spec.approvals, policy_version=int(get_setting(db, "response_policy_version", 1)),
         expires_at=utcnow() + timedelta(minutes=window), automation_rule_id=automation_rule_id,
+        playbook_run_id=playbook_run_id, playbook_node_id=playbook_node_id,
     )
     rm = params.get("revert_minutes")
     if spec.reversible and rm:
