@@ -2,12 +2,14 @@ import * as echarts from 'echarts/core';
 import { LineChart } from 'echarts/charts';
 import { AriaComponent, DataZoomComponent, GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 echarts.use([LineChart, DataZoomComponent, GridComponent, TooltipComponent, LegendComponent, AriaComponent, CanvasRenderer]);
 
-export type Point = { day: string; alerts: number; critical: number; high: number };
+export type Point = { day: string; since?: string; until?: string; alerts: number; critical: number; high: number };
 
-export default function Trend({ dark, series }: { dark: boolean; series: Point[] }) {
+export default function Trend({ dark, series, onInspect }: { dark: boolean; series: Point[]; onInspect?: (point: Point, severity?: string) => void }) {
+  const [bucket, setBucket] = useState('');
+  const [severity, setSeverity] = useState('');
   const ref = useRef<HTMLDivElement>(null);
   const instance = useRef<echarts.EChartsType | null>(null);
   useEffect(() => {
@@ -47,11 +49,28 @@ export default function Trend({ dark, series }: { dark: boolean; series: Point[]
   useEffect(() => {
     instance.current?.setOption({
       xAxis: { data: series.map((s) => s.day.length > 5 ? s.day.slice(5) : s.day) },
-      series: ['alerts', 'critical', 'high'].map((key) => ({ id: key, showSymbol: series.length < 2, data: series.map((s) => s[key as 'alerts' | 'critical' | 'high']) })),
+      series: ['alerts', 'critical', 'high'].map((key) => ({ id: key, showSymbol: !!onInspect || series.length < 2, data: series.map((s) => s[key as 'alerts' | 'critical' | 'high']) })),
     });
-  }, [series, dark]);
+  }, [series, dark, onInspect]);
+  useEffect(() => {
+    const chart = instance.current;
+    const inspect = (event: unknown) => {
+      const params = event as { componentType?: string; dataIndex?: number; seriesName?: string };
+      if (params.componentType !== 'series' || params.dataIndex === undefined) return;
+      const point = series[params.dataIndex];
+      if (point?.since && point.until) onInspect?.(point, params.seriesName === 'Critical' ? 'critical' : params.seriesName === 'High' ? 'high' : undefined);
+    };
+    chart?.on('click', inspect);
+    return () => { chart?.off('click', inspect); };
+  }, [series, dark, onInspect]);
+  const point = series.find((p) => p.since === bucket);
   return <div className="trend-explorer">
-    <div className="trend-controls"><span>Hover for values · drag the range to zoom</span><button type="button" className="btn small" onClick={() => instance.current?.dispatchAction({ type: 'dataZoom', start: 50, end: 100 })}>Recent half</button><button type="button" className="btn small" onClick={() => instance.current?.dispatchAction({ type: 'dataZoom', start: 0, end: 100 })}>Reset zoom</button></div>
+    <div className="trend-controls"><span>{onInspect ? 'Select a point to open alerts · drag the range to zoom' : 'Hover for values · drag the range to zoom'}</span><button type="button" className="btn small" onClick={() => instance.current?.dispatchAction({ type: 'dataZoom', start: 50, end: 100 })}>Recent half</button><button type="button" className="btn small" onClick={() => instance.current?.dispatchAction({ type: 'dataZoom', start: 0, end: 100 })}>Reset zoom</button></div>
+    {onInspect && <div className="chart-drilldown">
+      <select aria-label="Alert time bucket" value={point ? bucket : ''} onChange={(e) => setBucket(e.target.value)}><option value="">Choose a time bucket</option>{series.filter((p) => p.since).map((p) => <option key={p.since} value={p.since}>{p.day} · {p.alerts} alerts</option>)}</select>
+      <select aria-label="Chart severity" value={severity} onChange={(e) => setSeverity(e.target.value)}><option value="">All severities</option><option value="critical">Critical</option><option value="high">High</option></select>
+      <button className="btn small" disabled={!point} onClick={() => { if (point) onInspect(point, severity || undefined); }}>View matching alerts</button>
+    </div>}
     <div ref={ref} className="chart" role="img" aria-label="Alert activity by severity. Use the range controls to zoom and the legend to toggle series." />
   </div>;
 }

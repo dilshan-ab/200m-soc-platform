@@ -1,3 +1,4 @@
+import { tableKeyboard } from '../lib/tableKeyboard';
 import { KeyboardHelp, NotificationPanel, Pulse } from './Interactive';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useQuery } from '@tanstack/react-query';
@@ -230,7 +231,7 @@ export function Shell() {
             <button type="button" className="avatar workspace-account" aria-label="Open account menu" onClick={() => { setMobile(false); setAccount(true); }}>{initials(name)}</button>
           </div>
         </header>
-        <main id="workspace-main" tabIndex={-1} className="content" key={loc.pathname}><Outlet context={{ dark, live }} /></main>
+        <main onKeyDown={tableKeyboard} id="workspace-main" tabIndex={-1} className="content" key={loc.pathname}><Outlet context={{ dark, live }} /></main>
         {backToTop && <button type="button" className="back-to-top" onClick={() => { document.getElementById('workspace-main')?.focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }); }}><ArrowUp size={15} aria-hidden="true" />Back to top</button>}
       </div>
       {palette && (

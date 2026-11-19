@@ -7,11 +7,12 @@ export const Sev = ({ v }: { v: string }) => <span className={`badge sev-${v}`}>
 export const Status = ({ v }: { v: string }) => <span className={`badge st-${v}`}>{titleCase(v)}</span>;
 
 export function Modal({ title, children, onClose, wide }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean }) {
+  const returnFocus = useRef(document.activeElement as HTMLElement | null);
   return (
     <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="overlay" />
-        <Dialog.Content className="modal" aria-describedby={undefined} style={wide ? { width: 'min(760px, 94vw)' } : undefined}>
+        <Dialog.Content className="modal" onCloseAutoFocus={(event) => { if (returnFocus.current?.isConnected) { event.preventDefault(); returnFocus.current.focus({ preventScroll: true }); } }} aria-describedby={undefined} style={wide ? { width: 'min(760px, 94vw)' } : undefined}>
           <Dialog.Title>{title}</Dialog.Title>
           <Dialog.Close className="close" aria-label="Close">×</Dialog.Close>
           {children}
@@ -22,11 +23,12 @@ export function Modal({ title, children, onClose, wide }: { title: string; child
 }
 
 export function Drawer({ title, children, onClose }: { title: ReactNode; children: ReactNode; onClose: () => void }) {
+  const returnFocus = useRef(document.activeElement as HTMLElement | null);
   return (
     <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="overlay" />
-        <Dialog.Content className="drawer" aria-describedby={undefined}>
+        <Dialog.Content className="drawer" onCloseAutoFocus={(event) => { if (returnFocus.current?.isConnected) { event.preventDefault(); returnFocus.current.focus({ preventScroll: true }); } }} aria-describedby={undefined}>
           <span className="eyebrow">DETAILS</span>
           <Dialog.Close className="close" aria-label="Close details">×</Dialog.Close>
           <Dialog.Title>{title}</Dialog.Title>
@@ -77,19 +79,29 @@ export function SearchBox({ value, onChange, placeholder = 'Search…', label = 
   );
 }
 
-export const Empty = ({ children = 'Nothing here yet.' }: { children?: ReactNode }) => <div className="empty">{children}</div>;
-export const Loading = () => <div className="empty" role="status">Loading…</div>;
-export const ErrorBox = ({ error }: { error: unknown }) => <div className="error" role="alert">{error instanceof Error ? error.message : 'Something went wrong'}</div>;
+export const Empty = ({ children = 'Nothing here yet.', action, onAction }: { children?: ReactNode; action?: string; onAction?: () => void }) => <div className="empty"><p>{children}</p>{onAction && <button className="btn small" onClick={onAction}>{action ?? 'Clear filters'}</button>}</div>;
+export const Loading = () => <div className="loading-state" role="status"><span className="loading-indicator" aria-hidden="true" />Loading…</div>;
+export const ErrorBox = ({ error, onRetry, retrying = false }: { error: unknown; onRetry?: () => void; retrying?: boolean }) => <div className="error" role="alert"><span>{error instanceof Error ? error.message : 'Something went wrong'}</span>{onRetry && <button className="btn small" disabled={retrying} onClick={onRetry}>{retrying ? 'Retrying…' : 'Try again'}</button>}</div>;
 
-type ToastFn = (msg: string, err?: boolean) => void;
+type ToastAction = { label: string; run: () => void | Promise<void> };
+type ToastFn = (msg: string, err?: boolean, action?: ToastAction) => void;
 const ToastCtx = createContext<ToastFn>(() => {});
 export const useToast = () => useContext(ToastCtx);
+function ToastItem({ item, dismiss }: { item: { id: number; msg: string; err: boolean; action?: ToastAction }; dismiss: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState('');
+  return <div className={`toast${item.err ? ' err' : ''}`}><span>{failure || item.msg}</span>
+    {item.action && <button disabled={busy} onClick={async () => { setBusy(true); try { await item.action!.run(); dismiss(); } catch (e) { setFailure(e instanceof Error ? e.message : 'Could not undo the change'); setBusy(false); } }}>{busy ? 'Working…' : item.action.label}</button>}
+    <button aria-label="Dismiss notification" onClick={dismiss}>×</button>
+  </div>;
+}
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<{ id: number; msg: string; err: boolean }[]>([]);
-  const push = useCallback<ToastFn>((msg, err = false) => {
+  const [items, setItems] = useState<{ id: number; msg: string; err: boolean; action?: ToastAction }[]>([]);
+  const push = useCallback<ToastFn>((msg, err = false, action) => {
     const id = Date.now() + Math.random();
-    setItems((x) => [...x, { id, msg, err }]);
-    setTimeout(() => setItems((x) => x.filter((i) => i.id !== id)), 4500);
+    setItems((x) => [...x, { id, msg, err, action }]);
+    // Undo notifications remain until used or dismissed so keyboard users have time.
+    if (!action) setTimeout(() => setItems((x) => x.filter((i) => i.id !== id)), 6000);
   }, []);
-  return <ToastCtx.Provider value={push}>{children}<div className="toast-wrap" aria-live="polite">{items.map((i) => <div key={i.id} className={`toast${i.err ? ' err' : ''}`}>{i.msg}</div>)}</div></ToastCtx.Provider>;
+  return <ToastCtx.Provider value={push}>{children}<div className="toast-wrap" aria-live="polite">{items.map((i) => <ToastItem key={i.id} item={i} dismiss={() => setItems((x) => x.filter((v) => v.id !== i.id))} />)}</div></ToastCtx.Provider>;
 }

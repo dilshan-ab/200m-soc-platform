@@ -117,9 +117,10 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
 const SHORTCUTS: { key: string; label: string; scope?: string }[] = [
   { key: 'Ctrl+K', label: 'Open command palette' },
   { key: '?', label: 'Show keyboard shortcuts' },
-  { key: 'j / k', label: 'Move down / up in list', scope: 'Alerts' },
+  { key: 'j / k', label: 'Move down / up in list', scope: 'Tables' },
+  { key: 'Arrow ↑ / ↓, Home / End', label: 'Navigate focused rows', scope: 'Tables' },
   { key: 'x', label: 'Toggle selection', scope: 'Alerts' },
-  { key: 'Enter', label: 'Open selected item', scope: 'Alerts, Cases' },
+  { key: 'Enter / Space', label: 'Open focused item', scope: 'Tables' },
   { key: 'a', label: 'Acknowledge selected', scope: 'Alerts' },
   { key: 'Escape', label: 'Clear selection / close panel' },
 ];

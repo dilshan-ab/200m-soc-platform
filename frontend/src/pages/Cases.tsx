@@ -42,10 +42,10 @@ export default function Cases() {
         <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={f.mine} onChange={(e) => setF('mine', e.target.checked ? '1' : '')} /> Mine</label>
         {(f.q || f.status || f.severity || f.mine) && <button className="btn" onClick={() => { setSp(new URLSearchParams(), { replace: true }); setPage(1); }}>Clear filters</button>}
       </div>
-      {q.isLoading ? <Skeleton lines={6} /> : q.error ? <ErrorBox error={q.error} /> : q.data!.items.length === 0 ? <Empty>No cases match.</Empty> : (
+      {q.isLoading ? <Skeleton lines={6} /> : q.error ? <ErrorBox error={q.error} onRetry={() => void q.refetch()} retrying={q.isFetching} /> : q.data!.items.length === 0 ? <Empty onAction={() => { setSp(new URLSearchParams()); setPage(1); }}>No cases match these filters. Clear filters to see all investigations.</Empty> : (
         <>
           <div className="table-wrap"><table><thead><tr><th>#</th><th>Title</th><th>Severity</th><th>Status</th><th>Resolve SLA</th><th>Sync</th><th>Created</th></tr></thead>
-            <tbody>{q.data!.items.map((c) => <tr key={c.id} tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => openCase(c.id)} onKeyDown={(e) => e.key === 'Enter' && openCase(c.id)}>
+            <tbody>{q.data!.items.map((c) => <tr key={c.id} tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => openCase(c.id)} onKeyDown={(e) => { if (e.target === e.currentTarget && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); openCase(c.id); } }}>
               <td className="mono">{c.number}</td><td className="wrap">{c.title}</td><td><Sev v={c.severity} /></td><td><Status v={c.status} /></td><td><LiveTimer deadline={c.resolve_due} done={c.status === 'closed' || c.status === 'resolved'} /></td><td>{c.sync_status}</td><td>{ago(c.created_at)}</td></tr>)}</tbody></table></div>
           <Pager page={page} limit={50} total={q.data!.total} set={setPage} />
         </>
@@ -99,7 +99,7 @@ function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const enrich = useAct((value: string) => post('/api/intel/enrich', { indicator: value, case_id: id }), ['case', 'intel-jobs'], 'Enrichment queued');
   const setStatus = useAct((a: { status: string; resolution?: string }) => patch(`/api/cases/${id}`, { version: q.data.version, status: a.status, resolution: a.resolution ?? '' }), keys, 'Case updated', () => setResolve(null));
   if (q.isLoading) return <Drawer title="Case" onClose={onClose}><Loading /></Drawer>;
-  if (q.error) return <Drawer title="Case" onClose={onClose}><ErrorBox error={q.error} /></Drawer>;
+  if (q.error) return <Drawer title="Case" onClose={onClose}><ErrorBox error={q.error} onRetry={() => void q.refetch()} retrying={q.isFetching} /></Drawer>;
   const c = q.data;
   const write = can('cases.write') && c.status !== 'closed';
   return (
