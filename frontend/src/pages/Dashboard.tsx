@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Activity, ArrowRight, Bell, Clock, ExternalLink, Globe, Layers, Plug, Plus, RefreshCw, Shield, Wrench, X } from 'lucide-react';
+import { Activity, ArrowRight, Bell, Clock, ExternalLink, Globe, Layers, Plus, RefreshCw, Shield, Wrench, X } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import { DashboardLayout, WidgetGrid } from '../components/DashboardLayout';
@@ -10,7 +10,7 @@ import { Button } from '../components/Button';
 import { ErrorBox, Field, Loading, Modal, PageHead, Sev, Status } from '../components/ui';
 import { del, get, post, type Page } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { ago, firstName, until } from '../lib/format';
+import { ago, firstName } from '../lib/format';
 import { useAct } from '../lib/mut';
 import type { Point } from '../Trend';
 import type { MapData } from './ThreatMap';
@@ -30,9 +30,7 @@ type DashboardData = {
     agents_active: number;
     assets_total: number;
   };
-  sources: { id: string; name: string; type: string; last_success_at: string | null; error_count: number; lag_seconds: number }[];
   categories?: { name: string; count: number }[];
-  top_alerts: { id: string; title: string; host?: string; rule_id?: string; source: string; severity: string; ack_due?: string; status: string }[];
   series: Point[];
 };
 
@@ -50,11 +48,6 @@ export default function Dashboard() {
   const map = useQuery({
     queryKey: ['threat-map', days], queryFn: () => get<MapData>('/api/threat-map', { days }),
     enabled: allowed, refetchInterval: 30_000,
-  });
-  const recent = useQuery({
-    queryKey: ['overview-recent-alerts'],
-    queryFn: () => get<Page<RecentAlert>>('/api/alerts', { limit: 5 }),
-    enabled: allowed, refetchInterval: 15_000,
   });
   const cases = useQuery({
     queryKey: ['overview-active-cases'],
@@ -83,7 +76,7 @@ export default function Dashboard() {
       {!allowed && <p className="notice">Use the navigation to open the areas assigned to your role.</p>}
       {allowed && query.isPending && <Loading />}
       {query.error && <ErrorBox error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} />}
-      {data && <OverviewData data={data} dark={dark} map={map} recent={recent} cases={cases} />}
+      {data && <OverviewData data={data} dark={dark} map={map} cases={cases} />}
     </div>
   );
 }
@@ -132,12 +125,11 @@ function DualClock({ live = true }: { live?: boolean }) {
 }
 
 type OverviewQuery<T> = { data?: T; error: Error | null; isPending: boolean; refetch: () => unknown; isFetching: boolean };
-type RecentAlert = { id: string; title: string; host?: string; src_ip?: string; time: string; severity: string };
 type ActiveCase = { id: string; number: string; title: string; severity: string; status: string; updated_at: string };
 
-function OverviewData({ data, dark, map, recent, cases }: {
+function OverviewData({ data, dark, map, cases }: {
   data: DashboardData; dark: boolean;
-  map: OverviewQuery<MapData>; recent: OverviewQuery<Page<RecentAlert>>; cases: OverviewQuery<Page<ActiveCase>>;
+  map: OverviewQuery<MapData>; cases: OverviewQuery<Page<ActiveCase>>;
 }) {
   const { can } = useAuth();
   const navigate = useNavigate();
@@ -158,8 +150,6 @@ function OverviewData({ data, dark, map, recent, cases }: {
     { tone: 'teal', label: 'Endpoint coverage', value: <AnimatedNumber value={m.assets_total ? m.agent_coverage_pct : null} suffix="%" />, note: `${m.agents_active} of ${m.assets_total} agents active`, icon: Shield, to: '/app/assets', cap: 'assets.read' },
   ];
   const categories = data.categories ?? [];
-  const connectors = [...data.sources].sort((a, b) => Number(b.error_count > 0) - Number(a.error_count > 0)
-    || Number(!b.last_success_at) - Number(!a.last_success_at) || a.name.localeCompare(b.name));
 
   return (
     <DashboardLayout>
@@ -171,11 +161,11 @@ function OverviewData({ data, dark, map, recent, cases }: {
             : <article className="metric ops-kpi" data-tone={tone} key={label}>{body}</article>;
         })}
       </div>
-      <WidgetGrid group="charts">
-        <section key="Alert activity" data-widget-title="Alert activity" className="panel ops-trend">
-          <div className="panel-title"><div><h2><Activity size={18} /> Security overview</h2><p>Alert volume by severity · UTC / Local</p></div></div>
-          <Suspense fallback={<div className="chart empty">Loading chart…</div>}><Trend dark={dark} series={data.series} onInspect={inspect} /></Suspense>
-        </section>
+      <section className="panel ops-trend primary-security-overview">
+        <div className="panel-title"><div><h2><Activity size={18} /> Security overview</h2><p>Alert volume by severity · UTC / Local</p></div></div>
+        <Suspense fallback={<div className="chart empty">Loading chart…</div>}><Trend dark={dark} series={data.series} onInspect={inspect} /></Suspense>
+      </section>
+      <WidgetGrid group="records">
         <section key="Threat landscape" data-widget-title="Threat landscape" className="panel soc-landscape">
           <div className="panel-title"><div><h2><Globe size={18} /> Threat landscape</h2><p>Alert origins in the selected period</p></div><Link to="/app/threat-map">Open map <ArrowRight size={14} /></Link></div>
           <div className="soc-landscape-body">
@@ -186,19 +176,6 @@ function OverviewData({ data, dark, map, recent, cases }: {
               {map.data && <p className="soc-map-note">{map.data.unique_countries ? `${map.data.unique_countries} countries with located alerts` : 'No geolocated alert origins'}</p>}
             </div>
           </div>
-        </section>
-      </WidgetGrid>
-      <WidgetGrid group="records">
-        <section key="Recent alerts" data-widget-title="Recent alerts" className="panel soc-recent">
-          <div className="panel-title"><h2><Bell size={18} /> Recent alerts</h2><Link to="/app/alerts">View all <ArrowRight size={14} /></Link></div>
-          {recent.error ? <ErrorBox error={recent.error} onRetry={() => void recent.refetch()} retrying={recent.isFetching} /> : recent.isPending ? <Loading /> : recent.data?.items.length ? (
-            <ul className="soc-alert-list">{recent.data.items.map((alert) => (
-              <li key={alert.id}><Link onClick={(e) => previewLink(e, 'alert', alert.id)} to={`/app/alerts?open=${encodeURIComponent(alert.id)}`}>
-                <span><strong>{alert.title}</strong><small>{alert.host || alert.src_ip || 'Unknown source'} · {ago(alert.time)}</small></span>
-                <Sev v={alert.severity} />
-              </Link></li>
-            ))}</ul>
-          ) : <p className="empty">No alerts recorded.</p>}
         </section>
         {can('cases.read') && <section key="Active incidents" data-widget-title="Active incidents" className="panel soc-active">
           <div className="panel-title"><h2><Shield size={18} /> Active incidents</h2><Link to="/app/cases">View cases <ArrowRight size={14} /></Link></div>
@@ -211,35 +188,11 @@ function OverviewData({ data, dark, map, recent, cases }: {
           ) : <p className="empty">No active cases.</p>}
         </section>}
         <DashboardLinks key="Linked dashboards" data-widget-title="Linked dashboards" />
-      </WidgetGrid>
-      <WidgetGrid group="support">
-        <section key="Priority alerts" data-widget-title="Priority alerts" className="panel soc-priority">
-          <div className="panel-title"><h2><Bell size={18} /> Priority alerts</h2><Link to="/app/alerts">Open queue <ArrowRight size={14} /></Link></div>
-          {data.top_alerts.length ? <ul className="soc-alert-list">{data.top_alerts.slice(0, 5).map((alert) => (
-            <li key={alert.id}><Link onClick={(e) => previewLink(e, 'alert', alert.id)} to={`/app/alerts?open=${encodeURIComponent(alert.id)}`}>
-              <span><strong>{alert.title}</strong><small>{alert.status === 'new' && alert.ack_due ? `Ack due ${until(alert.ack_due)}` : alert.host || alert.rule_id || alert.source}</small></span>
-              <Sev v={alert.severity} />
-            </Link></li>
-          ))}</ul> : <p className="empty">No open critical or high alerts.</p>}
-        </section>
         <ThreatCategories key="Threat categories" data-widget-title="Threat categories" categories={categories} onInspect={(category) => {
           const params = new URLSearchParams({ category });
           if (data.window) { params.set('since', data.window.since); params.set('until', data.window.until); }
           navigate(`/app/alerts?${params}`);
         }} />
-        {can('integrations.read') && <section key="Connector health" data-widget-title="Connector health" className="panel ops-connectors">
-          <div className="panel-title"><div><h2>Connector health</h2><p>Recent sync activity</p></div><Plug size={19} aria-hidden="true" /></div>
-          <div className="ops-worklist-items">
-            {connectors.slice(0, 5).map((connector) => (
-              <div className="ops-connector" key={connector.id}>
-                <div><strong>{connector.name}</strong><small>{connector.last_success_at ? `Last success ${ago(connector.last_success_at)}` : 'No successful sync recorded'}</small></div>
-                <Status v={connector.error_count ? 'error' : connector.last_success_at ? 'ok' : 'unknown'} />
-              </div>
-            ))}
-            {!connectors.length && <p className="empty">No enabled integrations.</p>}
-          </div>
-          <Link className="button ghost ops-connector-link" to="/app/integrations">Manage integrations <ArrowRight size={15} /></Link>
-        </section>}
       </WidgetGrid>
       {preview && <RecordPreview record={preview} onClose={() => setPreview(null)} />}
     </DashboardLayout>

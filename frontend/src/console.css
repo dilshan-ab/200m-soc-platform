@@ -326,3 +326,12 @@ html { scrollbar-gutter: stable; }
 @media (prefers-reduced-motion: no-preference) { .loading-indicator { animation: console-radar .8s linear infinite; } }
 @media (max-width: 1120px) { .ops-overview .widget-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 650px) { .dashboard-layout-controls > span { flex-basis: 100%; } .chart-drilldown { padding-inline: 12px; } }
+
+/* Security overview is the main, full-width workspace visualization. */
+.ops-overview .primary-security-overview { margin-top: 18px; width: 100%; }
+.ops-overview .ops-trend.primary-security-overview .chart { height: clamp(420px, 52vh, 620px); }
+.ops-overview .widget-grid-records { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 850px) {
+  .ops-overview .widget-grid-records { grid-template-columns: minmax(0, 1fr); }
+  .ops-overview .ops-trend.primary-security-overview .chart { height: 380px; }
+}
