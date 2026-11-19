@@ -31,7 +31,12 @@ def _get_json(client: httpx.Client, url: str, ttl: int = 300) -> Any:
         return hit[1]
     r = client.get(url, timeout=5.0)
     r.raise_for_status()
-    data = r.json()
+    try:
+        data = r.json()
+    except ValueError as e:
+        raise OidcError("identity provider returned invalid JSON") from e
+    if not isinstance(data, dict):
+        raise OidcError("identity provider returned an invalid document")
     _cache[url] = (time.monotonic(), data)
     return data
 
@@ -117,8 +122,12 @@ def exchange_and_validate(client: httpx.Client, code: str, st: OidcState) -> dic
     )
     if r.status_code != 200:
         raise OidcError("token exchange failed")
-    id_token = r.json().get("id_token")
-    if not id_token:
+    try:
+        body = r.json()
+    except ValueError as e:
+        raise OidcError("identity provider returned an invalid token response") from e
+    id_token = body.get("id_token") if isinstance(body, dict) else None
+    if not isinstance(id_token, str) or not id_token:
         raise OidcError("no id_token")
     return validate_id_token(client, id_token, nonce=st.nonce, step_up=st.purpose == "step_up")
 
@@ -126,17 +135,34 @@ def exchange_and_validate(client: httpx.Client, code: str, st: OidcState) -> dic
 def validate_id_token(client: httpx.Client, token: str, *, nonce: str, step_up: bool = False) -> dict[str, Any]:
     s = get_settings()
     doc = discovery(client)
-    header = jwt.get_unverified_header(token)
+    try:
+        header = jwt.get_unverified_header(token)
+    except jwt.PyJWTError as e:
+        raise OidcError("invalid id_token header") from e
     alg = header.get("alg")
     if alg not in s.oidc_allowed_algs:  # pins algorithms, rejects none/HS*
         raise OidcError("disallowed token algorithm")
-    jwks = _get_json(client, _internal(doc["jwks_uri"]), ttl=600)
+    jwks_url = _internal(doc["jwks_uri"])
     key = None
-    for k in jwks.get("keys", []):
-        if k.get("kid") == header.get("kid"):
-            key = jwt.PyJWK.from_dict(k).key
+    for attempt in range(2):
+        jwks = _get_json(client, jwks_url, ttl=600)
+        keys = jwks.get("keys", [])
+        if not isinstance(keys, list):
+            raise OidcError("invalid signing key set")
+        for candidate in keys:
+            if isinstance(candidate, dict) and candidate.get("kid") == header.get("kid"):
+                try:
+                    key = jwt.PyJWK.from_dict(candidate).key
+                except jwt.PyJWTError as e:
+                    raise OidcError("invalid signing key") from e
+                break
+        if key is not None:
+            break
+        if attempt == 0:
+            # Keycloak can rotate keys while this worker still has the old JWKS.
+            # Refresh once during this callback instead of failing a valid login.
+            _cache.pop(jwks_url, None)
     if key is None:
-        _cache.pop(_internal(doc["jwks_uri"]), None)
         raise OidcError("signing key not found")
     try:
         claims = jwt.decode(
@@ -154,8 +180,10 @@ def validate_id_token(client: httpx.Client, token: str, *, nonce: str, step_up: 
         acr = claims.get("acr")
         if acr != s.oidc_step_up_acr:
             raise OidcError("step-up authentication level not achieved")
-        if time.time() - int(claims.get("auth_time", 0)) > 120:
-            raise OidcError(f"step-up authentication is not fresh (auth_time={claims.get('auth_time')}, now={int(time.time())})")
+        auth_time = claims.get("auth_time")
+        now = time.time()
+        if not isinstance(auth_time, (int, float)) or isinstance(auth_time, bool) or not now - 120 <= auth_time <= now + 30:
+            raise OidcError("step-up authentication is not fresh")
     return claims  # type: ignore[no-any-return]
 
 

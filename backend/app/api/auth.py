@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -173,14 +174,31 @@ def revoke_session(sid: str, p: Principal = Depends(get_principal), db: Session 
 
 
 # ------------------------------------------------------------------ OIDC
+def _oidc_failure(request: Request, db: Session, reason: str, *, status: int = 400, return_to: str = "/app") -> RedirectResponse:
+    """Give browser navigations a safe recovery path and log a traceable cause."""
+    reference = getattr(request.state, "correlation_id", "")
+    audit.record(db, "auth.oidc_failure", outcome="failure", ip=client_ip(request), correlation_id=reference, meta={"reason": reason})
+    log.warning("OIDC authentication failed reason=%s reference=%s", reason, reference)
+    db.commit()
+    if "text/html" not in request.headers.get("accept", "").lower():
+        raise HTTPException(status, "authentication failed")
+    destination = oidc.safe_return_to(return_to)
+    if urlsplit(destination).path == "/login":
+        destination = oidc.safe_return_to(parse_qs(urlsplit(destination).query).get("next", ["/app"])[0])
+    params = urlencode({"auth_error": reason, "ref": reference, "next": destination})
+    response = RedirectResponse(f"/login?{params}", status_code=302)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @router.get("/oidc/login")
-def oidc_login(return_to: str = "/", db: Session = Depends(get_db)) -> RedirectResponse:
+def oidc_login(request: Request, return_to: str = "/", db: Session = Depends(get_db)) -> RedirectResponse:
     if get_settings().auth_mode != "oidc":
         raise HTTPException(404, "not found")
     try:
         url = oidc.authorization_url(db, get_http(), return_to=return_to)
-    except (httpx.HTTPError, oidc.OidcError) as e:
-        raise HTTPException(502, "identity provider unavailable") from e
+    except (httpx.HTTPError, oidc.OidcError):
+        return _oidc_failure(request, db, "identity_provider", status=502, return_to=return_to)
     return RedirectResponse(url, status_code=302)
 
 
@@ -188,7 +206,10 @@ def oidc_login(return_to: str = "/", db: Session = Depends(get_db)) -> RedirectR
 def oidc_step_up(p: Principal = Depends(get_principal), return_to: str = "/", db: Session = Depends(get_db)) -> RedirectResponse:
     if get_settings().auth_mode != "oidc" or p.session is None:
         raise HTTPException(404, "not found")
-    url = oidc.authorization_url(db, get_http(), purpose="step_up", return_to=return_to, session_id=p.session.id)
+    try:
+        url = oidc.authorization_url(db, get_http(), purpose="step_up", return_to=return_to, session_id=p.session.id)
+    except (httpx.HTTPError, oidc.OidcError):
+        raise HTTPException(502, "identity provider unavailable") from None
     return RedirectResponse(url, status_code=302)
 
 
@@ -198,8 +219,13 @@ def oidc_callback(request: Request, code: str = "", state: str = "", error: str 
     if s.auth_mode != "oidc":
         raise HTTPException(404, "not found")
     st = db.get(OidcState, state) if state else None
-    if st is None or st.expires_at <= utcnow() or error or not code:
-        raise HTTPException(400, "authentication failed")
+    if st is None:
+        return _oidc_failure(request, db, "invalid_state")
+    return_to = st.return_to
+    if st.expires_at <= utcnow() or error or not code:
+        reason = "expired_state" if st.expires_at <= utcnow() else "provider_denied" if error else "missing_code"
+        db.delete(st)
+        return _oidc_failure(request, db, reason, return_to=return_to)
     db.delete(st)  # single use
     db.flush()
     ip = client_ip(request)
@@ -207,14 +233,13 @@ def oidc_callback(request: Request, code: str = "", state: str = "", error: str 
         claims = oidc.exchange_and_validate(get_http(), code, st)
     except (oidc.OidcError, httpx.HTTPError) as e:
         audit.record(db, "auth.login", outcome="failure", ip=ip, meta={"reason": "oidc_validation"})
-        log.warning("oidc validation failed: %s", str(e)[:200])
-        db.commit()
-        raise HTTPException(400, "authentication failed") from None
+        log.warning("OIDC validation rejected purpose=%s cause=%s reference=%s", st.purpose, str(e)[:200], getattr(request.state, "correlation_id", ""))
+        reason = "identity_provider" if isinstance(e, httpx.HTTPError) else "mfa_required" if st.purpose == "step_up" else "token_validation"
+        return _oidc_failure(request, db, reason, return_to=return_to)
     role = oidc.role_from_claims(claims)
     if role is None:
         audit.record(db, "auth.login", actor=str(claims.get("email", claims["sub"])), outcome="failure", ip=ip, meta={"reason": "no_role"})
-        db.commit()
-        raise HTTPException(403, "no SOC role assigned")
+        return _oidc_failure(request, db, "no_role", status=403, return_to=return_to)
     user = db.execute(select(User).where(User.subject == claims["sub"])).scalar_one_or_none()
     if user is None and claims.get("email") and claims.get("email_verified") is True:
         pending = db.execute(select(User).where(User.email == str(claims["email"]).lower(), User.subject.startswith("pending:"))).scalar_one_or_none()
@@ -225,8 +250,7 @@ def oidc_callback(request: Request, code: str = "", state: str = "", error: str 
         email_claim = str(claims.get("email", f"{claims['sub']}@unknown")).lower()
         if db.execute(select(User.id).where(User.email == email_claim)).first():
             audit.record(db, "auth.login", actor=email_claim, outcome="failure", ip=ip, meta={"reason": "email_conflict"})
-            db.commit()
-            raise HTTPException(403, "account conflict; contact an administrator")
+            return _oidc_failure(request, db, "account_conflict", status=403, return_to=return_to)
         user = User(subject=claims["sub"], email=email_claim, name=str(claims.get("name", "")), role=role, all_clients=role == "superadmin")
         db.add(user)
         db.flush()
@@ -234,12 +258,12 @@ def oidc_callback(request: Request, code: str = "", state: str = "", error: str 
         user.role = role
         user.name = str(claims.get("name", user.name))
     if not user.active:
-        raise HTTPException(403, "account disabled")
+        return _oidc_failure(request, db, "account_disabled", status=403, return_to=return_to)
     user.last_login_at = utcnow()
     if st.purpose == "step_up" and st.session_id:
         rec = db.get(SessionRecord, st.session_id)
-        if rec is None or rec.user_id != user.id or rec.revoked:
-            raise HTTPException(400, "authentication failed")
+        if rec is None or rec.user_id != user.id or rec.revoked or rec.expires_at <= utcnow() or utcnow() - rec.last_seen_at > timedelta(minutes=s.session_idle_minutes):
+            return _oidc_failure(request, db, "session_expired", return_to=return_to)
         rec.step_up_until = utcnow() + timedelta(minutes=s.step_up_minutes)
         audit.record(db, "auth.step_up", actor=user.email, actor_id=user.id, ip=ip)
         return RedirectResponse(oidc.safe_return_to(st.return_to), status_code=302)

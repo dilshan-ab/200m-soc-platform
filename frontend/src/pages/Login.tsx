@@ -6,6 +6,7 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Loading } from '../components/ui';
 import { CircuitLogo } from '../components/CircuitLogo';
+import { LoginRecovery } from '../components/LoginRecovery';
 import { LoginGlobe } from '../components/LoginGlobe';
 import { ApiError, get } from '../lib/api';
 import { WorkspaceIntro } from '../WorkspaceIntro';
@@ -27,11 +28,13 @@ export default function Login() {
   const [totp, setTotp] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  const requested = new URLSearchParams(location.search).get('next') ?? (location.state as { from?: string } | null)?.from;
+  const authParams = new URLSearchParams(location.search);
+  const authError = authParams.get('auth_error');
+  const requested = authParams.get('next') ?? (location.state as { from?: string } | null)?.from;
   const destination = requested && /^\/app(?:[/?#]|$)/.test(requested) ? requested : '/app';
   const ssoReturn = `/login?${new URLSearchParams({ entry: '1', next: destination })}`;
   if (loading) return <Loading />;
-  if (me) {
+  if (me && !authError) {
     const showIntro = entered || busy || new URLSearchParams(location.search).get('entry') === '1';
     if (showIntro && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
       return <WorkspaceIntro onComplete={() => nav(destination, { replace: true })} />;
@@ -95,16 +98,18 @@ export default function Login() {
           </div>
           <div className="login-card">
             <div className="login-symbol" role="img" aria-label="200M logo"><CircuitLogo className="login-logo" /></div>
-            <h2>Sign in</h2>
+            <h2>{authError === 'mfa_required' && me ? 'Verify your account' : 'Sign in'}</h2>
             <p>Use your organization account to access the SOC.</p>
+            {authError && <LoginRecovery code={authError} reference={authParams.get('ref')} />}
             {cfg.isError ? <div className="error" role="alert" style={{ marginTop: 24 }}>The service is unreachable. <button className="btn small" disabled={cfg.isFetching} onClick={() => void cfg.refetch()}>Try again</button></div>
               : mode === 'oidc' ? (
                 <>
                   <Button asChild className="wide company-sso">
-                    <a href={`/api/auth/oidc/login?return_to=${encodeURIComponent(ssoReturn)}`}>
-                      Continue with company SSO <ArrowRight size={17} />
+                    <a href={authError === 'mfa_required' && me ? `/api/auth/oidc/step-up?return_to=${encodeURIComponent(destination)}` : `/api/auth/oidc/login?return_to=${encodeURIComponent(ssoReturn)}`}>
+                      {authError === 'mfa_required' && me ? 'Verify with company SSO' : authError ? 'Try company SSO again' : 'Continue with company SSO'} <ArrowRight size={17} />
                     </a>
                   </Button>
+                  {me && authError && <a className="button outline wide" href={destination}>Return to workspace</a>}
                   <p className="login-note">Sign-in is handled by Keycloak with multi-factor authentication.</p>
                 </>
               ) : mode === 'dev' ? (
