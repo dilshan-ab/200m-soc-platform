@@ -288,5 +288,9 @@ html[data-theme=dark] .login.neon-login {
 
 /* Shift the desktop globe toward the sign-in panel without moving the form. */
 @media (min-width: 851px) {
-  html .login.neon-login .orbit { translate: clamp(56px, 7vw, 120px) 0; }
+  html .login.neon-login .orbit { translate: clamp(72px, 9vw, 100px) 0; }
+}
+
+@media (min-width: 1151px) {
+  html .login.neon-login .orbit { translate: clamp(100px, calc(50vw - 505px), 460px) 0; }
 }
