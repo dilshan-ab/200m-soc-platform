@@ -6,7 +6,7 @@ const COLORS = ['#ff4665', '#ffa035', '#328eff', '#8c63f5', '#7788a5'];
 const number = new Intl.NumberFormat();
 const percent = new Intl.NumberFormat(undefined, { style: 'percent', maximumFractionDigits: 1 });
 
-export function ThreatCategories({ categories }: { categories: { name: string; count: number }[] }) {
+export function ThreatCategories({ categories, onInspect }: { categories: { name: string; count: number }[]; onInspect?: (category: string) => void }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const ranked = categories.filter(({ count }) => count > 0).sort((a, b) => b.count - a.count);
@@ -49,6 +49,7 @@ export function ThreatCategories({ categories }: { categories: { name: string; c
           </button>
         </li>)}</ul>
       </div>
+      {selectedSlice && onInspect && <div className="category-drilldown">{(selectedSlice.key === 'remainder' ? ranked.slice(4) : ranked.filter((c) => `category:${c.name}` === selectedSlice.key)).map((category) => <button type="button" className="btn small" key={category.name} onClick={() => onInspect(category.name)}>View {titleCase(category.name || 'uncategorized')} alerts</button>)}</div>}
       {selectedSlice && <button type="button" className="btn small category-reset" onClick={() => { setSelected(null); setHovered(null); }}>Show all categories</button>}
     </>}
   </section>;
