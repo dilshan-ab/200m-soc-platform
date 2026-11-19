@@ -285,3 +285,8 @@ html[data-theme=dark] .login.neon-login {
   --login-control: var(--bg);
   --login-border: var(--control-border);
 }
+
+/* Nudge the desktop globe toward the sign-in panel without moving the form. */
+@media (min-width: 851px) {
+  html .login.neon-login .orbit { translate: clamp(28px, 3vw, 52px) 0; }
+}
