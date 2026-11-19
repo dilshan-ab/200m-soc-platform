@@ -294,3 +294,9 @@ html[data-theme=dark] .login.neon-login {
 @media (min-width: 1151px) {
   html .login.neon-login .orbit { translate: clamp(100px, calc(50vw - 505px), 460px) 0; }
 }
+
+.login-recovery { margin-top: 20px; padding: 14px; border: 1px solid var(--warn); background: var(--surface); color: var(--text); }
+.login-recovery > strong { display: block; font-size: 13px; margin-bottom: 6px; }
+.login-recovery p { font-size: 12px; line-height: 1.6; color: var(--muted); }
+.login-recovery small { display: block; margin-top: 8px; overflow-wrap: anywhere; }
+html .login.neon-login .login-recovery + .company-sso { margin-top: 18px; }
