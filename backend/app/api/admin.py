@@ -176,6 +176,7 @@ def patch_user(uid: str, body: UserPatch, p: Principal = Depends(require_admin_s
         raise HTTPException(403, "the super admin account cannot be modified from here")
     email = body.email.strip().lower() if body.email is not None else u.email
     profile_changed = email != u.email or (body.name is not None and body.name != u.name)
+    expected = None if u.subject.startswith(("dev:", "pending:")) else u.subject
     if email != u.email and db.execute(select(User.id).where(User.email == email, User.id != uid)).first():
         raise HTTPException(409, "user email already exists")
     if body.client_ids is not None:
@@ -198,7 +199,7 @@ def patch_user(uid: str, body: UserPatch, p: Principal = Depends(require_admin_s
         if get_settings().auth_mode == "oidc":
             if _external_idp():  # the role is re-read from the IdP's claim at every login, so a local edit would not stick
                 raise HTTPException(400, "roles are managed in the identity provider; change the user's role there")
-            _kc(kc.set_role, u.email, body.role)
+            _kc(kc.set_role, u.email, body.role, expected)
             u.role = body.role
             revoke_all(db, u.id)
             meta["role"] = body.role
@@ -231,7 +232,7 @@ def patch_user(uid: str, body: UserPatch, p: Principal = Depends(require_admin_s
         if get_settings().auth_mode == "oidc" and not _external_idp():
             if not p.can("users.provision"):
                 raise HTTPException(403, "user provisioning permission is required to change SSO accounts")
-            _kc(kc.set_enabled, u.email, body.active)
+            _kc(kc.set_enabled, u.email, body.active, expected)
         u.active = body.active
         meta["active"] = body.active
         if not body.active:
@@ -243,8 +244,8 @@ def patch_user(uid: str, body: UserPatch, p: Principal = Depends(require_admin_s
             raise HTTPException(403, "user provisioning permission is required to change SSO profiles")
         if _external_idp():
             raise HTTPException(400, "profiles are managed in the identity provider")
-        expected = None if u.subject.startswith(("dev:", "pending:")) else u.subject
-        _kc(kc.set_profile, u.email, body.name if body.name is not None else u.name, email, expected)
+        u.subject = _kc(kc.set_profile, u.email, body.name if body.name is not None else u.name, email, expected)
+        u.password_hash, u.totp_secret = None, None
     if email != u.email:
         u.email, meta["email"] = email, email
         if u.subject.startswith("dev:"):
