@@ -20,6 +20,7 @@ def kc(monkeypatch):
         monkeypatch.setenv(k, v)
     reset_settings_cache()
     calls: list[tuple[str, str, object]] = []
+    remote_user = {"id": "kc-123"}
 
     def handler(req: httpx.Request) -> httpx.Response:
         p = req.url.path
@@ -31,6 +32,8 @@ def kc(monkeypatch):
         assert req.headers["authorization"] == "Bearer tok"
         if req.method == "GET" and "/roles/" in p:
             return httpx.Response(200, json={"id": "r1", "name": p.rsplit("/", 1)[-1]})
+        if req.method == "GET" and p.endswith("/users/kc-123"):
+            return httpx.Response(200, json=remote_user)
         if req.method == "GET" and p.endswith("/users"):
             return httpx.Response(200, json=[{"id": "kc-123"}])
         if req.method == "GET" and p.endswith("/role-mappings/realm"):
@@ -38,12 +41,14 @@ def kc(monkeypatch):
         if req.method == "DELETE" and p.endswith("/role-mappings/realm"):
             return httpx.Response(204)
         if req.method == "PUT" and p.endswith("/users/kc-123"):
+            remote_user.update(body)
             return httpx.Response(204)
         if req.method == "PUT" and p.endswith("/reset-password"):
             return httpx.Response(204)
         if req.method == "POST" and p.endswith("/logout"):
             return httpx.Response(204)
         if req.method == "POST" and p.endswith("/users"):
+            remote_user.update({k: v for k, v in body.items() if k != "credentials"})
             return httpx.Response(201, headers={"location": f"{KC}/admin/realms/soc/users/kc-123"})
         if req.method == "POST" and p.endswith("/role-mappings/realm"):
             return httpx.Response(204)
@@ -100,7 +105,11 @@ def test_password_failure_and_identity_mismatch(superadmin, kc, monkeypatch):
     monkeypatch.setattr(client, "_call", reject)
     r = superadmin.post(f"/api/admin/users/{created['id']}/password", {"password": PASSWORD})
     assert r.status_code == 400 and "policy" in r.text
-    monkeypatch.setattr(client, "find_user_id", lambda *a: "different-identity")
+    def mismatch(c, method, path, **kw):
+        if method == "GET" and path == "/users/kc-123":
+            return httpx.Response(200, json={"id": "different-identity"})
+        return original(c, method, path, **kw)
+    monkeypatch.setattr(client, "_call", mismatch)
     kc.clear()
     assert superadmin.post(f"/api/admin/users/{created['id']}/password", {"password": PASSWORD}).status_code == 409
     assert not kc
@@ -172,10 +181,15 @@ def test_reset_links_legacy_account_and_clears_local_credentials(superadmin, kc)
 def test_missing_keycloak_account_is_actionable(superadmin, kc, monkeypatch):
     from app import keycloak_admin as client
     created = superadmin.post("/api/admin/users", {"email": "missing@t.local", "password": PASSWORD}).json()
-    monkeypatch.setattr(client, "find_user_id", lambda *a: None)
+    original = client._call
+    def missing(c, method, path, **kw):
+        if method == "GET" and path == "/users/kc-123":
+            return httpx.Response(404)
+        return original(c, method, path, **kw)
+    monkeypatch.setattr(client, "_call", missing)
     kc.clear()
     r = superadmin.post(f"/api/admin/users/{created['id']}/password", {"password": PASSWORD})
-    assert r.status_code == 404 and "Create in Keycloak" in r.text
+    assert r.status_code == 404 and "restore the original account" in r.text
     assert not kc
 
 
@@ -219,3 +233,78 @@ def test_invalid_scope_does_not_partially_edit_keycloak(admin, kc):
     kc.clear()
     r = admin.patch(f"/api/admin/users/{uid}", {"name": "Changed", "role": "admin", "client_ids": ["missing-client"]})
     assert r.status_code == 400 and not kc
+
+
+def test_edit_uses_linked_id_when_soc_email_is_stale(admin, kc, monkeypatch):
+    from app import keycloak_admin as client
+    uid = admin.post("/api/admin/users", {"email": "old@t.local", "password": PASSWORD}).json()["id"]
+    # The account exists by immutable ID, but its email was changed directly in Keycloak.
+    monkeypatch.setattr(client, "find_user_id", lambda *a: None)
+    kc.clear()
+    r = admin.patch(f"/api/admin/users/{uid}", {"email": "new@t.local", "name": "Updated Name", "role": "admin"})
+    assert r.status_code == 200, r.text
+    assert r.json()["email"] == "new@t.local"
+    assert ("PUT", "/admin/realms/soc/users/kc-123", {"firstName": "Updated", "lastName": "Name", "email": "new@t.local", "emailVerified": False}) in kc
+    assert not any(method == "GET" and path.endswith("/users") for method, path, body in kc)
+
+
+def test_reset_and_disable_use_linked_id_after_external_email_change(admin, kc, monkeypatch):
+    from app import keycloak_admin as client
+    uid = admin.post('/api/admin/users', {'email': 'old@t.local', 'password': PASSWORD}).json()['id']
+    def no_search(*a):
+        raise AssertionError('linked identities must not be resolved by email')
+    monkeypatch.setattr(client, 'find_user_id', no_search)
+    assert admin.post(f'/api/admin/users/{uid}/password', {'password': PASSWORD}).status_code == 200
+    assert admin.patch(f'/api/admin/users/{uid}', {'active': False}).status_code == 200
+    assert ('PUT', '/admin/realms/soc/users/kc-123', {'enabled': False}) in kc
+
+
+def test_legacy_username_lookup_links_profile_without_recreating_user(admin, kc, monkeypatch):
+    from app import db as dbmod
+    from app import keycloak_admin as client
+    from app.models import User
+    with dbmod.session_scope() as db:
+        user = User(subject='pending:old@t.local', email='old@t.local', role='l1', name='Old Name')
+        db.add(user)
+        db.flush()
+        uid = user.id
+    original = client._call
+    lookups = []
+    def search(c, method, path, **kw):
+        if method == 'GET' and path == '/users':
+            lookups.append(kw['params'])
+            return httpx.Response(200, json=[] if 'email' in kw['params'] else [{'id': 'kc-123'}])
+        return original(c, method, path, **kw)
+    monkeypatch.setattr(client, '_call', search)
+    kc.clear()
+    r = admin.patch(f'/api/admin/users/{uid}', {'name': 'New Name', 'email': 'new@t.local'})
+    assert r.status_code == 200 and r.json()['identity_status'] == 'linked', r.text
+    assert lookups == [{'email': 'old@t.local', 'exact': 'true'}, {'username': 'old@t.local', 'exact': 'true'}]
+    assert not any(method == 'POST' and path.endswith('/users') for method, path, body in kc)
+    with dbmod.session_scope() as db:
+        assert db.get(User, uid).subject == 'kc-123'
+
+
+def test_deleted_linked_identity_never_falls_back_to_reused_email(admin, kc, monkeypatch):
+    from app import keycloak_admin as client
+    uid = admin.post('/api/admin/users', {'email': 'reused@t.local', 'password': PASSWORD}).json()['id']
+    original = client._call
+    def missing(c, method, path, **kw):
+        if method == 'GET' and path == '/users/kc-123':
+            return httpx.Response(404)
+        if method == 'GET' and path == '/users':
+            raise AssertionError('must not adopt another account with the old email')
+        return original(c, method, path, **kw)
+    monkeypatch.setattr(client, '_call', missing)
+    kc.clear()
+    for body in ({'email': 'new@t.local'}, {'role': 'admin'}, {'active': False}):
+        r = admin.patch(f'/api/admin/users/{uid}', body)
+        assert r.status_code == 404, r.text
+    assert not any(method in ('PUT', 'DELETE', 'POST') and '/openid-connect/' not in path for method, path, body in kc)
+
+
+def test_ambiguous_legacy_lookup_is_rejected(kc, monkeypatch):
+    from app import keycloak_admin as client
+    monkeypatch.setattr(client, '_call', lambda *a, **kw: httpx.Response(200, json=[{'id': 'one'}, {'id': 'two'}]))
+    with pytest.raises(client.KcError, match='multiple Keycloak accounts'):
+        client.find_user_id(auth_api.get_http(), 'ambiguous@t.local')

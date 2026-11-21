@@ -51,7 +51,7 @@ need the code at every sign-in.
 Super admins and admins can manage other people: **Administration > Users > Add user** creates the account in Keycloak (with a temporary
 password you give them, which they must change at first login, plus authenticator enrolment) and in the platform, with the role you pick
 (viewer, l1, l2 or admin) and the clients they may see. Administrators can also edit names/emails, change roles, set client access and permission overrides, and enable/disable accounts there.
-Profiles, roles and account state sync to Keycloak; client access and permission overrides are stored in SOC. User administration applies directly after fresh MFA verification. The super admin account remains protected from admin edits, password resets, session termination and token revocation; administrators cannot change their own account from this page.
+Profiles, roles and account state sync to Keycloak; client access and permission overrides are stored in SOC. Linked users are managed by their Keycloak ID, so email changes do not break account editing. User administration applies directly after fresh MFA verification. The super admin account remains protected from admin edits, password resets, session termination and token revocation; administrators cannot change their own account from this page.
 There is exactly one `superadmin` role; the app never assigns it.
 
 In **Administration > Users**, administrators can **Reset password** with fresh MFA verification. In Keycloak mode this sets a temporary
