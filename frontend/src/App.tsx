@@ -22,6 +22,7 @@ const Automation = lazy(() => import('./pages/Automation'));
 const ThreatMap = lazy(() => import('./pages/ThreatMap'));
 const MitreAttack = lazy(() => import('./pages/MitreAttack'));
 const AnalystPerformance = lazy(() => import('./pages/AnalystPerformance'));
+const SOARMetrics = lazy(() => import('./pages/SOARMetrics'));
 const ThreatHunting = lazy(() => import('./pages/ThreatHunting'));
 const SigmaRules = lazy(() => import('./pages/SigmaRules'));
 const Playbooks = lazy(() => import('./pages/Playbooks'));
@@ -80,6 +81,7 @@ export default function App() {
           <Route path="runbooks" element={<Need cap="runbooks.read"><Runbooks /></Need>} />
           <Route path="reports" element={<Need cap="reports.read"><Reports /></Need>} />
           <Route path="analysts" element={<Need cap="metrics.read"><AnalystPerformance /></Need>} />
+          <Route path="soar-metrics" element={<Need cap="metrics.read"><SOARMetrics /></Need>} />
           <Route path="integrations" element={<Need cap="integrations.read"><Integrations /></Need>} />
           <Route path="automation" element={<Need cap="automation.read"><Automation /></Need>} />
           <Route path="threat-map" element={<Need cap="alerts.read"><ThreatMap /></Need>} />

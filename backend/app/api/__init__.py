@@ -24,6 +24,7 @@ def register_routers(app: FastAPI) -> None:
         platform,
         playbooks,
         response,
+        soar_metrics,
         sigma,
         simulation,
         taxii,
@@ -36,5 +37,5 @@ def register_routers(app: FastAPI) -> None:
     )
 
     for m in (auth, alerts, cases, response, approvals, assets, vulns, intel, integrations, webhooks, admin, ops, platform, threatmap, mitre, analysts, sigma,
-              playbooks, correlation, ueba, copilot, simulation, notebooks, threat_intel, taxii, handoff, warroom, clients):
+              playbooks, correlation, ueba, copilot, simulation, notebooks, threat_intel, taxii, handoff, warroom, clients, soar_metrics):
         app.include_router(m.router)
