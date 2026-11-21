@@ -29,14 +29,15 @@ def idp(monkeypatch, app):
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(key.public_key()))
     jwk.update({"kid": "k1", "alg": "RS256", "use": "sig"})
-    holder: dict = {"token": None}
+    holder: dict = {"token": None, "jwks": [jwk], "cert_requests": 0}
 
     def handler(req: httpx.Request):
         p = req.url.path
         if p.endswith("openid-configuration"):
             return httpx.Response(200, json={"issuer": ISS, "authorization_endpoint": f"{ISS}/auth", "token_endpoint": f"{ISS}/token", "jwks_uri": f"{ISS}/certs"})
         if p.endswith("/certs"):
-            return httpx.Response(200, json={"keys": [jwk]})
+            holder["cert_requests"] += 1
+            return httpx.Response(200, json={"keys": holder["jwks"]})
         if p.endswith("/token"):
             assert b"code_verifier" in req.content and b"client_secret" in req.content
             return httpx.Response(200, json={"id_token": holder["token"]})
@@ -203,3 +204,98 @@ def test_production_requires_oidc_and_hardening(monkeypatch):
     for bad in ({"auth_mode": "dev"}, {"cookie_secure": False}, {"database_url": "sqlite:///x.db"}, {"allow_http_connectors": True}, {"secrets_key": ""}):
         with pytest.raises(ValidationError):
             Settings(**{**base, **bad})
+
+
+def test_rotated_signing_key_is_refreshed_in_same_login(app, idp):
+    c, q = _begin(app)
+    # Cache the old set, then let the provider rotate before the callback.
+    oidc._get_json(auth_api.get_http(), f"{ISS}/certs", ttl=600)
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(key.public_key()))
+    jwk.update({"kid": "k2", "alg": "RS256", "use": "sig"})
+    idp["holder"]["jwks"] = [jwk]
+    now = int(time.time())
+    claims = {"iss": ISS, "aud": CID, "sub": "rotated-user", "exp": now + 300, "iat": now, "nonce": q["nonce"][0], "soc_role": ["l2"]}
+    idp["holder"]["token"] = jwt.encode(claims, key, algorithm="RS256", headers={"kid": "k2"})
+    r = c.get("/api/auth/oidc/callback", params={"code": "a", "state": q["state"][0]})
+    assert r.status_code == 302, r.text
+    assert c.get("/api/auth/me").status_code == 200
+    assert idp["holder"]["cert_requests"] == 2
+
+
+def test_browser_expired_callback_returns_to_recoverable_login(app, idp):
+    from datetime import timedelta
+    from app.models import AuditEvent, utcnow
+
+    c, q = _begin(app, '/api/auth/oidc/login?return_to=/login%3Fentry%3D1%26next%3D%252Fapp%252Falerts')
+    with dbmod.session_scope() as db:
+        db.get(OidcState, q['state'][0]).expires_at = utcnow() - timedelta(seconds=1)
+    r = c.get('/api/auth/oidc/callback', params={'code': 'old-code', 'state': q['state'][0]}, headers={'Accept': 'text/html'})
+    assert r.status_code == 302
+    recovery = parse_qs(urlparse(r.headers['location']).query)
+    assert recovery['auth_error'] == ['expired_state']
+    assert recovery['next'] == ['/app/alerts']
+    assert recovery['ref'] == [r.headers['x-request-id']]
+    assert 'old-code' not in r.headers['location'] and q['state'][0] not in r.headers['location']
+    assert r.headers['cache-control'] == 'no-store'
+    with dbmod.session_scope() as db:
+        assert db.get(OidcState, q['state'][0]) is None
+        event = db.query(AuditEvent).filter_by(action='auth.oidc_failure').one()
+        assert event.meta['reason'] == 'expired_state'
+        assert event.correlation_id == recovery['ref'][0]
+
+
+def test_browser_bad_token_never_gets_a_session(app, idp):
+    c, q = _begin(app)
+    idp['holder']['token'] = idp['mint']('wrong-nonce')
+    r = c.get('/api/auth/oidc/callback', params={'code': 'bad', 'state': q['state'][0]}, headers={'Accept': 'text/html'})
+    assert r.status_code == 302 and 'auth_error=token_validation' in r.headers['location']
+    assert c.get('/api/auth/me').status_code == 401
+    with dbmod.session_scope() as db:
+        assert db.get(OidcState, q['state'][0]) is None
+
+
+def test_unknown_key_still_fails_after_one_refresh(app, idp):
+    c, q = _begin(app)
+    oidc._get_json(auth_api.get_http(), f'{ISS}/certs', ttl=600)
+    now = int(time.time())
+    idp['holder']['token'] = jwt.encode({'iss': ISS, 'aud': CID, 'sub': 'u', 'exp': now + 300, 'iat': now, 'nonce': q['nonce'][0], 'soc_role': ['admin']}, idp['key'], algorithm='RS256', headers={'kid': 'unpublished-key'})
+    r = c.get('/api/auth/oidc/callback', params={'code': 'bad', 'state': q['state'][0]})
+    assert r.status_code == 400
+    assert idp['holder']['cert_requests'] == 2
+    assert c.get('/api/auth/me').status_code == 401
+
+
+def test_malformed_token_is_auth_failure_not_server_error(app, idp):
+    c, q = _begin(app)
+    idp['holder']['token'] = 'not-a-jwt'
+    r = c.get('/api/auth/oidc/callback', params={'code': 'bad', 'state': q['state'][0]})
+    assert r.status_code == 400 and r.json()['detail'] == 'authentication failed'
+
+
+def test_provider_cancel_consumes_state_and_does_not_echo_provider_text(app, idp):
+    c, q = _begin(app)
+    r = c.get('/api/auth/oidc/callback', params={'error': 'arbitrary-provider-text', 'state': q['state'][0]}, headers={'Accept': 'text/html'})
+    assert r.status_code == 302 and 'auth_error=provider_denied' in r.headers['location']
+    assert 'arbitrary-provider-text' not in r.headers['location']
+    with dbmod.session_scope() as db:
+        assert db.get(OidcState, q['state'][0]) is None
+
+
+def test_step_up_expired_session_recovers_without_reactivating_it(app, idp):
+    from datetime import timedelta
+    from app.models import utcnow
+
+    c, q = _begin(app)
+    idp['holder']['token'] = idp['mint'](q['nonce'][0])
+    c.get('/api/auth/oidc/callback', params={'code': 'a', 'state': q['state'][0]})
+    r = c.get('/api/auth/oidc/step-up?return_to=/app/admin')
+    step = parse_qs(urlparse(r.headers['location']).query)
+    with dbmod.session_scope() as db:
+        db.query(SessionRecord).one().expires_at = utcnow() - timedelta(seconds=1)
+    idp['holder']['token'] = idp['mint'](step['nonce'][0])
+    r = c.get('/api/auth/oidc/callback', params={'code': 'b', 'state': step['state'][0]}, headers={'Accept': 'text/html'})
+    assert r.status_code == 302 and 'auth_error=session_expired' in r.headers['location']
+    assert c.get('/api/auth/me').status_code == 401
+    with dbmod.session_scope() as db:
+        assert db.query(SessionRecord).one().step_up_until is None

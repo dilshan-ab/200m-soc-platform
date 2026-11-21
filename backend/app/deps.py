@@ -32,6 +32,11 @@ class Principal:
     def label(self) -> str:
         return self.user.email
 
+    @property
+    def is_superadmin(self) -> bool:
+        """Owner authority is interactive; API tokens never inherit approval bypass."""
+        return self.user.role == "superadmin" and self.session is not None and self.token is None
+
     def can(self, cap: str) -> bool:
         if self.token is not None and cap not in (self.token.scopes or []) and "*" not in (self.token.scopes or []):
             return False

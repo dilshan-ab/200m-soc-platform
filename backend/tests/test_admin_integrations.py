@@ -117,23 +117,21 @@ def test_catalogue_lists_all_28_with_fields(admin):
     assert all(c["fields"] and c["link_method"] for c in cat)
 
 
-def test_admin_promotion_requires_second_admin(admin, admin2, make_session):
-    make_session("l2@t.local", "l2")
-    with dbmod.session_scope() as db:
-        uid = db.query(User).filter_by(email="l2@t.local").one().id
-    r = admin.patch(f"/api/admin/users/{uid}", {"role": "admin"}).json()
-    assert r["pending_approval"] and r["role"] == "l2"
-    assert admin2.post(f"/api/approvals/changes/{r['pending_approval']}/decision", {"decision": "approve", "reason": "ok promote"}).json()["status"] == "applied"
-    assert admin.get("/api/admin/users").json()
+def test_admin_promotes_user_directly(admin, make_session):
+    target = make_session("l2@t.local", "l2")
+    uid = target.get("/api/auth/me").json()["id"]
+    r = admin.patch(f"/api/admin/users/{uid}", {"role": "admin"})
+    assert r.status_code == 200, r.text
+    assert r.json()["role"] == "admin" and "pending_approval" not in r.json()
     with dbmod.session_scope() as db:
         assert db.get(User, uid).role == "admin"
 
 
-def test_only_super_admin_creates_users_and_admins(admin, superadmin):
+def test_admins_create_users_but_protect_super_admin(admin, superadmin):
     me = admin.get("/api/auth/me").json()
     assert admin.patch(f"/api/admin/users/{me['id']}", {"active": False}).status_code == 403
     body = {"email": "x@t.local", "role": "admin", "password": PASSWORD}
-    assert admin.post("/api/admin/users", body).status_code == 403  # a plain admin cannot add users or admins
+    assert admin.post("/api/admin/users", {**body, "email": "admin-created@t.local"}).status_code == 201
     r = superadmin.post("/api/admin/users", body)
     assert r.status_code == 201 and r.json()["role"] == "admin"  # no second approval needed
     assert superadmin.post("/api/admin/users", {**body, "email": "y@t.local", "role": "superadmin"}).status_code == 422  # one super admin only

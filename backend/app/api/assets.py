@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from .. import audit
@@ -53,6 +53,7 @@ class AssetPatch(BaseModel):
     department: str | None = Field(default=None, max_length=120)
     owner: str | None = Field(default=None, max_length=120)
     criticality: Literal["low", "medium", "high", "critical"] | None = None
+    expected_criticality: Literal["low", "medium", "high", "critical"] | None = None
     client_id: str | None = None
     decommissioned: bool | None = None
 
@@ -60,11 +61,19 @@ class AssetPatch(BaseModel):
 @router.patch("/assets/{aid}")
 def patch_asset(aid: str, body: AssetPatch, p: Principal = Depends(require("assets.write")), db: Session = Depends(get_db)) -> dict[str, Any]:
     a = scoped_get(db, Asset, aid, p)
-    data = body.model_dump(exclude_unset=True)
+    data = body.model_dump(exclude_unset=True, exclude={"expected_criticality"})
     if "client_id" in data and data["client_id"] and not p.can_see_client(data["client_id"]):
         raise HTTPException(403, "client not permitted")
-    for k, v in data.items():
-        setattr(a, k, v)
+    if body.expected_criticality is not None:
+        if data.get("criticality") is None:
+            raise HTTPException(400, "criticality is required with expected_criticality")
+        result = db.execute(update(Asset).where(Asset.id == a.id, Asset.criticality == body.expected_criticality).values(**data).execution_options(synchronize_session=False))
+        if result.rowcount != 1:
+            raise HTTPException(409, "Asset criticality changed since your update. Reload before changing it again.")
+        db.refresh(a)
+    else:
+        for k, v in data.items():
+            setattr(a, k, v)
     audit.record(db, "asset.update", actor=p.label, actor_id=p.user.id, resource_type="asset", resource_id=a.id, client_id=a.client_id, ip=p.ip, meta=data)
     return asset_out(a, True)
 

@@ -24,13 +24,13 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
   const f = { severity: explicitSev.length > 0 ? explicitSev : (sp.has('show_all') ? [] : DEFAULT_SEVERITIES), status: sp.get('status') ?? '', q: sp.get('q') ?? '', category: sp.get('category') ?? '',
     source: sp.get('source') ?? '', host: sp.get('host') ?? '', client_id: sp.get('client_id') ?? '',
     unassigned_client: sp.get('unassigned_client') === 'true' ? true : undefined,
-    since: sp.get('since') ?? '',
+    since: sp.get('since') ?? '', until: sp.get('until') ?? '',
   };
   const setF = (k: string, v: string) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); setSp(n, { replace: true }); setPage(1); };
   const q = useQuery({ queryKey: ['alerts', f, page], queryFn: () => get<Page<Alert>>('/api/alerts', { ...f, status: f.status ? [f.status] : [], page, limit: 50 }) });
   const total = q.data?.total;
   useEffect(() => { if (total !== undefined) setPage((current) => Math.min(current, Math.max(1, Math.ceil(total / 50)))); }, [total]);
-  const scoped = Boolean(f.source || f.host || f.since || f.client_id || f.unassigned_client);
+  const scoped = Boolean(f.source || f.host || f.since || f.until || f.client_id || f.unassigned_client);
   const sources = useQuery({ queryKey: ['alert-sources'], queryFn: () => get<string[]>('/api/alerts/sources'), enabled: workspace !== 'alerts' });
   const { can } = useAuth();
   const qc = useQueryClient();
@@ -41,7 +41,7 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
     onError: (e: Error) => toast(e.message, true),
   });
   const severityKey = f.severity.join(',');
-  useEffect(() => { setPage(1); setSel(new Set()); setCur(-1); }, [f.q, f.status, f.category, severityKey, f.source, f.host, f.since, f.client_id, f.unassigned_client]);
+  useEffect(() => { setPage(1); setSel(new Set()); setCur(-1); }, [f.q, f.status, f.category, severityKey, f.source, f.host, f.since, f.until, f.client_id, f.unassigned_client]);
   const open = sp.get('open');
   const [cur, setCur] = useState(-1);
   const items = q.data?.items ?? [];
@@ -79,7 +79,7 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
           <button className="btn small danger" onClick={() => setDeletingAll(true)}>Delete all alerts</button>
         )}
       </PageHead>
-      {scoped && <p className="notice">Filtered telemetry{f.host ? ` · Host: ${f.host}` : ''}{f.source ? ` · Source: ${f.source}` : ''}{f.since ? ` · Since ${when(f.since)}` : ''}</p>}
+      {scoped && <p className="notice">Filtered telemetry{f.host ? ` · Host: ${f.host}` : ''}{f.source ? ` · Source: ${f.source}` : ''}{f.since ? ` · Since ${when(f.since)}` : ''}{f.until ? ` · Until ${when(f.until)}` : ''}</p>}
       <SavedViews area="alerts" onApply={() => { setPage(1); setSel(new Set()); setCur(-1); }} />
       <Chips items={[
         { label: 'Medium+', active: isDefault, onClick: clearAll },
@@ -108,12 +108,12 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
         </>}
         {(scoped || f.q || f.status || f.category || f.severity.length > 0) && <button className="btn small" onClick={clearAll}>Clear filters</button>}
       </div>
-      {q.isLoading ? <Skeleton lines={8} /> : q.error ? <ErrorBox error={q.error} /> : q.data!.items.length === 0 ? <Empty>No alerts match these filters.</Empty> : (
+      {q.isLoading ? <Skeleton lines={8} /> : q.error ? <ErrorBox error={q.error} onRetry={() => void q.refetch()} retrying={q.isFetching} /> : q.data!.items.length === 0 ? <Empty onAction={clearAll}>No alerts match these filters. Clear filters to return to the full queue.</Empty> : (
         <>
           <div className="table-wrap"><table>
             <thead><tr><th><input type="checkbox" style={{ width: 'auto' }} aria-label="Select all on this page" checked={allSel} onChange={() => setSel(allSel ? new Set() : new Set(items.map((a) => a.id)))} /></th><th>Severity</th><th>Alert</th><th>Host</th><th>Source IP</th><th>Source</th><th>Status</th><th>Count</th><th>Ack due</th><th>Time</th></tr></thead>
             <tbody>{q.data!.items.map((a) => (
-              <tr key={a.id} tabIndex={0} className={`clickable${items[cur]?.id === a.id ? ' kbd-focus' : ''}`} onClick={() => openAlert(a.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && event.key === 'Enter') openAlert(a.id); }}>
+              <tr key={a.id} tabIndex={0} className={`clickable${items[cur]?.id === a.id ? ' kbd-focus' : ''}`} onClick={() => openAlert(a.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); openAlert(a.id); } }}>
                 <td onClick={(e) => e.stopPropagation()}><input type="checkbox" style={{ width: 'auto' }} aria-label={`Select ${a.title}`} checked={sel.has(a.id)} onChange={() => toggle(a.id)} /></td>
                 <td><Sev v={a.severity} /></td><td className="wrap">{a.title}{a.sla_breached && <span className="badge st-failed" style={{ marginLeft: 8 }}>SLA</span>}</td>
                 <td>{a.host || '—'}</td><td className="mono">{a.src_ip || '—'}</td><td>{a.source}</td><td><Status v={a.status} /></td><td>{a.count}</td>
@@ -157,7 +157,7 @@ function AlertDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const enrich = useMutation({ mutationFn: (ind: string) => post('/api/intel/enrich', { indicator: ind, alert_id: id }), onSuccess: () => toast('Enrichment queued — see Threat intel'), onError: (e: Error) => toast(e.message, true) });
   return (
     <Drawer title={a ? <><Sev v={a.severity} /> {a.title}</> : 'Alert'} onClose={onClose}>
-      {q.isLoading ? <Skeleton lines={8} /> : q.error ? <ErrorBox error={q.error} /> : (
+      {q.isLoading ? <Skeleton lines={8} /> : q.error ? <ErrorBox error={q.error} onRetry={() => void q.refetch()} retrying={q.isFetching} /> : (
         <>
           <div className="row" style={{ marginBottom: 14 }}>
             {can('alerts.triage') && a.status === 'new' && <button className="btn primary small" onClick={() => upd.mutate({ status: 'acknowledged' })}>Acknowledge</button>}

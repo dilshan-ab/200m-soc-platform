@@ -42,7 +42,7 @@ def dashboard(p: Principal = Depends(require("alerts.read")), db: Session = Depe
     if client_id:
         scope.append(Alert.client_id == client_id)
     top = db.execute(select(Alert).where(*scope, Alert.status.in_(["new", "acknowledged", "investigating"]), Alert.severity.in_(["critical", "high"])).order_by(Alert.time.desc(), Alert.id).limit(10)).scalars()
-    categories = db.execute(select(Alert.category, func.count()).where(*scope, Alert.time >= cutoff).group_by(Alert.category).order_by(func.count().desc(), Alert.category)).all()
+    categories = db.execute(select(Alert.category, func.count()).where(*scope, Alert.time >= cutoff, Alert.time <= now).group_by(Alert.category).order_by(func.count().desc(), Alert.category)).all()
     srv = []
     if p.can("servers.read"):
         srv = [{"id": s.id, "name": s.name, "status": s.status, "criticality": s.criticality} for s in db.execute(select(Server).where(p.scope(Server.client_id)).order_by(Server.name)).scalars()]
@@ -56,11 +56,11 @@ def dashboard(p: Principal = Depends(require("alerts.read")), db: Session = Depe
     series = []
     for offset in range((25 if hourly else days + 1) - 1, -1, -1):
         start = end - offset * interval
-        bucket = select(Alert.severity, func.count()).where(*scope, Alert.time >= max(start, cutoff), Alert.time < start + interval).group_by(Alert.severity)
+        bucket = select(Alert.severity, func.count()).where(*scope, Alert.time >= max(start, cutoff), Alert.time < start + interval, Alert.time <= now).group_by(Alert.severity)
         by_sev = dict(db.execute(bucket).all())
-        series.append({"day": start.strftime("%H:%M") if hourly else start.date().isoformat(), "alerts": sum(by_sev.values()), "critical": by_sev.get("critical", 0), "high": by_sev.get("high", 0)})
+        series.append({"day": start.strftime("%H:%M") if hourly else start.date().isoformat(), "since": iso(max(start, cutoff)), "until": iso(min(start + interval - timedelta(microseconds=1), now)), "alerts": sum(by_sev.values()), "critical": by_sev.get("critical", 0), "high": by_sev.get("high", 0)})
     return {
-        "metrics": m, "top_alerts": [alert_out(a) for a in top], "servers": srv, "sources": sources,
+        "window": {"since": iso(cutoff), "until": iso(now)}, "metrics": m, "top_alerts": [alert_out(a) for a in top], "servers": srv, "sources": sources,
         "series": series, "categories": [{"name": name, "count": count} for name, count in categories],
     }
 

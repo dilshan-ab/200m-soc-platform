@@ -48,11 +48,19 @@ There is **one login to start with: the super admin**, whose email and password 
 **Continue with company SSO**. On the first sign-in Keycloak makes you change the password and enrol an authenticator app (TOTP); after that you
 need the code at every sign-in.
 
-The super admin is the only account that can add people: **Administration > Users > Add user** creates the account in Keycloak (with a temporary
+Super admins and admins can manage other people: **Administration > Users > Add user** creates the account in Keycloak (with a temporary
 password you give them, which they must change at first login, plus authenticator enrolment) and in the platform, with the role you pick
-(viewer, l1, l2 or admin) and the clients they may see. The super admin can also change roles and enable/disable accounts there; changes are synced
-to Keycloak. Plain admins can run the platform but cannot add users or admins, and nobody can edit the super admin account from the app.
+(viewer, l1, l2 or admin) and the clients they may see. Administrators can also edit names/emails, change roles, set client access and permission overrides, and enable/disable accounts there.
+Profiles, roles and account state sync to Keycloak; client access and permission overrides are stored in SOC. Linked users are managed by their Keycloak ID, so email changes do not break account editing. User administration applies directly after fresh MFA verification. The super admin account remains protected from admin edits, password resets, session termination and token revocation; administrators cannot change their own account from this page.
 There is exactly one `superadmin` role; the app never assigns it.
+
+In **Administration > Users**, administrators can **Reset password** with fresh MFA verification. In Keycloak mode this sets a temporary
+password, requires a change at the next sign-in, and ends existing Keycloak and SOC sessions. The account's authenticator stays enrolled.
+For an older local/pending SOC account missing from Keycloak, select **Create in Keycloak** in the password dialog; this preserves its SOC ID,
+client access and history. If it already exists in Keycloak, leave that option off and reset its password to link it.
+In the Keycloak admin console, select the `soc` realm (or your configured `SOC_KC_REALM`) to find SOC users.
+Development mode creates local SOC users only; it does not synchronize users to Keycloak. The owner's own password is changed on the Keycloak account page.
+
 
 Roles come from the `soc_role` claim. Sensitive actions trigger a step-up re-verification (fresh TOTP, `acr=mfa-webauthn`, `auth_time` within 2 minutes).
 The app talks to Keycloak's Admin API through the `soc-admin` service account (it only has user-management rights in the `soc` realm).

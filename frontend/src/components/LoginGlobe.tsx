@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GeometryCollection, Topology } from 'topojson-specification';
 
-export function LoginGlobe() {
+export function LoginGlobe({ paused = false }: { paused?: boolean }) {
   const landPath = useRef<SVGPathElement>(null);
   const gridPath = useRef<SVGPathElement>(null);
+  const rotation = useRef(0);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -26,10 +27,13 @@ export function LoginGlobe() {
       const path = geoPath(projection);
       const startedAt = performance.now();
       let lastDraw = -Infinity;
+      let lastRotation = startedAt;
 
       const draw = (now: number) => {
         if (now - lastDraw >= 1000 / 30) {
-          projection.rotate([-20 - ((now - startedAt) * 0.006) % 360, -18, 0]);
+          rotation.current = (rotation.current + (now - lastRotation) * 0.006) % 360;
+          lastRotation = now;
+          projection.rotate([-20 - rotation.current, -18, 0]);
           landElement.setAttribute('d', path(land) ?? '');
           gridElement.setAttribute('d', path(grid) ?? '');
           lastDraw = now;
@@ -44,7 +48,7 @@ export function LoginGlobe() {
       const currentRun = ++run;
       cancelAnimationFrame(frame);
       if (motion.matches) setReady(false);
-      else void start(currentRun).catch(() => {
+      else if (!paused) void start(currentRun).catch(() => {
         if (currentRun === run) setReady(false);
       });
     };
@@ -55,7 +59,7 @@ export function LoginGlobe() {
       cancelAnimationFrame(frame);
       motion.removeEventListener('change', syncMotion);
     };
-  }, []);
+  }, [paused]);
 
   return (
     <div className="login-globe">

@@ -32,15 +32,17 @@ export default function Admin() {
 }
 
 function Users() {
-  const { me } = useAuth();
+  const { me, can } = useAuth();
   const toast = useToast();
   const users = useQuery({ queryKey: ['users'], queryFn: () => get<any[]>('/api/admin/users') });
   const authConfig = useQuery({ queryKey: ['auth-config'], queryFn: () => get<{ auth_mode: string; user_provisioning: boolean }>('/api/auth/config') });
-  const provisioning = authConfig.data?.user_provisioning ?? true;
+  const provisioning = authConfig.data?.user_provisioning ?? false;
+  const canProvision = can('users.provision') && provisioning;
   const clients = useQuery({ queryKey: ['clients'], queryFn: () => get<any[]>('/api/clients') });
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => get<any[]>('/api/admin/sessions') });
   const [add, setAdd] = useState(false);
   const [edit, setEdit] = useState<any>(null);
+  const [passwordUser, setPasswordUser] = useState<any>(null);
   const [uq, setUq] = useState('');
   const [ur, setUr] = useState('');
   const revoke = useAct((id: string) => post(`/api/admin/users/${id}/revoke-sessions`), ['users', 'sessions'], 'Sessions revoked');
@@ -50,8 +52,9 @@ function Users() {
   return (
     <>
       <div className="row" style={{ marginBottom: 8 }}><h2>Users</h2><span className="spacer" />
-        {oidc && <span style={{ color: 'var(--muted)' }}>{provisioning ? 'Roles are managed in Keycloak.' : 'Accounts and roles are managed in your identity provider; users appear here after their first sign-in.'}</span>}
-        {provisioning && <button className="btn small" onClick={() => setAdd(true)}>Add user</button>}</div>
+        {!oidc && <span style={{ color: 'var(--muted)' }}>Development mode: users and passwords are local to SOC; they are not created in Keycloak.</span>}
+        {oidc && <span style={{ color: 'var(--muted)' }}>{provisioning ? 'Account profiles, roles and passwords are synced with Keycloak.' : 'Accounts and roles are managed in your identity provider; users appear here after their first sign-in.'}</span>}
+        {canProvision && <button className="btn small" onClick={() => setAdd(true)}>Add user</button>}</div>
       {users.data && (
         <>
           <Summary items={[
@@ -65,14 +68,16 @@ function Users() {
       )}
       {users.isLoading ? <Loading /> : users.error ? <ErrorBox error={users.error} /> : rows.length === 0 ? <Empty>No users match these filters.</Empty> : (
         <div className="table-wrap"><table><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Scope</th><th>Last login</th><th>State</th><th /></tr></thead>
-          <tbody>{rows.map((u) => <tr key={u.id}><td>{u.email}</td><td>{u.name}</td><td>{u.role}</td><td>{u.all_clients ? 'All clients' : `${u.client_ids.length} client(s)`}</td><td>{ago(u.last_login_at)}</td><td>{u.active ? 'Active' : 'Disabled'}</td>
-            <td className="row"><button className="btn small" onClick={() => setEdit(u)}>Edit</button><button className="btn small" onClick={() => revoke.mutate(u.id)}>Sign out everywhere</button>
-              {u.id !== me?.id && <button className="btn small" onClick={() => setActive.mutate({ id: u.id, active: !u.active })}>{u.active ? 'Disable' : 'Enable'}</button>}</td></tr>)}</tbody></table></div>
+          <tbody>{rows.map((u) => <tr key={u.id}><td>{u.email}{oidc && u.identity_status === 'local' && <small className="block">Local account · needs Keycloak provisioning</small>}</td><td>{u.name}</td><td>{u.role}</td><td>{u.all_clients ? 'All clients' : `${u.client_ids.length} client(s)`}</td><td>{ago(u.last_login_at)}</td><td>{u.active ? 'Active' : 'Disabled'}</td>
+            <td className="row">{canProvision && u.id !== me?.id && u.role !== 'superadmin' && <button className="btn small" onClick={() => setPasswordUser(u)}>Reset password</button>}
+              {u.id !== me?.id && u.role !== 'superadmin' && <button className="btn small" onClick={() => setEdit(u)}>Edit</button>}{(u.role !== 'superadmin' || me?.role === 'superadmin') && <button className="btn small" onClick={() => revoke.mutate(u.id)}>Sign out everywhere</button>}
+              {u.id !== me?.id && u.role !== 'superadmin' && <button className="btn small" onClick={() => setActive.mutate({ id: u.id, active: !u.active })}>{u.active ? 'Disable' : 'Enable'}</button>}</td></tr>)}</tbody></table></div>
       )}
       <h2 style={{ margin: '22px 0 8px' }}>Active sessions</h2>
       {sessions.data && sessions.data.length ? <div className="table-wrap"><table><thead><tr><th>User</th><th>IP</th><th>Started</th><th>Last seen</th></tr></thead><tbody>{sessions.data.map((s) => <tr key={s.id}><td>{s.user}</td><td className="mono">{s.ip}</td><td>{ago(s.created_at)}</td><td>{ago(s.last_seen_at)}</td></tr>)}</tbody></table></div> : <Empty>No active sessions.</Empty>}
       {add && <AddUser oidc={oidc} clients={clients.data ?? []} onClose={() => setAdd(false)} onSecret={(s) => toast(`Authenticator secret (shown once): ${s}`)} />}
-      {edit && <EditUser u={edit} oidc={oidc} clients={clients.data ?? []} onClose={() => setEdit(null)} />}
+      {passwordUser && <UserPassword u={passwordUser} oidc={oidc} onClose={() => setPasswordUser(null)} />}
+      {edit && <EditUser u={edit} canChangeRole={canProvision} clients={clients.data ?? []} onClose={() => setEdit(null)} />}
     </>
   );
 }
@@ -89,33 +94,53 @@ function ClientPicker({ clients, sel, all, onSel, onAll }: { clients: any[]; sel
 function AddUser({ oidc, clients, onClose, onSecret }: { oidc: boolean; clients: any[]; onClose: () => void; onSecret: (s: string) => void }) {
   const [v, setV] = useState({ email: '', name: '', role: 'viewer', password: '', all_clients: false, client_ids: [] as string[] });
   const [secret, setSecret] = useState<string | null>(null);
-  const m = useAct(() => post('/api/admin/users', { ...v, password: oidc ? null : v.password }), ['users'], 'User created', (r) => { if (r.totp_secret) { setSecret(r.totp_secret); onSecret(r.totp_secret); } else onClose(); });
+  const m = useAct(() => post('/api/admin/users', v), ['users'], 'User created', (r) => { if (r.totp_secret) { setSecret(r.totp_secret); onSecret(r.totp_secret); } else onClose(); });
   if (secret) return <Modal title="User created" onClose={onClose}><div className="notice"><b>Authenticator secret (shown once)</b><div className="mono wrap">{secret}</div><p>Give this to the user over a secure channel to enrol their authenticator app.</p></div><button className="btn primary" onClick={onClose}>Done</button></Modal>;
   return (
     <Modal title="Add user" onClose={onClose}>
       <Field label="Email" id="ue"><input id="ue" type="email" value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} /></Field>
       <Field label="Name" id="un"><input id="un" value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} /></Field>
-      <Field label="Role" id="ur" hint="Admins are promoted afterwards and need a second admin's approval."><select id="ur" value={v.role} onChange={(e) => setV({ ...v, role: e.target.value })}>{['viewer', 'l1', 'l2'].map((r) => <option key={r}>{r}</option>)}</select></Field>
-      {!oidc && <Field label="Initial password (12+ chars, upper, lower, digit)" id="up"><input id="up" type="password" autoComplete="new-password" value={v.password} onChange={(e) => setV({ ...v, password: e.target.value })} /></Field>}
+      <Field label="Role" id="ur" hint="Administrators can create users and other administrators directly."><select id="ur" value={v.role} onChange={(e) => setV({ ...v, role: e.target.value })}>{['viewer', 'l1', 'l2', 'admin'].map((r) => <option key={r}>{r}</option>)}</select></Field>
+      <Field label={oidc ? "Temporary password (12+ chars, upper, lower, digit)" : "Initial password (12+ chars, upper, lower, digit)"} id="up"><input id="up" type="password" autoComplete="new-password" value={v.password} onChange={(e) => setV({ ...v, password: e.target.value })} /></Field>
       <ClientPicker clients={clients} sel={v.client_ids} all={v.all_clients} onSel={(s) => setV({ ...v, client_ids: s })} onAll={(b) => setV({ ...v, all_clients: b })} />
       {m.error && <ErrorBox error={m.error} />}
-      <button className="btn primary" disabled={m.isPending || !v.email.includes('@') || (!oidc && v.password.length < 12)} onClick={() => m.mutate(undefined)}>Create</button>
+      <button className="btn primary" disabled={m.isPending || !v.email.includes('@') || v.password.length < 12} onClick={() => m.mutate(undefined)}>Create</button>
     </Modal>
   );
 }
 
-function EditUser({ u, oidc, clients, onClose }: { u: any; oidc: boolean; clients: any[]; onClose: () => void }) {
+function UserPassword({ u, oidc, onClose }: { u: any; oidc: boolean; onClose: () => void }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [provision, setProvision] = useState(false);
+  const m = useAct(() => post(`/api/admin/users/${u.id}/${provision ? 'provision' : 'password'}`, { password }), ['users', 'sessions'], provision ? 'User created in Keycloak' : 'Password reset; existing sessions ended', onClose);
+  const valid = password.length >= 12 && /[A-Z]/.test(password) && /[a-z]/.test(password) && /[0-9]/.test(password) && password === confirm;
+  return <Modal title={`${provision ? 'Create in Keycloak' : 'Reset password'}: ${u.email}`} onClose={onClose}>
+    <p>{oidc ? 'Set a temporary password. The user must change it at their next Keycloak sign-in. Existing SOC sessions will end.' : 'Set a new local SOC password. Existing sessions will end; authenticator enrolment stays unchanged.'}</p>
+    {oidc && ['local', 'pending'].includes(u.identity_status) && <label className="row"><input type="checkbox" checked={provision} disabled={m.isPending} onChange={(e) => setProvision(e.target.checked)} /> Create in Keycloak (if this account does not exist there yet)</label>}
+    <form onSubmit={(e) => { e.preventDefault(); if (valid && !m.isPending) m.mutate(undefined); }}>
+      <Field label={oidc ? 'Temporary password' : 'New password'} id="reset-password" hint="At least 12 characters, with uppercase, lowercase and a digit."><input id="reset-password" type="password" autoComplete="new-password" maxLength={256} value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
+      <Field label="Confirm password" id="confirm-password"><input id="confirm-password" type="password" autoComplete="new-password" maxLength={256} value={confirm} onChange={(e) => setConfirm(e.target.value)} /></Field>
+      {confirm && password !== confirm && <p role="status">Passwords do not match.</p>}
+      {m.error && <ErrorBox error={m.error} />}
+      <button type="submit" className="btn primary" disabled={!valid || m.isPending}>{m.isPending ? 'Saving…' : provision ? 'Create in Keycloak' : 'Reset password'}</button>
+    </form>
+  </Modal>;
+}
+
+function EditUser({ u, canChangeRole, clients, onClose }: { u: any; canChangeRole: boolean; clients: any[]; onClose: () => void }) {
   const toast = useToast();
-  const [v, setV] = useState({ name: u.name, role: u.role, all_clients: u.all_clients, client_ids: u.client_ids as string[] });
-  const m = useAct(() => patch(`/api/admin/users/${u.id}`, { name: v.name, ...(oidc || v.role === u.role ? {} : { role: v.role }), all_clients: v.all_clients, client_ids: v.client_ids }), ['users'], undefined, (r) => { toast(r.pending_approval ? 'Admin promotion sent for second-admin approval' : 'User updated'); onClose(); });
+  const [v, setV] = useState({ name: u.name, email: u.email, role: u.role, all_clients: u.all_clients, client_ids: u.client_ids as string[] });
+  const m = useAct(() => patch(`/api/admin/users/${u.id}`, { name: v.name, ...(v.email.trim().toLowerCase() !== u.email ? { email: v.email } : {}), ...(!canChangeRole || v.role === u.role ? {} : { role: v.role }), all_clients: v.all_clients, client_ids: v.client_ids }), ['users', 'approvals'], undefined, (r) => { toast(r.pending_approval ? 'Admin promotion sent for second-admin approval' : 'User updated'); onClose(); });
   return (
     <Modal title={`Edit ${u.email}`} onClose={onClose}>
+      <Field label="Email" id="ee"><input id="ee" type="email" disabled={!canChangeRole} value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} /></Field>
       <Field label="Name" id="en"><input id="en" value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} /></Field>
-      <Field label="Role" id="er"><select id="er" disabled={oidc} value={v.role} onChange={(e) => setV({ ...v, role: e.target.value })}>{['viewer', 'l1', 'l2', 'admin'].map((r) => <option key={r}>{r}</option>)}</select></Field>
+      <Field label="Role" id="er"><select id="er" disabled={!canChangeRole} value={v.role} onChange={(e) => setV({ ...v, role: e.target.value })}>{['viewer', 'l1', 'l2', 'admin'].map((r) => <option key={r}>{r}</option>)}</select></Field>
       <ClientPicker clients={clients} sel={v.client_ids} all={v.all_clients} onSel={(s) => setV({ ...v, client_ids: s })} onAll={(b) => setV({ ...v, all_clients: b })} />
       <p style={{ color: 'var(--muted)', fontSize: 13 }}>Per-user permission overrides are managed on the <strong>Permissions</strong> tab.</p>
       {m.error && <ErrorBox error={m.error} />}
-      <button className="btn primary" disabled={m.isPending} onClick={() => m.mutate(undefined)} style={{ marginTop: 12 }}>Save</button>
+      <button className="btn primary" disabled={m.isPending || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email)} onClick={() => m.mutate(undefined)} style={{ marginTop: 12 }}>Save</button>
     </Modal>
   );
 }
@@ -130,7 +155,7 @@ function Permissions() {
   const perms = useQuery({ queryKey: ['permissions'], queryFn: () => get<any>('/api/admin/permissions') });
   const [uq, setUq] = useState('');
   const [selId, setSelId] = useState<string | null>(null);
-  const list = (users.data ?? []).filter((u) => u.role !== 'superadmin' && (!uq || `${u.email} ${u.name}`.toLowerCase().includes(uq.toLowerCase())));
+  const list = (users.data ?? []).filter((u) => u.role !== 'superadmin' && u.id !== me?.id && (!uq || `${u.email} ${u.name}`.toLowerCase().includes(uq.toLowerCase())));
   const sel = list.find((u) => u.id === selId) ?? list[0] ?? null;
 
   const [grants, setGrants] = useState<string[]>([]);
@@ -176,7 +201,7 @@ function Permissions() {
       <div className="row" style={{ marginBottom: 8, alignItems: 'flex-start' }}>
         <h2 style={{ margin: 0 }}>Permissions</h2>
         <span className="spacer" />
-        {!editable && <span style={{ color: 'var(--muted)', fontSize: 13 }}>View only — only a Super Admin can change permissions.</span>}
+        {!editable && <span style={{ color: 'var(--muted)', fontSize: 13 }}>View only — user management permission is required to change permissions.</span>}
       </div>
       {(users.isLoading || perms.isLoading) ? <Loading /> : (users.error || perms.error) ? <ErrorBox error={users.error || perms.error} /> : (
         <div className="grid" style={{ gridTemplateColumns: 'minmax(220px, 280px) 1fr', gap: 18, alignItems: 'start' }}>

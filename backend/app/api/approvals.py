@@ -28,6 +28,18 @@ def create_change(db: Session, kind: str, payload: dict[str, Any], requester: Us
     return cr
 
 
+def supersede_changes(db: Session, kind: str, resource_key: str, resource_id: str, p: Principal) -> None:
+    """Direct authorized changes replace older pending intentions for that resource."""
+    if not p.is_superadmin and not (kind == "user.role" and p.can("users.provision")):
+        return
+    for pending in db.execute(select(ApprovalRequest).where(ApprovalRequest.kind == kind, ApprovalRequest.status == "pending")).scalars():
+        if pending.payload.get(resource_key) != resource_id:
+            continue
+        pending.status, pending.decided_at = "superseded", utcnow()
+        pending.decision_reason = "Superseded by a direct administrator change"
+        audit.record(db, "change.supersede", actor=p.label, actor_id=p.user.id, resource_type="change_request", resource_id=pending.id, ip=p.ip, meta={"kind": kind, "superadmin_override": p.is_superadmin})
+
+
 def apply_change(db: Session, cr: ApprovalRequest) -> None:
     from .integrations import apply_enable
 
@@ -41,6 +53,8 @@ def apply_change(db: Session, cr: ApprovalRequest) -> None:
         u = db.get(User, pl["user_id"])
         if u is None:
             raise ValueError("user missing")
+        if u.role == "superadmin":
+            raise ValueError("the super admin account cannot be demoted")
         u.role = pl["role"]
         revoke_all(db, u.id)
     elif cr.kind == "retention.update":
@@ -93,19 +107,20 @@ def decide_change(cid: str, body: ChangeDecision, p: Principal = Depends(require
         c.status = "expired"
         db.commit()
         raise HTTPException(409, "request expired")
-    if c.requester_id == p.user.id:
+    if c.requester_id == p.user.id and not p.is_superadmin:
         raise HTTPException(403, "you cannot approve your own request")
     if payload_hash(c.payload) != c.payload_hash:
         raise HTTPException(409, "payload changed since submission")
-    if p.user.id in c.approvers:
+    if p.user.id in c.approvers and not p.is_superadmin:
         raise HTTPException(409, "already decided")
-    audit.record(db, f"change.{body.decision}", actor=p.label, actor_id=p.user.id, resource_type="change_request", resource_id=c.id, ip=p.ip, meta={"kind": c.kind, "reason": body.reason})
+    audit.record(db, f"change.{body.decision}", actor=p.label, actor_id=p.user.id, resource_type="change_request", resource_id=c.id, ip=p.ip, meta={"kind": c.kind, "reason": body.reason, "superadmin_override": p.is_superadmin})
     c.decision_reason = body.reason
     if body.decision == "reject":
         c.status, c.decided_at = "rejected", utcnow()
         return cr_out(db, c)
-    c.approvers = [*c.approvers, p.user.id]
-    if len(c.approvers) >= c.approvals_required:
+    if p.user.id not in c.approvers:
+        c.approvers = [*c.approvers, p.user.id]
+    if p.is_superadmin or len(c.approvers) >= c.approvals_required:
         try:
             apply_change(db, c)
             c.status = "applied"

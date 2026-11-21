@@ -2,12 +2,14 @@ import { Bookmark, Plus, X } from 'lucide-react';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import { useToast } from './ui';
 import { Button } from './Button';
 
 type SavedView = { name: string; query: string };
 const allowedFilters = {
-  alerts: ['severity', 'status', 'q', 'category', 'source', 'host', 'client_id', 'unassigned_client', 'since'],
+  alerts: ['severity', 'status', 'q', 'category', 'source', 'host', 'client_id', 'unassigned_client', 'since', 'until'],
   cases: ['severity', 'status', 'q', 'mine'],
+  assets: ['q', 'kind', 'agent_status', 'department'],
 };
 
 function loadViews(key: string): SavedView[] {
@@ -33,6 +35,7 @@ function ViewPicker({ storageKey, area, onApply }: {
   onApply: () => void;
 }) {
   const [params, setParams] = useSearchParams();
+  const toast = useToast();
   const [views, setViews] = useState(() => loadViews(storageKey));
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState('');
@@ -72,6 +75,17 @@ function ViewPicker({ storageKey, area, onApply }: {
     }
   }
 
+  function removeView(view: SavedView, index: number) {
+    if (!persist(views.filter((_, i) => i !== index))) return;
+    toast('Saved view removed', false, { label: 'Undo', run: () => {
+      const current = loadViews(storageKey);
+      if (current.some((v) => v.name.toLowerCase() === view.name.toLowerCase())) throw new Error('A view with this name already exists.');
+      if (current.length >= 20) throw new Error('Remove another view before restoring this one.');
+      current.splice(Math.min(index, current.length), 0, view);
+      if (!persist(current)) throw new Error('Could not restore the saved view');
+    } });
+  }
+
   return (
     <section className="saved-views" aria-label="Saved views">
       <div className="saved-views-label"><Bookmark size={15} aria-hidden="true" /> Saved views</div>
@@ -82,7 +96,7 @@ function ViewPicker({ storageKey, area, onApply }: {
               onApply();
               setParams(filters(new URLSearchParams(view.query)), { replace: true });
             }}>{view.name}</button>
-            <button type="button" aria-label={`Remove view ${view.name}`} onClick={() => persist(views.filter((_, i) => i !== index))}><X size={13}/></button>
+            <button type="button" aria-label={`Remove view ${view.name}`} onClick={() => removeView(view, index)}><X size={13}/></button>
           </span>
         ))}
         {!views.length && !editing && <span className="saved-views-hint">Save a filter to return to it later.</span>}

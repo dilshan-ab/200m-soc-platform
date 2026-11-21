@@ -212,7 +212,7 @@ def enable_tool(tid: str, p: Principal = Depends(require_admin_step_up("integrat
     if not lt.get("ok") or lt.get("config_version") != t.config_version:
         raise HTTPException(409, "run a successful connection test on the current configuration first")
     caps = set(get_connector_cls(t.type).manifest.capabilities)
-    if "action" in caps:  # integrations that can change systems need a second admin
+    if "action" in caps and not p.is_superadmin:  # ordinary administrators need a second admin
         payload = {"tool_id": t.id, "config_version": t.config_version}
         existing = db.execute(select(ApprovalRequest).where(ApprovalRequest.kind == "tool.enable", ApprovalRequest.status == "pending", ApprovalRequest.payload_hash == payload_hash(payload))).scalars().first()
         if existing is None:
@@ -224,7 +224,10 @@ def enable_tool(tid: str, p: Principal = Depends(require_admin_step_up("integrat
         audit.record(db, "tool.enable_requested", actor=p.label, actor_id=p.user.id, resource_type="tool", resource_id=t.id, ip=p.ip)
         return {"pending_approval": True, "request_id": existing.id}
     apply_enable(db, t)
-    audit.record(db, "tool.enable", actor=p.label, actor_id=p.user.id, resource_type="tool", resource_id=t.id, ip=p.ip)
+    from .approvals import supersede_changes
+
+    supersede_changes(db, "tool.enable", "tool_id", t.id, p)
+    audit.record(db, "tool.enable", actor=p.label, actor_id=p.user.id, resource_type="tool", resource_id=t.id, ip=p.ip, meta={"superadmin_override": p.is_superadmin and "action" in caps})
     return tool_out(db, t)
 
 

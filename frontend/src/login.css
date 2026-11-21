@@ -293,6 +293,13 @@ html[data-theme=dark] .login.neon-login {
 
 @media (min-width: 1151px) {
   html .login.neon-login .orbit { translate: clamp(50px, 5vw, 100px) 0; }
+/* Shift the desktop globe toward the sign-in panel without moving the form. */
+@media (min-width: 851px) {
+  html .login.neon-login .orbit { translate: clamp(72px, 9vw, 100px) 0; }
+}
+
+@media (min-width: 1151px) {
+  html .login.neon-login .orbit { translate: clamp(100px, calc(50vw - 505px), 460px) 0; }
 }
 
 .login-recovery { margin-top: 20px; padding: 14px; border: 1px solid var(--warn); background: var(--surface); color: var(--text); }
