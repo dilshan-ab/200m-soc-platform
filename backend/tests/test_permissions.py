@@ -16,12 +16,12 @@ def test_denied_overrides_role_default_and_grant():
     assert has_capability("viewer", grants=["cases.write"], cap="cases.write", denied=[]) is True  # grant adds beyond role default
 
 
-def test_admin_cannot_change_other_users_permissions(admin, make_session):
+def test_admin_can_change_other_users_permissions(admin, make_session):
     target = make_session("l1target@t.local", "l1")
     uid = target.get("/api/auth/me").json()["id"]
     r = admin.patch(f"/api/admin/users/{uid}", {"grants": ["servers.write"]})
-    assert r.status_code == 403
-    assert "super admin" in r.json()["detail"].lower()
+    assert r.status_code == 200
+    assert r.json()["grants"] == ["servers.write"]
 
 
 def test_superadmin_can_grant_and_deny_user_permissions(superadmin, make_session):

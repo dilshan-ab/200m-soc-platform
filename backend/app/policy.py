@@ -58,7 +58,7 @@ CAPABILITIES: dict[str, str] = {
     "integrations.read": "l2",
     "integrations.write": "admin",
     "admin.users": "admin",
-    "users.provision": "superadmin",  # create users/admins, change roles, enable/disable accounts
+    "users.provision": "admin",  # create users/admins, change roles, enable/disable accounts
     "admin.settings": "admin",
     "admin.audit": "admin",
     "admin.backups": "admin",

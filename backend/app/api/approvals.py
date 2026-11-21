@@ -29,15 +29,15 @@ def create_change(db: Session, kind: str, payload: dict[str, Any], requester: Us
 
 
 def supersede_changes(db: Session, kind: str, resource_key: str, resource_id: str, p: Principal) -> None:
-    """An owner's direct change replaces older pending intentions for that resource."""
-    if not p.is_superadmin:
+    """Direct authorized changes replace older pending intentions for that resource."""
+    if not p.is_superadmin and not (kind == "user.role" and p.can("users.provision")):
         return
     for pending in db.execute(select(ApprovalRequest).where(ApprovalRequest.kind == kind, ApprovalRequest.status == "pending")).scalars():
         if pending.payload.get(resource_key) != resource_id:
             continue
         pending.status, pending.decided_at = "superseded", utcnow()
-        pending.decision_reason = "Superseded by a direct super-admin change"
-        audit.record(db, "change.supersede", actor=p.label, actor_id=p.user.id, resource_type="change_request", resource_id=pending.id, ip=p.ip, meta={"kind": kind, "superadmin_override": True})
+        pending.decision_reason = "Superseded by a direct administrator change"
+        audit.record(db, "change.supersede", actor=p.label, actor_id=p.user.id, resource_type="change_request", resource_id=pending.id, ip=p.ip, meta={"kind": kind, "superadmin_override": p.is_superadmin})
 
 
 def apply_change(db: Session, cr: ApprovalRequest) -> None:

@@ -1,4 +1,4 @@
-"""Keycloak Admin API client (service account) used by the super admin to provision users.
+"""Keycloak Admin API client (service account) used by administrators to provision users.
 
 The service-account client `soc-admin` only holds the realm-management roles it needs
 (view-users, manage-users, view-realm). Passwords are passed straight through and never logged.
@@ -140,3 +140,22 @@ def reset_password(client: httpx.Client, email: str, password: str, expected_uid
     if r.status_code not in (200, 204):
         raise KcError(f"could not reset the password in Keycloak (HTTP {r.status_code}); check service account user-management permissions")
     return uid
+
+
+def set_profile(client: httpx.Client, old_email: str, name: str, email: str, expected_uid: str | None = None) -> None:
+    uid = find_user_id(client, old_email)
+    if uid is None:
+        raise KcError("user not found in Keycloak", 404)
+    if expected_uid and uid != expected_uid:
+        raise KcError("Keycloak account does not match the linked SOC identity", 409)
+    first, _, last = name.strip().partition(" ")
+    body: dict[str, Any] = {"firstName": first, "lastName": last, "email": email}
+    if email != old_email:
+        body["emailVerified"] = False
+    r = _call(client, "PUT", f"/users/{uid}", json=body)
+    if r.status_code == 409:
+        raise KcError("email already exists in Keycloak", 409)
+    if r.status_code == 400:
+        raise KcError("Keycloak rejected the profile; check the realm user profile rules", 400)
+    if r.status_code not in (200, 204):
+        raise KcError("could not update the profile in Keycloak")
