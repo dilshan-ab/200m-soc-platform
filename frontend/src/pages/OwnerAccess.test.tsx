@@ -56,3 +56,35 @@ it('ordinary administrators are not offered owner-only account creation', async 
   await screen.findByText('No users match these filters.');
   expect(screen.queryByRole('button', { name: 'Add user' })).toBeNull();
 });
+
+
+function usersApi(identity = 'linked') {
+  vi.mocked(get).mockImplementation(async (path) => path === '/api/auth/config' ? { auth_mode: 'oidc', user_provisioning: true } : path === '/api/admin/users' ? [{ id: 'target', email: 'person@t.local', name: 'Person', role: 'l1', active: true, all_clients: true, client_ids: [], identity_status: identity }] : []);
+}
+
+it('owner resets a Keycloak password after confirmation', async () => {
+  role('superadmin'); usersApi(); vi.mocked(post).mockResolvedValue({ ok: true }); show(<Admin />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Reset password' }));
+  const submit = screen.getAllByRole('button', { name: 'Reset password' }).at(-1)!;
+  expect(submit.hasAttribute('disabled')).toBe(true);
+  fireEvent.change(screen.getByLabelText('Temporary password'), { target: { value: 'Str0ng-Passw0rd!x' } });
+  fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'Str0ng-Passw0rd!x' } });
+  fireEvent.click(submit);
+  await waitFor(() => expect(post).toHaveBeenCalledWith('/api/admin/users/target/password', { password: 'Str0ng-Passw0rd!x' }));
+});
+
+it('owner can explicitly provision a legacy account in Keycloak', async () => {
+  role('superadmin'); usersApi('local'); vi.mocked(post).mockResolvedValue({ identity_status: 'linked' }); show(<Admin />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Reset password' }));
+  fireEvent.click(screen.getByLabelText(/Create in Keycloak/));
+  fireEvent.change(screen.getByLabelText('Temporary password'), { target: { value: 'Str0ng-Passw0rd!x' } });
+  fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'Str0ng-Passw0rd!x' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create in Keycloak' }));
+  await waitFor(() => expect(post).toHaveBeenCalledWith('/api/admin/users/target/provision', { password: 'Str0ng-Passw0rd!x' }));
+});
+
+it('ordinary admins cannot reset another user password', async () => {
+  role('admin'); usersApi(); show(<Admin />);
+  await screen.findByText('person@t.local');
+  expect(screen.queryByRole('button', { name: 'Reset password' })).toBeNull();
+});

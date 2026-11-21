@@ -67,6 +67,8 @@ def find_user_id(client: httpx.Client, email: str) -> str | None:
     if r.status_code != 200:
         raise KcError("could not look up the user in Keycloak")
     rows = r.json()
+    if len(rows) > 1:
+        raise KcError("multiple Keycloak accounts match this email; resolve duplicates in Keycloak", 409)
     return str(rows[0]["id"]) if rows else None
 
 
@@ -88,7 +90,9 @@ def create_user(client: httpx.Client, email: str, name: str, role: str, password
         raise KcError("Keycloak rejected the request (check the password policy)", 400)
     if r.status_code != 201:
         raise KcError(f"Keycloak error {r.status_code}")
-    uid = r.headers.get("location", "").rsplit("/", 1)[-1] or find_user_id(client, email) or ""
+    uid = r.headers.get("location", "").rstrip("/").rsplit("/", 1)[-1] or find_user_id(client, email)
+    if not uid:
+        raise KcError("Keycloak created the user but did not return an account ID")
     m = _call(client, "POST", f"/users/{uid}/role-mappings/realm", json=[rep])
     if m.status_code not in (200, 204):
         _call(client, "DELETE", f"/users/{uid}")  # do not leave a role-less account behind
@@ -119,3 +123,20 @@ def set_enabled(client: httpx.Client, email: str, enabled: bool) -> None:
         raise KcError("could not update the user in Keycloak")
     if not enabled:
         _call(client, "POST", f"/users/{uid}/logout")  # end live SSO sessions
+
+
+def reset_password(client: httpx.Client, email: str, password: str, expected_uid: str | None = None) -> str:
+    uid = find_user_id(client, email)
+    if uid is None:
+        raise KcError("user not found in Keycloak; restore the account there, or use Create in Keycloak for an older local SOC account", 404)
+    if expected_uid and uid != expected_uid:
+        raise KcError("Keycloak account does not match the linked SOC identity", 409)
+    r = _call(client, "POST", f"/users/{uid}/logout")
+    if r.status_code not in (200, 204):
+        raise KcError("could not end Keycloak sessions; password was not changed")
+    r = _call(client, "PUT", f"/users/{uid}/reset-password", json={"type": "password", "value": password, "temporary": True})
+    if r.status_code == 400:
+        raise KcError("Keycloak rejected the password; check the realm password policy", 400)
+    if r.status_code not in (200, 204):
+        raise KcError(f"could not reset the password in Keycloak (HTTP {r.status_code}); check service account user-management permissions")
+    return uid
