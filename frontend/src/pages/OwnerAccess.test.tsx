@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import Admin from './Admin';
 import Approvals from './Approvals';
-import { get, post } from '../lib/api';
+import { get, patch, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
 vi.mock('../lib/api', () => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), del: vi.fn() }));
@@ -51,10 +51,10 @@ it('the super admin can create an admin with the required Keycloak temporary pas
   await waitFor(() => expect(post).toHaveBeenCalledWith('/api/admin/users', expect.objectContaining({ email: 'new@t.local', role: 'admin', password: 'Str0ng-Passw0rd!x' })));
 });
 
-it('ordinary administrators are not offered owner-only account creation', async () => {
+it('ordinary administrators can create users', async () => {
   role('admin'); adminApi(); show(<Admin />);
   await screen.findByText('No users match these filters.');
-  expect(screen.queryByRole('button', { name: 'Add user' })).toBeNull();
+  expect(await screen.findByRole('button', { name: 'Add user' })).toBeTruthy();
 });
 
 
@@ -83,8 +83,27 @@ it('owner can explicitly provision a legacy account in Keycloak', async () => {
   await waitFor(() => expect(post).toHaveBeenCalledWith('/api/admin/users/target/provision', { password: 'Str0ng-Passw0rd!x' }));
 });
 
-it('ordinary admins cannot reset another user password', async () => {
+it('ordinary admins can reset another user password', async () => {
   role('admin'); usersApi(); show(<Admin />);
   await screen.findByText('person@t.local');
-  expect(screen.queryByRole('button', { name: 'Reset password' })).toBeNull();
+  expect(await screen.findByRole('button', { name: 'Reset password' })).toBeTruthy();
+});
+
+
+it('admins can edit the email, name and role of another user', async () => {
+  role('admin'); usersApi(); vi.mocked(patch).mockResolvedValue({ id: 'target' }); show(<Admin />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+  fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'updated@t.local' } });
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Updated Name' } });
+  fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'admin' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(patch).toHaveBeenCalledWith('/api/admin/users/target', expect.objectContaining({ email: 'updated@t.local', name: 'Updated Name', role: 'admin' })));
+});
+
+it('the protected owner has no management buttons for an ordinary admin', async () => {
+  role('admin');
+  vi.mocked(get).mockImplementation(async (path) => path === '/api/auth/config' ? { auth_mode: 'oidc', user_provisioning: true } : path === '/api/admin/users' ? [{ id: 'owner', email: 'owner@t.local', name: 'Owner', role: 'superadmin', active: true, all_clients: true, client_ids: [] }] : []);
+  show(<Admin />);
+  await screen.findByText('owner@t.local');
+  for (const name of ['Edit', 'Reset password', 'Disable', 'Sign out everywhere']) expect(screen.queryByRole('button', { name })).toBeNull();
 });

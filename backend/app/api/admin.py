@@ -156,6 +156,7 @@ def provision_existing_user(uid: str, body: PasswordIn, p: Principal = Depends(r
 class UserPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str | None = Field(default=None, max_length=160)
+    email: str | None = Field(default=None, max_length=255, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
     role: Literal["viewer", "l1", "l2", "admin"] | None = None
     grants: list[str] | None = Field(default=None, max_length=40)
     denied: list[str] | None = Field(default=None, max_length=40)
@@ -173,45 +174,48 @@ def patch_user(uid: str, body: UserPatch, p: Principal = Depends(require_admin_s
         raise HTTPException(403, "you cannot change your own account")
     if u.role == "superadmin":
         raise HTTPException(403, "the super admin account cannot be modified from here")
+    email = body.email.strip().lower() if body.email is not None else u.email
+    profile_changed = email != u.email or (body.name is not None and body.name != u.name)
+    if email != u.email and db.execute(select(User.id).where(User.email == email, User.id != uid)).first():
+        raise HTTPException(409, "user email already exists")
+    if body.client_ids is not None:
+        for cid in body.client_ids:
+            if db.get(Client, cid) is None:
+                raise HTTPException(400, "unknown client")
+    if body.grants is not None or body.denied is not None:
+        if not p.can("users.provision"):
+            raise HTTPException(403, "user provisioning permission is required to change permissions")
+        grants = body.grants if body.grants is not None else u.grants
+        denied = body.denied if body.denied is not None else u.denied
+        if any(c not in CAPABILITIES for c in (*grants, *denied)):
+            raise HTTPException(400, "unknown capabilities")
+        if set(grants) & set(denied):
+            raise HTTPException(400, "capabilities cannot be both granted and denied")
     meta: dict[str, Any] = {}
-    result_note: dict[str, Any] = {}
     if body.role and body.role != u.role:
+        if not p.can("users.provision"):
+            raise HTTPException(403, "user provisioning permission is required to change roles")
         if get_settings().auth_mode == "oidc":
-            if not p.can("users.provision"):
-                raise HTTPException(403, "only the super admin can change roles")
             if _external_idp():  # the role is re-read from the IdP's claim at every login, so a local edit would not stick
                 raise HTTPException(400, "roles are managed in the identity provider; change the user's role there")
             _kc(kc.set_role, u.email, body.role)
             u.role = body.role
             revoke_all(db, u.id)
             meta["role"] = body.role
-        elif body.role == "admin" and not p.is_superadmin:
-            cr = create_change(db, "user.role", {"user_id": u.id, "role": "admin"}, p.user, f"Promote {u.email} to admin")
-            result_note["pending_approval"] = cr.id
         else:
             u.role = body.role
             revoke_all(db, u.id)
             meta["role"] = body.role
-    if body.role and "pending_approval" not in result_note:
+    if body.role:
         supersede_changes(db, "user.role", "user_id", u.id, p)
         meta["superadmin_override"] = p.is_superadmin
     if body.grants is not None or body.denied is not None:
-        if not p.can("users.provision"):
-            raise HTTPException(403, "only the super admin can change permissions")
-        new_grants = body.grants if body.grants is not None else u.grants
-        new_denied = body.denied if body.denied is not None else u.denied
-        bad = [c for c in (*new_grants, *new_denied) if c not in CAPABILITIES]
-        if bad:
-            raise HTTPException(400, f"unknown capabilities: {bad}")
-        overlap = set(new_grants) & set(new_denied)
-        if overlap:
-            raise HTTPException(400, f"capabilities cannot be both granted and denied: {sorted(overlap)}")
         if body.grants is not None:
             u.grants, meta["grants"] = body.grants, body.grants
         if body.denied is not None:
             u.denied, meta["denied"] = body.denied, body.denied
     if body.name is not None:
-        u.name = body.name
+        u.name, meta["name"] = body.name, body.name
     if body.all_clients is not None:
         u.all_clients, meta["all_clients"] = body.all_clients, body.all_clients
     if body.client_ids is not None:
@@ -224,7 +228,9 @@ def patch_user(uid: str, body: UserPatch, p: Principal = Depends(require_admin_s
             db.add(ClientMembership(user_id=u.id, client_id=cid))
         meta["client_ids"] = body.client_ids
     if body.active is not None and body.active != u.active:
-        if get_settings().auth_mode == "oidc" and kc.configured() and p.can("users.provision"):
+        if get_settings().auth_mode == "oidc" and not _external_idp():
+            if not p.can("users.provision"):
+                raise HTTPException(403, "user provisioning permission is required to change SSO accounts")
             _kc(kc.set_enabled, u.email, body.active)
         u.active = body.active
         meta["active"] = body.active
@@ -232,12 +238,31 @@ def patch_user(uid: str, body: UserPatch, p: Principal = Depends(require_admin_s
             revoke_all(db, u.id)
             for t in db.execute(select(ApiToken).where(ApiToken.user_id == u.id)).scalars():
                 t.revoked = True
+    if profile_changed and get_settings().auth_mode == "oidc":
+        if not p.can("users.provision"):
+            raise HTTPException(403, "user provisioning permission is required to change SSO profiles")
+        if _external_idp():
+            raise HTTPException(400, "profiles are managed in the identity provider")
+        expected = None if u.subject.startswith(("dev:", "pending:")) else u.subject
+        _kc(kc.set_profile, u.email, body.name if body.name is not None else u.name, email, expected)
+    if email != u.email:
+        u.email, meta["email"] = email, email
+        if u.subject.startswith("dev:"):
+            u.subject = f"dev:{email}"
+        revoke_all(db, u.id)
+    if any(k in meta for k in ("grants", "denied", "client_ids", "all_clients")):
+        revoke_all(db, u.id)
     audit.record(db, "user.update", actor=p.label, actor_id=p.user.id, resource_type="user", resource_id=u.id, ip=p.ip, meta=meta)
-    return {**user_out(db, u), **result_note}
+    return user_out(db, u)
 
 
 @router.post("/admin/users/{uid}/revoke-sessions")
-def revoke_sessions(uid: str, p: Principal = Depends(require("admin.users")), db: Session = Depends(get_db)) -> dict[str, int]:
+def revoke_sessions(uid: str, p: Principal = Depends(require_admin_step_up("admin.users")), db: Session = Depends(get_db)) -> dict[str, int]:
+    u = db.get(User, uid)
+    if u is None:
+        raise HTTPException(404, "user not found")
+    if u.role == "superadmin" and not p.is_superadmin:
+        raise HTTPException(403, "the super admin account is protected")
     n = revoke_all(db, uid)
     audit.record(db, "user.revoke_sessions", actor=p.label, actor_id=p.user.id, resource_type="user", resource_id=uid, ip=p.ip, meta={"count": n})
     return {"revoked": n}
@@ -280,6 +305,9 @@ def revoke_token(tid: str, p: Principal = Depends(require("admin.tokens")), db: 
     t = db.get(ApiToken, tid)
     if t is None or (t.user_id != p.user.id and not p.can("admin.users")):
         raise HTTPException(404, "not found")
+    owner = db.get(User, t.user_id)
+    if owner and owner.role == "superadmin" and not p.is_superadmin:
+        raise HTTPException(403, "the super admin account is protected")
     t.revoked = True
     audit.record(db, "token.revoke", actor=p.label, actor_id=p.user.id, resource_type="api_token", resource_id=tid, ip=p.ip)
     return {"ok": True}
@@ -481,6 +509,8 @@ class PermissionsIn(BaseModel):
 
 @router.put("/admin/permissions")
 def set_permissions(body: PermissionsIn, p: Principal = Depends(require_admin_step_up("users.provision")), db: Session = Depends(get_db)) -> dict[str, str]:
+    if not p.is_superadmin:
+        raise HTTPException(403, "only the super admin can change global role defaults")
     all_caps = set(CAPABILITIES.keys())
     for role, caps in body.matrix.items():
         if role not in ROLES:

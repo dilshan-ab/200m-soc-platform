@@ -33,6 +33,12 @@ def kc(monkeypatch):
             return httpx.Response(200, json={"id": "r1", "name": p.rsplit("/", 1)[-1]})
         if req.method == "GET" and p.endswith("/users"):
             return httpx.Response(200, json=[{"id": "kc-123"}])
+        if req.method == "GET" and p.endswith("/role-mappings/realm"):
+            return httpx.Response(200, json=[{"id": "old", "name": "viewer"}])
+        if req.method == "DELETE" and p.endswith("/role-mappings/realm"):
+            return httpx.Response(204)
+        if req.method == "PUT" and p.endswith("/users/kc-123"):
+            return httpx.Response(204)
         if req.method == "PUT" and p.endswith("/reset-password"):
             return httpx.Response(204)
         if req.method == "POST" and p.endswith("/logout"):
@@ -62,9 +68,9 @@ def test_super_admin_creates_user_in_keycloak(superadmin, kc):
     assert PASSWORD not in json.dumps(r.json())  # the password is never echoed back
 
 
-def test_plain_admin_cannot_provision(admin, kc):
-    assert admin.post("/api/admin/users", {"email": "n@t.local", "role": "viewer", "password": PASSWORD}).status_code == 403
-    assert not [c for c in kc if c[1].endswith("/users")]
+def test_plain_admin_can_provision(admin, kc):
+    assert admin.post("/api/admin/users", {"email": "n@t.local", "role": "viewer", "password": PASSWORD}).status_code == 201
+    assert [c for c in kc if c[1].endswith("/users")]
 
 
 def test_not_configured_is_clear_error(superadmin, monkeypatch, kc):
@@ -129,7 +135,7 @@ def test_local_password_reset_and_permissions(superadmin, admin, make_session):
     target = make_session("reset@t.local", "viewer")
     uid = target.get("/api/auth/me").json()["id"]
     new_password = "An0ther-Secure-password!"
-    assert admin.post(f"/api/admin/users/{uid}/password", {"password": new_password}).status_code == 403
+    assert admin.post(f"/api/admin/users/{uid}/password", {"password": new_password}).status_code == 200
     assert superadmin.post(f"/api/admin/users/{uid}/password", {"password": "weak"}).status_code == 422
     owner = superadmin.get("/api/auth/me").json()["id"]
     assert superadmin.post(f"/api/admin/users/{owner}/password", {"password": new_password}).status_code == 403
@@ -186,3 +192,30 @@ def test_password_reset_requires_fresh_mfa(superadmin, make_session):
             rec.step_up_until = utcnow() - timedelta(minutes=1)
     r = superadmin.post(f"/api/admin/users/{uid}/password", {"password": PASSWORD})
     assert r.status_code == 403 and "step_up_required" in r.text
+
+
+def test_admin_edits_keycloak_profile_role_scope_and_password(admin, kc):
+    created = admin.post("/api/admin/users", {"email": "person@t.local", "password": PASSWORD}).json()
+    uid = created["id"]
+    r = admin.patch(f"/api/admin/users/{uid}", {"name": "Updated Person", "email": "updated@t.local", "role": "admin", "all_clients": True, "grants": ["alerts.read"], "denied": ["alerts.delete"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["email"] == "updated@t.local" and r.json()["role"] == "admin"
+    assert "pending_approval" not in r.json()
+    assert ("PUT", "/admin/realms/soc/users/kc-123", {"firstName": "Updated", "lastName": "Person", "email": "updated@t.local", "emailVerified": False}) in kc
+    assert admin.post(f"/api/admin/users/{uid}/password", {"password": PASSWORD}).status_code == 200
+    assert admin.patch(f"/api/admin/users/{uid}", {"active": False}).status_code == 200
+    assert ("PUT", "/admin/realms/soc/users/kc-123", {"enabled": False}) in kc
+
+
+def test_name_only_edit_syncs_to_keycloak(admin, kc):
+    uid = admin.post("/api/admin/users", {"email": "person@t.local", "password": PASSWORD}).json()["id"]
+    r = admin.patch(f"/api/admin/users/{uid}", {"name": "New Name"})
+    assert r.status_code == 200, r.text
+    assert ("PUT", "/admin/realms/soc/users/kc-123", {"firstName": "New", "lastName": "Name", "email": "person@t.local"}) in kc
+
+
+def test_invalid_scope_does_not_partially_edit_keycloak(admin, kc):
+    uid = admin.post("/api/admin/users", {"email": "person@t.local", "password": PASSWORD}).json()["id"]
+    kc.clear()
+    r = admin.patch(f"/api/admin/users/{uid}", {"name": "Changed", "role": "admin", "client_ids": ["missing-client"]})
+    assert r.status_code == 400 and not kc
