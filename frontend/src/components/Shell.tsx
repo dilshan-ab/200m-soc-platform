@@ -53,6 +53,7 @@ const NAV: { group: string; items: Item[] }[] = [
   ] },
   { group: 'INSIGHTS', items: [
     { to: '/app/analysts', label: 'Analyst Performance', icon: Gauge, cap: 'metrics.read' },
+    { to: '/app/soar-metrics', label: 'SOAR Metrics', icon: Zap, cap: 'metrics.read' },
     { to: '/app/runbooks', label: 'Runbooks', icon: BookOpen, cap: 'runbooks.read' },
     { to: '/app/reports', label: 'Reports', icon: FileText, cap: 'reports.read' },
   ] },
