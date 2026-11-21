@@ -32,7 +32,7 @@ router = APIRouter(prefix="/api", tags=["admin"])
 # ------------------------------------------------------------------------ users
 def user_out(db: Session, u: User) -> dict[str, Any]:
     cids = list(db.execute(select(ClientMembership.client_id).where(ClientMembership.user_id == u.id)).scalars())
-    return {"id": u.id, "email": u.email, "name": u.name, "role": u.role, "grants": u.grants, "denied": u.denied, "all_clients": u.all_clients, "client_ids": cids, "active": u.active, "last_login_at": iso(u.last_login_at)}
+    return {"id": u.id, "email": u.email, "name": u.name, "role": u.role, "grants": u.grants, "denied": u.denied, "all_clients": u.all_clients, "client_ids": cids, "active": u.active, "identity_status": "local" if u.subject.startswith("dev:") else "pending" if u.subject.startswith("pending:") else "linked", "last_login_at": iso(u.last_login_at)}
 
 
 @router.get("/admin/users")
@@ -92,7 +92,7 @@ def create_user(body: UserIn, p: Principal = Depends(require_admin_step_up("user
         for cid in body.client_ids:
             if db.get(Client, cid) is None:
                 raise HTTPException(400, "unknown client")
-        _kc(kc.create_user, email, body.name, body.role, body.password)
+        u.subject = _kc(kc.create_user, email, body.name, body.role, body.password)
     db.add(u)
     db.flush()
     for cid in dict.fromkeys(body.client_ids):
@@ -101,6 +101,56 @@ def create_user(body: UserIn, p: Principal = Depends(require_admin_step_up("user
         db.add(ClientMembership(user_id=u.id, client_id=cid))
     audit.record(db, "user.create", actor=p.label, actor_id=p.user.id, resource_type="user", resource_id=u.id, ip=p.ip, meta={"email": email, "role": u.role})
     return {**user_out(db, u), **out}
+
+
+class PasswordIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    password: str = Field(min_length=12, max_length=256)
+
+
+def _password_target(db: Session, uid: str, p: Principal, body: PasswordIn) -> User:
+    u = db.get(User, uid)
+    if u is None or u.subject == "system:automation":
+        raise HTTPException(404, "user not found")
+    if u.id == p.user.id or u.role == "superadmin":
+        raise HTTPException(403, "use your identity provider account page to change the super admin password")
+    if not password_policy_ok(body.password):
+        raise HTTPException(400, "password must be 12+ chars with upper, lower and a digit")
+    if _external_idp():
+        raise HTTPException(400, "passwords are managed in your identity provider")
+    return u
+
+
+@router.post("/admin/users/{uid}/password")
+def reset_user_password(uid: str, body: PasswordIn, p: Principal = Depends(require_admin_step_up("users.provision")), db: Session = Depends(get_db)) -> dict[str, bool]:
+    u = _password_target(db, uid, p, body)
+    if get_settings().auth_mode == "oidc":
+        expected = None if u.subject.startswith(("dev:", "pending:")) else u.subject
+        u.subject = _kc(kc.reset_password, u.email, body.password, expected)
+        u.password_hash, u.totp_secret = None, None
+    else:
+        if not u.subject.startswith("dev:"):
+            raise HTTPException(400, "this account uses SSO; change its password in the identity provider")
+        u.password_hash = hash_password(body.password)
+    revoke_all(db, u.id)
+    audit.record(db, "user.password_reset", actor=p.label, actor_id=p.user.id, resource_type="user", resource_id=u.id, ip=p.ip)
+    return {"ok": True}
+
+
+@router.post("/admin/users/{uid}/provision")
+def provision_existing_user(uid: str, body: PasswordIn, p: Principal = Depends(require_admin_step_up("users.provision")), db: Session = Depends(get_db)) -> dict[str, Any]:
+    u = _password_target(db, uid, p, body)
+    if get_settings().auth_mode != "oidc":
+        raise HTTPException(400, "Keycloak provisioning requires SSO mode; development accounts are local only")
+    if not u.subject.startswith(("dev:", "pending:")):
+        raise HTTPException(409, "this user is already linked to an identity provider")
+    if not u.active:
+        raise HTTPException(400, "enable the user before provisioning their Keycloak account")
+    u.subject = _kc(kc.create_user, u.email, u.name, u.role, body.password)
+    u.password_hash, u.totp_secret = None, None
+    revoke_all(db, u.id)
+    audit.record(db, "user.keycloak_provision", actor=p.label, actor_id=p.user.id, resource_type="user", resource_id=u.id, ip=p.ip)
+    return user_out(db, u)
 
 
 class UserPatch(BaseModel):

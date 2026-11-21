@@ -36,12 +36,13 @@ function Users() {
   const toast = useToast();
   const users = useQuery({ queryKey: ['users'], queryFn: () => get<any[]>('/api/admin/users') });
   const authConfig = useQuery({ queryKey: ['auth-config'], queryFn: () => get<{ auth_mode: string; user_provisioning: boolean }>('/api/auth/config') });
-  const provisioning = authConfig.data?.user_provisioning ?? true;
+  const provisioning = authConfig.data?.user_provisioning ?? false;
   const canProvision = me?.role === 'superadmin' && provisioning;
   const clients = useQuery({ queryKey: ['clients'], queryFn: () => get<any[]>('/api/clients') });
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => get<any[]>('/api/admin/sessions') });
   const [add, setAdd] = useState(false);
   const [edit, setEdit] = useState<any>(null);
+  const [passwordUser, setPasswordUser] = useState<any>(null);
   const [uq, setUq] = useState('');
   const [ur, setUr] = useState('');
   const revoke = useAct((id: string) => post(`/api/admin/users/${id}/revoke-sessions`), ['users', 'sessions'], 'Sessions revoked');
@@ -51,6 +52,7 @@ function Users() {
   return (
     <>
       <div className="row" style={{ marginBottom: 8 }}><h2>Users</h2><span className="spacer" />
+        {!oidc && <span style={{ color: 'var(--muted)' }}>Development mode: users and passwords are local to SOC; they are not created in Keycloak.</span>}
         {oidc && <span style={{ color: 'var(--muted)' }}>{provisioning ? 'Roles are managed in Keycloak.' : 'Accounts and roles are managed in your identity provider; users appear here after their first sign-in.'}</span>}
         {canProvision && <button className="btn small" onClick={() => setAdd(true)}>Add user</button>}</div>
       {users.data && (
@@ -66,13 +68,15 @@ function Users() {
       )}
       {users.isLoading ? <Loading /> : users.error ? <ErrorBox error={users.error} /> : rows.length === 0 ? <Empty>No users match these filters.</Empty> : (
         <div className="table-wrap"><table><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Scope</th><th>Last login</th><th>State</th><th /></tr></thead>
-          <tbody>{rows.map((u) => <tr key={u.id}><td>{u.email}</td><td>{u.name}</td><td>{u.role}</td><td>{u.all_clients ? 'All clients' : `${u.client_ids.length} client(s)`}</td><td>{ago(u.last_login_at)}</td><td>{u.active ? 'Active' : 'Disabled'}</td>
-            <td className="row">{u.id !== me?.id && u.role !== 'superadmin' && <button className="btn small" onClick={() => setEdit(u)}>Edit</button>}<button className="btn small" onClick={() => revoke.mutate(u.id)}>Sign out everywhere</button>
+          <tbody>{rows.map((u) => <tr key={u.id}><td>{u.email}{oidc && u.identity_status === 'local' && <small className="block">Local account · needs Keycloak provisioning</small>}</td><td>{u.name}</td><td>{u.role}</td><td>{u.all_clients ? 'All clients' : `${u.client_ids.length} client(s)`}</td><td>{ago(u.last_login_at)}</td><td>{u.active ? 'Active' : 'Disabled'}</td>
+            <td className="row">{canProvision && u.id !== me?.id && u.role !== 'superadmin' && <button className="btn small" onClick={() => setPasswordUser(u)}>Reset password</button>}
+              {u.id !== me?.id && u.role !== 'superadmin' && <button className="btn small" onClick={() => setEdit(u)}>Edit</button>}<button className="btn small" onClick={() => revoke.mutate(u.id)}>Sign out everywhere</button>
               {u.id !== me?.id && u.role !== 'superadmin' && <button className="btn small" onClick={() => setActive.mutate({ id: u.id, active: !u.active })}>{u.active ? 'Disable' : 'Enable'}</button>}</td></tr>)}</tbody></table></div>
       )}
       <h2 style={{ margin: '22px 0 8px' }}>Active sessions</h2>
       {sessions.data && sessions.data.length ? <div className="table-wrap"><table><thead><tr><th>User</th><th>IP</th><th>Started</th><th>Last seen</th></tr></thead><tbody>{sessions.data.map((s) => <tr key={s.id}><td>{s.user}</td><td className="mono">{s.ip}</td><td>{ago(s.created_at)}</td><td>{ago(s.last_seen_at)}</td></tr>)}</tbody></table></div> : <Empty>No active sessions.</Empty>}
       {add && <AddUser oidc={oidc} clients={clients.data ?? []} onClose={() => setAdd(false)} onSecret={(s) => toast(`Authenticator secret (shown once): ${s}`)} />}
+      {passwordUser && <UserPassword u={passwordUser} oidc={oidc} onClose={() => setPasswordUser(null)} />}
       {edit && <EditUser u={edit} canChangeRole={!oidc || canProvision} clients={clients.data ?? []} onClose={() => setEdit(null)} />}
     </>
   );
@@ -103,6 +107,25 @@ function AddUser({ oidc, clients, onClose, onSecret }: { oidc: boolean; clients:
       <button className="btn primary" disabled={m.isPending || !v.email.includes('@') || v.password.length < 12} onClick={() => m.mutate(undefined)}>Create</button>
     </Modal>
   );
+}
+
+function UserPassword({ u, oidc, onClose }: { u: any; oidc: boolean; onClose: () => void }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [provision, setProvision] = useState(false);
+  const m = useAct(() => post(`/api/admin/users/${u.id}/${provision ? 'provision' : 'password'}`, { password }), ['users', 'sessions'], provision ? 'User created in Keycloak' : 'Password reset; existing sessions ended', onClose);
+  const valid = password.length >= 12 && /[A-Z]/.test(password) && /[a-z]/.test(password) && /[0-9]/.test(password) && password === confirm;
+  return <Modal title={`${provision ? 'Create in Keycloak' : 'Reset password'}: ${u.email}`} onClose={onClose}>
+    <p>{oidc ? 'Set a temporary password. The user must change it at their next Keycloak sign-in. Existing SOC sessions will end.' : 'Set a new local SOC password. Existing sessions will end; authenticator enrolment stays unchanged.'}</p>
+    {oidc && ['local', 'pending'].includes(u.identity_status) && <label className="row"><input type="checkbox" checked={provision} disabled={m.isPending} onChange={(e) => setProvision(e.target.checked)} /> Create in Keycloak (if this account does not exist there yet)</label>}
+    <form onSubmit={(e) => { e.preventDefault(); if (valid && !m.isPending) m.mutate(undefined); }}>
+      <Field label={oidc ? 'Temporary password' : 'New password'} id="reset-password" hint="At least 12 characters, with uppercase, lowercase and a digit."><input id="reset-password" type="password" autoComplete="new-password" maxLength={256} value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
+      <Field label="Confirm password" id="confirm-password"><input id="confirm-password" type="password" autoComplete="new-password" maxLength={256} value={confirm} onChange={(e) => setConfirm(e.target.value)} /></Field>
+      {confirm && password !== confirm && <p role="status">Passwords do not match.</p>}
+      {m.error && <ErrorBox error={m.error} />}
+      <button type="submit" className="btn primary" disabled={!valid || m.isPending}>{m.isPending ? 'Saving…' : provision ? 'Create in Keycloak' : 'Reset password'}</button>
+    </form>
+  </Modal>;
 }
 
 function EditUser({ u, canChangeRole, clients, onClose }: { u: any; canChangeRole: boolean; clients: any[]; onClose: () => void }) {
