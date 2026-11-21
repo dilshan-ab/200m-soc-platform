@@ -19,7 +19,9 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
   const [deleting, setDeleting] = useState<string[] | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const f = { severity: sp.getAll('severity'), status: sp.get('status') ?? '', q: sp.get('q') ?? '', category: sp.get('category') ?? '',
+  const DEFAULT_SEVERITIES = ['medium', 'high', 'critical'];
+  const explicitSev = sp.getAll('severity');
+  const f = { severity: explicitSev.length > 0 ? explicitSev : (sp.has('show_all') ? [] : DEFAULT_SEVERITIES), status: sp.get('status') ?? '', q: sp.get('q') ?? '', category: sp.get('category') ?? '',
     source: sp.get('source') ?? '', host: sp.get('host') ?? '', client_id: sp.get('client_id') ?? '',
     unassigned_client: sp.get('unassigned_client') === 'true' ? true : undefined,
     since: sp.get('since') ?? '',
@@ -47,6 +49,9 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
   const openAlert = (id: string | null) => { const n = new URLSearchParams(sp); if (id) n.set('open', id); else n.delete('open'); setSp(n); };
   const allSel = items.length > 0 && items.every((a) => sel.has(a.id));
   const clearAll = () => { setSp(new URLSearchParams(), { replace: true }); setPage(1); setSel(new Set()); };
+  const showAll = () => { const n = new URLSearchParams(); n.set('show_all', '1'); setSp(n, { replace: true }); setPage(1); setSel(new Set()); };
+  const isDefault = explicitSev.length === 0 && !sp.has('show_all') && !f.status && !f.q && !f.category && !scoped;
+  const isShowAll = sp.has('show_all') && !f.status && !f.q && !f.category && !scoped;
   const view = (sev: string, st: string) => f.severity.join() === sev && f.status === st && !f.q && !f.category && !scoped;
   const setView = (sev: string, st: string) => { const n = new URLSearchParams(); if (sev) n.set('severity', sev); if (st) n.set('status', st); setSp(n, { replace: true }); setPage(1); };
   useEffect(() => {
@@ -77,7 +82,8 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
       {scoped && <p className="notice">Filtered telemetry{f.host ? ` · Host: ${f.host}` : ''}{f.source ? ` · Source: ${f.source}` : ''}{f.since ? ` · Since ${when(f.since)}` : ''}</p>}
       <SavedViews area="alerts" onApply={() => { setPage(1); setSel(new Set()); setCur(-1); }} />
       <Chips items={[
-        { label: 'All', active: !scoped && !f.q && !f.status && !f.category && f.severity.length === 0, onClick: clearAll },
+        { label: 'Medium+', active: isDefault, onClick: clearAll },
+        { label: 'All severities', active: isShowAll, onClick: showAll },
         { label: 'New', active: view('', 'new'), onClick: () => setView('', 'new') },
         { label: 'Critical', active: view('critical', ''), onClick: () => setView('critical', '') },
         { label: 'High', active: view('high', ''), onClick: () => setView('high', '') },

@@ -18,7 +18,36 @@ from ..models import Alert, EnrichmentJob, OidcState, ReportJob, RetentionPolicy
 from ..services import events, notifications, polling, reports, response
 from ..sla import check_breaches
 
+_last_low_clear_date: str | None = None
+
 log = logging.getLogger("soc.workers")
+
+
+def clear_low_alerts() -> int:
+    """Auto-resolve low and info severity alerts once per day."""
+    global _last_low_clear_date
+    today = utcnow().strftime("%Y-%m-%d")
+    if _last_low_clear_date == today:
+        return 0
+    with session_scope() as db:
+        stale = db.execute(
+            select(Alert).where(
+                Alert.severity.in_(["low", "info"]),
+                Alert.status.notin_(["resolved", "false_positive"]),
+            )
+        ).scalars().all()
+        now = utcnow()
+        for a in stale:
+            a.status = "resolved"
+            a.resolved_at = now
+            if a.acknowledged_at is None:
+                a.acknowledged_at = now
+            a.version += 1
+        count = len(stale)
+    _last_low_clear_date = today
+    if count:
+        log.info("daily cleanup: resolved %d low/info alerts", count)
+    return count
 
 
 def tick_maintenance() -> None:
@@ -33,6 +62,7 @@ def tick_maintenance() -> None:
         db.execute(delete(OidcState).where(OidcState.expires_at < now))
         db.execute(delete(WebhookReplay).where(WebhookReplay.seen_at < now - timedelta(hours=1)))
         db.execute(delete(SessionRecord).where(SessionRecord.expires_at < now - timedelta(days=7)))
+    clear_low_alerts()
 
 
 def apply_retention() -> dict[str, int]:
