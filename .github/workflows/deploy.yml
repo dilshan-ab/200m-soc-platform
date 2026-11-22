@@ -97,15 +97,17 @@ jobs:
             echo "--- Container status ---"
             docker compose ps
             echo ""
-            echo "--- Waiting for backend health (up to 30s) ---"
-            for i in $(seq 1 6); do
-              if curl -sf http://127.0.0.1:8080/api/healthz >/dev/null 2>&1; then
+            echo "--- Waiting for backend health (up to 90s) ---"
+            for i in $(seq 1 18); do
+              status=$(docker inspect --format='{{.State.Health.Status}}' soc-backend-1 2>/dev/null || echo "unknown")
+              if [ "$status" = "healthy" ]; then
                 echo "Backend healthy after $((i * 5))s"
                 exit 0
               fi
+              echo "  attempt $i: status=$status"
               sleep 5
             done
-            echo "Backend NOT healthy after 30s — dumping logs:"
+            echo "Backend NOT healthy after 90s — dumping logs:"
             echo "--- Backend logs (last 80 lines) ---"
             docker compose logs backend --tail 80 --no-color
             echo ""
