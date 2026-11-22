@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import Principal, require
 from ..models import Case, CaseEvidence, utcnow
-from ..services import audit, cases as case_svc, evidence as svc
+from .. import audit
+from ..services import cases as case_svc, evidence as svc
 
 router = APIRouter(prefix="/api/evidence", tags=["evidence"])
 
