@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Activity, AlertTriangle, CheckCircle2, Clock, Database, ExternalLink, Plus, Search, Shield, Trash2, XCircle, Zap } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, Database, Plus, Search, Shield, Trash2, XCircle, Zap } from 'lucide-react';
 import { Fragment, useState } from 'react';
 import { Drawer, Empty, ErrorBox, Loading, PageHead, Status } from '../components/ui';
 import { del, get, post } from '../lib/api';
@@ -7,7 +7,6 @@ import { useAuth } from '../lib/auth';
 import { ago } from '../lib/format';
 import { useAct } from '../lib/mut';
 
-type Provider = { type: string; label: string; category: string; capabilities: string[]; setup_hint: string; configured: boolean; id?: string; name?: string; enabled?: boolean };
 type Job = { id: string; indicator: string; type: string; status: string; verdict: string; results: Record<string, any>; tlp: string; created_at: string; alert_id?: string; case_id?: string };
 type Rule = { id: string; name: string; description: string; rule_type: string; indicator_type: string; pattern: string; verdict: string; confidence: number; tags: string[]; enabled: boolean; hit_count: number; last_hit_at: string | null; created_at: string };
 type EngineStats = { indicators: { total: number; by_verdict: Record<string, number>; auto_learned: number }; rules: { total: number; enabled: number; total_hits: number } };
@@ -16,17 +15,16 @@ const VERDICT_COLORS: Record<string, string> = { malicious: 'var(--bad)', suspic
 const VERDICT_ICONS: Record<string, typeof Shield> = { malicious: XCircle, suspicious: AlertTriangle, benign: CheckCircle2, unknown: Search };
 
 export default function Enrichment() {
-  const [tab, setTab] = useState<'jobs' | 'rules' | 'providers'>('jobs');
+  const [tab, setTab] = useState<'jobs' | 'rules'>('jobs');
   return (
     <>
-      <PageHead title="Enrichment Engine" sub="Local IOC database, custom rules, and external provider enrichment." />
+      <PageHead title="Enrichment Engine" sub="Local IOC database, custom rules, and reputation scoring." />
       <EngineOverview />
       <div className="tabs" style={{ marginBottom: 16 }}>
         <button className={tab === 'jobs' ? 'active' : ''} onClick={() => setTab('jobs')}>Enrichment Jobs</button>
         <button className={tab === 'rules' ? 'active' : ''} onClick={() => setTab('rules')}>Enrichment Rules</button>
-        <button className={tab === 'providers' ? 'active' : ''} onClick={() => setTab('providers')}>Providers</button>
       </div>
-      {tab === 'jobs' ? <JobsPanel /> : tab === 'rules' ? <RulesPanel /> : <ProvidersPanel />}
+      {tab === 'jobs' ? <JobsPanel /> : <RulesPanel />}
     </>
   );
 }
@@ -359,49 +357,3 @@ function RulesPanel() {
   );
 }
 
-function ProvidersPanel() {
-  const providers = useQuery({ queryKey: ['intel-providers'], queryFn: () => get<Provider[]>('/api/intel/providers') });
-
-  if (providers.isLoading) return <Loading />;
-  if (providers.error) return <ErrorBox error={providers.error} />;
-  const data = providers.data!;
-  const configured = data.filter((p) => p.configured);
-  const available = data.filter((p) => !p.configured);
-
-  return (
-    <>
-      <h3 style={{ marginBottom: 12 }}>Configured Providers ({configured.length})</h3>
-      {configured.length === 0 ? <Empty>No enrichment providers configured. Add integrations in Settings → Integrations.</Empty> : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginBottom: 24 }}>
-          {configured.map((p) => (
-            <div key={p.type} className="card" style={{ padding: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <Activity size={18} style={{ color: p.enabled ? 'var(--ok)' : 'var(--muted)' }} />
-                <strong>{p.label}</strong>
-                <span className={`badge ${p.enabled ? 'st-ok' : 'st-down'}`}>{p.enabled ? 'Active' : 'Disabled'}</span>
-              </div>
-              {p.name && <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 4 }}>Instance: {p.name}</div>}
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{p.capabilities.map((c) => <span key={c} className="badge">{c}</span>)}</div>
-            </div>
-          ))}
-        </div>
-      )}
-      <h3 style={{ marginBottom: 12 }}>Available Providers ({available.length})</h3>
-      {available.length === 0 ? <p style={{ color: 'var(--muted)' }}>All enrichment providers are configured.</p> : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-          {available.map((p) => (
-            <div key={p.type} className="card" style={{ padding: 16, opacity: 0.7 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <ExternalLink size={18} style={{ color: 'var(--muted)' }} />
-                <strong>{p.label}</strong>
-                <span className="badge">Not configured</span>
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 4 }}>{p.setup_hint}</div>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{p.capabilities.map((c) => <span key={c} className="badge">{c}</span>)}</div>
-            </div>
-          ))}
-        </div>
-      )}
-    </>
-  );
-}

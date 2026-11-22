@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Clock, Code2, Filter, List, RefreshCw, Search, Terminal } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clock, Code2, Filter, List, RefreshCw, Terminal } from 'lucide-react';
 import { Fragment, useCallback, useState } from 'react';
-import { Empty, ErrorBox, Loading, PageHead } from '../components/ui';
+import { Empty, ErrorBox, Loading, PageHead, SearchBox } from '../components/ui';
 import { get } from '../lib/api';
 
 type LogEntry = {
@@ -69,21 +69,12 @@ export default function LogSearch() {
     <>
       <PageHead title="Log Search" sub={`Search raw logs from ${results.data?.source === 'wazuh' ? 'Wazuh indexer' : 'platform alert database'}. Toggle between organized and raw views.`} />
 
-      <form className="row" onSubmit={e => { e.preventDefault(); setSubmitted(q); setPage(1); }} style={{ gap: 8, marginBottom: 12 }}>
-        <div style={{ flex: 1, position: 'relative' }}>
-          <Search size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
-          <input
-            value={q} onChange={e => setQ(e.target.value)}
-            placeholder="Search logs... (supports Lucene query syntax when using Wazuh)"
-            style={{ paddingLeft: 32, width: '100%' }}
-            aria-label="Search query"
-          />
-        </div>
-        <button className="btn primary" type="submit"><Search size={14} /> Search</button>
-        <button className="btn" type="button" onClick={() => setShowFilters(!showFilters)} title="Filters">
+      <form className="row" onSubmit={e => { e.preventDefault(); setSubmitted(q); setPage(1); }} style={{ gap: 8, marginBottom: 12, alignItems: 'stretch' }}>
+        <SearchBox value={q} onChange={v => setQ(v)} placeholder="Search logs… (Lucene syntax supported)" label="Search logs" />
+        <button className="btn" type="button" onClick={() => setShowFilters(!showFilters)} title="Filters" style={{ minHeight: 42 }}>
           <Filter size={14} /> Filters
         </button>
-        <button className="btn" type="button" onClick={() => results.refetch()} title="Refresh"><RefreshCw size={14} /></button>
+        <button className="btn" type="button" onClick={() => results.refetch()} title="Refresh" style={{ minHeight: 42 }}><RefreshCw size={14} /></button>
       </form>
 
       {showFilters && (
