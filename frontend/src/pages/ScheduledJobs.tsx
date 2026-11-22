@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Calendar, CheckCircle2, Clock, Database, Loader2, Pause, Play, RefreshCw, Zap } from 'lucide-react';
 import { useState } from 'react';
-import { Empty, ErrorBox, Loading, PageHead } from '../components/ui';
-import { get } from '../lib/api';
+import { Skeleton } from '../components/Interactive';
+import { Chips, Summary } from '../components/manage';
+import { Empty, ErrorBox, PageHead, Pager, Status } from '../components/ui';
+import { get, type Page } from '../lib/api';
+import { ago, when } from '../lib/format';
 
 type Overview = {
   enrichment: { total: number; active: number; failed: number };
@@ -25,192 +27,106 @@ type Schedule = {
 };
 
 const CATEGORIES = [
-  { value: '', label: 'All categories' },
+  { value: '', label: 'All' },
   { value: 'enrichment', label: 'Enrichment' },
   { value: 'report', label: 'Reports' },
   { value: 'automation', label: 'Automation' },
   { value: 'playbook', label: 'Playbooks' },
   { value: 'backup', label: 'Backups' },
 ];
-
-const STATUS_COLORS: Record<string, string> = {
-  queued: 'var(--muted)',
-  running: 'var(--accent)',
-  done: 'var(--green)',
-  completed: 'var(--green)',
-  failed: 'var(--red)',
-  rate_limited: 'var(--orange)',
-  cancelled: 'var(--muted)',
-  paused: 'var(--orange)',
-  unknown: 'var(--muted)',
-};
-
-function statusIcon(status: string) {
-  switch (status) {
-    case 'running': case 'queued': return <Loader2 size={13} style={{ color: 'var(--accent)' }} className="spin" />;
-    case 'done': case 'completed': return <CheckCircle2 size={13} style={{ color: 'var(--green)' }} />;
-    case 'failed': return <AlertTriangle size={13} style={{ color: 'var(--red)' }} />;
-    case 'paused': return <Pause size={13} style={{ color: 'var(--orange)' }} />;
-    default: return <Clock size={13} style={{ color: 'var(--muted)' }} />;
-  }
-}
+const STATUSES = ['queued', 'running', 'done', 'completed', 'failed'];
 
 export default function ScheduledJobs() {
   const [tab, setTab] = useState<'jobs' | 'schedules'>('jobs');
   const [category, setCategory] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
-  const [size] = useState(50);
+  const limit = 50;
 
   const overview = useQuery({ queryKey: ['jobs-overview'], queryFn: () => get<Overview>('/api/jobs/overview') });
-
-  const params = new URLSearchParams();
-  if (category) params.set('category', category);
-  if (statusFilter) params.set('status', statusFilter);
-  params.set('page', String(page));
-  params.set('size', String(size));
-
   const jobs = useQuery({
     queryKey: ['jobs-list', category, statusFilter, page],
-    queryFn: () => get<{ total: number; items: JobItem[] }>(`/api/jobs/?${params.toString()}`),
+    queryFn: () => get<Page<JobItem>>('/api/jobs/', { category, status: statusFilter, page, size: limit }),
     enabled: tab === 'jobs',
   });
+  const schedules = useQuery({ queryKey: ['jobs-schedules'], queryFn: () => get<Schedule[]>('/api/jobs/schedules'), enabled: tab === 'schedules' });
 
-  const schedules = useQuery({
-    queryKey: ['jobs-schedules'],
-    queryFn: () => get<Schedule[]>('/api/jobs/schedules'),
-    enabled: tab === 'schedules',
-  });
-
-  const totalPages = jobs.data ? Math.ceil(jobs.data.total / size) : 0;
+  const o = overview.data;
+  const failed = o ? o.playbooks.failed + o.enrichment.failed + o.reports.failed : 0;
+  const clear = () => { setCategory(''); setStatusFilter(''); setPage(1); };
 
   return (
     <>
-      <PageHead title="Scheduled Jobs" sub="Monitor all platform jobs, automation runs, report schedules, and background tasks." />
+      <PageHead title="Scheduled Jobs" sub="Platform jobs, automation runs, report schedules and background tasks." />
+      {o && <Summary items={[
+        { label: 'Enrichment jobs', value: o.enrichment.total },
+        { label: 'Active', value: o.enrichment.active },
+        { label: 'Report schedules', value: o.schedules.total },
+        { label: 'Automation rules', value: o.automation.enabled },
+        { label: 'Runs (24h)', value: o.automation.runs_24h },
+        { label: 'Failed', value: failed, tone: failed > 0 ? 'bad' : 'ok' },
+      ]} />}
 
-      {overview.data && (
-        <div className="kpi-strip" style={{ marginBottom: 16 }}>
-          <div className="kpi"><Zap size={18} /><div><strong>{overview.data.enrichment.total}</strong><small>Enrichment jobs</small></div></div>
-          <div className="kpi"><RefreshCw size={18} /><div><strong>{overview.data.enrichment.active}</strong><small>Active</small></div></div>
-          <div className="kpi"><Calendar size={18} /><div><strong>{overview.data.schedules.total}</strong><small>Schedules</small></div></div>
-          <div className="kpi"><Play size={18} /><div><strong>{overview.data.automation.enabled}</strong><small>Automation rules</small></div></div>
-          <div className="kpi"><Database size={18} /><div><strong>{overview.data.automation.runs_24h}</strong><small>Runs (24h)</small></div></div>
-          <div className="kpi"><AlertTriangle size={18} /><div><strong>{overview.data.playbooks.failed + overview.data.enrichment.failed + overview.data.reports.failed}</strong><small>Failed</small></div></div>
-        </div>
-      )}
-
-      <div className="row" style={{ gap: 8, marginBottom: 12 }}>
-        <div className="tab-bar">
-          <button className={tab === 'jobs' ? 'active' : ''} onClick={() => setTab('jobs')}>Job History</button>
-          <button className={tab === 'schedules' ? 'active' : ''} onClick={() => setTab('schedules')}>Schedules</button>
-        </div>
-        {tab === 'jobs' && (
-          <>
-            <select value={category} onChange={e => { setCategory(e.target.value); setPage(1); }} style={{ width: 160 }}>
-              {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
-            <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }} style={{ width: 140 }}>
-              <option value="">All statuses</option>
-              <option value="queued">Queued</option>
-              <option value="running">Running</option>
-              <option value="done">Done</option>
-              <option value="completed">Completed</option>
-              <option value="failed">Failed</option>
-            </select>
-          </>
-        )}
+      <div className="tabs" style={{ marginBottom: 12 }}>
+        <button className={tab === 'jobs' ? 'active' : ''} onClick={() => setTab('jobs')}>Job history</button>
+        <button className={tab === 'schedules' ? 'active' : ''} onClick={() => setTab('schedules')}>Report schedules{o ? ` (${o.schedules.total})` : ''}</button>
       </div>
 
       {tab === 'jobs' && (
         <>
-          {jobs.isLoading ? <Loading /> : jobs.error ? <ErrorBox error={jobs.error} /> : jobs.data!.items.length === 0 ? (
-            <Empty>No jobs found{category ? ` in ${category}` : ''}{statusFilter ? ` with status "${statusFilter}"` : ''}.</Empty>
+          <Chips items={CATEGORIES.map((c) => ({ label: c.label, active: category === c.value, onClick: () => { setCategory(c.value); setPage(1); } }))} />
+          <div className="filters">
+            <select aria-label="Status" style={{ flex: "0 1 220px" }} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
+              <option value="">Any status</option>
+              {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            {(category || statusFilter) && <button className="btn" onClick={clear}>Clear filters</button>}
+          </div>
+          {jobs.isLoading ? <Skeleton lines={6} /> : jobs.error ? <ErrorBox error={jobs.error} onRetry={() => void jobs.refetch()} retrying={jobs.isFetching} /> : jobs.data!.items.length === 0 ? (
+            <Empty onAction={category || statusFilter ? clear : undefined}>No jobs match these filters.</Empty>
           ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Status</th>
-                    <th>Category</th>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>Verdict</th>
-                    <th>Started</th>
-                    <th>Finished</th>
-                    <th>Error</th>
+            <>
+              <div className="table-wrap"><table>
+                <thead><tr><th>Status</th><th>Category</th><th>Name</th><th>Type</th><th>Verdict</th><th>Started</th><th>Finished</th><th>Error</th></tr></thead>
+                <tbody>{jobs.data!.items.map((j) => (
+                  <tr key={j.id}>
+                    <td><Status v={j.status} /></td>
+                    <td><span className="badge">{j.category}</span></td>
+                    <td className="wrap">{j.name}</td>
+                    <td>{j.type || '—'}</td>
+                    <td>{j.verdict ? <span className="badge">{j.verdict}</span> : '—'}</td>
+                    <td title={when(j.created_at)}>{ago(j.created_at)}</td>
+                    <td title={when(j.finished_at)}>{j.finished_at ? ago(j.finished_at) : '—'}</td>
+                    <td className="wrap" style={{ color: j.error ? 'var(--bad)' : undefined }}>{j.error || '—'}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {jobs.data!.items.map(j => (
-                    <tr key={j.id}>
-                      <td>{statusIcon(j.status)} <span style={{ fontSize: 12, color: STATUS_COLORS[j.status] || 'var(--muted)' }}>{j.status}</span></td>
-                      <td><span className="badge">{j.category}</span></td>
-                      <td style={{ fontSize: 13 }}>{j.name}</td>
-                      <td style={{ fontSize: 12, color: 'var(--muted)' }}>{j.type}</td>
-                      <td>{j.verdict ? <span className="badge" style={{ background: j.verdict === 'matched' ? 'var(--green-bg)' : undefined }}>{j.verdict}</span> : '—'}</td>
-                      <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{j.created_at ? new Date(j.created_at).toLocaleString() : '—'}</td>
-                      <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{j.finished_at ? new Date(j.finished_at).toLocaleString() : '—'}</td>
-                      <td style={{ fontSize: 12, color: 'var(--red)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.error || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {totalPages > 1 && (
-            <div className="row" style={{ justifyContent: 'center', gap: 8, marginTop: 16 }}>
-              <button className="btn small" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</button>
-              <span style={{ fontSize: 13, color: 'var(--muted)', padding: '6px 12px' }}>Page {page} of {totalPages}</span>
-              <button className="btn small" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next</button>
-            </div>
+                ))}</tbody>
+              </table></div>
+              <Pager page={page} limit={limit} total={jobs.data!.total} set={setPage} />
+            </>
           )}
         </>
       )}
 
       {tab === 'schedules' && (
-        <>
-          {schedules.isLoading ? <Loading /> : schedules.error ? <ErrorBox error={schedules.error} /> : schedules.data!.length === 0 ? (
-            <Empty>No report schedules configured. Create one from the Reports page.</Empty>
-          ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Status</th>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>Cadence</th>
-                    <th>Hour</th>
-                    <th>Format</th>
-                    <th>Next run</th>
-                    <th>Last run</th>
-                    <th>Last status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {schedules.data!.map(s => (
-                    <tr key={s.id}>
-                      <td>
-                        {s.paused
-                          ? <span style={{ color: 'var(--orange)', display: 'flex', alignItems: 'center', gap: 4 }}><Pause size={13} /> Paused</span>
-                          : <span style={{ color: 'var(--green)', display: 'flex', alignItems: 'center', gap: 4 }}><Play size={13} /> Active</span>
-                        }
-                      </td>
-                      <td style={{ fontSize: 13 }}>{s.name}</td>
-                      <td><span className="badge">{s.kind}</span></td>
-                      <td style={{ fontSize: 12 }}>{s.cadence}</td>
-                      <td style={{ fontSize: 12 }}>{String(s.hour).padStart(2, '0')}:00</td>
-                      <td style={{ fontSize: 12 }}>{s.fmt.toUpperCase()}</td>
-                      <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{s.next_run_at ? new Date(s.next_run_at).toLocaleString() : '—'}</td>
-                      <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{s.last_run_at ? new Date(s.last_run_at).toLocaleString() : '—'}</td>
-                      <td>{s.last_status ? <span className="badge" style={{ background: s.last_status === 'done' ? 'var(--green-bg)' : s.last_status === 'failed' ? 'var(--red-bg)' : undefined }}>{s.last_status}</span> : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
+        schedules.isLoading ? <Skeleton lines={4} /> : schedules.error ? <ErrorBox error={schedules.error} onRetry={() => void schedules.refetch()} retrying={schedules.isFetching} /> : schedules.data!.length === 0 ? (
+          <Empty>No report schedules yet. Create one from the Reports page.</Empty>
+        ) : (
+          <div className="table-wrap"><table>
+            <thead><tr><th>Status</th><th>Name</th><th>Report</th><th>Cadence</th><th>Format</th><th>Next run</th><th>Last run</th><th>Last result</th></tr></thead>
+            <tbody>{schedules.data!.map((s) => (
+              <tr key={s.id}>
+                <td><Status v={s.paused ? 'paused' : 'active'} /></td>
+                <td className="wrap">{s.name}</td>
+                <td><span className="badge">{s.kind}</span></td>
+                <td>{s.cadence} at {String(s.hour).padStart(2, '0')}:00 <span style={{ color: 'var(--muted)' }}>{s.timezone}</span></td>
+                <td>{s.fmt.toUpperCase()}</td>
+                <td title={when(s.next_run_at)}>{s.paused ? '—' : when(s.next_run_at)}</td>
+                <td title={when(s.last_run_at)}>{s.last_run_at ? ago(s.last_run_at) : '—'}</td>
+                <td>{s.last_status ? <Status v={s.last_status} /> : '—'}</td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        )
       )}
     </>
   );

@@ -61,7 +61,7 @@ tr.clickable{cursor:pointer}tr.kbd-focus{background:var(--soft)!important;box-sh
 fieldset{border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin:0 0 16px}legend{font-size:11px;color:var(--muted);padding:0 6px}
 /* badges */
 .badge{white-space:nowrap}.badge.sev-critical{background:var(--bad-bg);color:var(--bad)}.badge.sev-high{background:var(--warn-bg);color:var(--warn)}.badge.sev-medium{background:var(--info-bg);color:var(--info)}.badge.sev-low{background:var(--soft);color:var(--accent)}.badge.sev-info{background:var(--bg);color:var(--muted)}
-.badge.st-ok,.badge.st-up,.badge.st-done,.badge.st-resolved,.badge.st-success,.badge.st-executed,.badge.st-approved,.badge.st-enabled,.badge.st-active,.badge.st-tested,.badge.st-published{background:var(--ok-bg);color:var(--ok)}
+.badge.st-ok,.badge.st-up,.badge.st-done,.badge.st-completed,.badge.st-resolved,.badge.st-success,.badge.st-executed,.badge.st-approved,.badge.st-enabled,.badge.st-active,.badge.st-tested,.badge.st-published{background:var(--ok-bg);color:var(--ok)}
 .badge.st-degraded,.badge.st-new,.badge.st-open,.badge.st-pending,.badge.st-pending_approval,.badge.st-draft,.badge.st-paused,.badge.st-unknown{background:var(--warn-bg);color:var(--warn)}
 .badge.st-down,.badge.st-failed,.badge.st-rejected,.badge.st-error,.badge.st-disabled,.badge.st-dead,.badge.st-outcome_unknown,.badge.st-false_positive,.badge.st-cancelled{background:var(--bad-bg);color:var(--bad)}
 .badge.st-investigating,.badge.st-in_progress,.badge.st-acknowledged,.badge.st-running,.badge.st-queued,.badge.st-closed{background:var(--info-bg);color:var(--info)}
