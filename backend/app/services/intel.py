@@ -55,6 +55,25 @@ def run_enrichment(db: Session, payload: dict[str, Any]) -> None:
     j.status = "running"
     results: dict[str, Any] = {}
     verdict = "unknown"
+
+    from . import enrichment_engine
+
+    local = enrichment_engine.enrich_local(db, j.indicator, j.indicator_type)
+    if local["local_intel"].get("matched"):
+        results["Local Intel"] = local["local_intel"]
+        v = local["local_intel"].get("verdict", "unknown")
+        if VERDICT_ORDER.index(v if v in VERDICT_ORDER else "unknown") > VERDICT_ORDER.index(verdict):
+            verdict = v
+    if local["rule_matches"]:
+        results["Custom Rules"] = {
+            "matches": local["rule_matches"],
+            "verdict": max((h["verdict"] for h in local["rule_matches"]), key=lambda v: VERDICT_ORDER.index(v if v in VERDICT_ORDER else "unknown")),
+            "tags": local["tags"],
+        }
+        v = results["Custom Rules"]["verdict"]
+        if VERDICT_ORDER.index(v if v in VERDICT_ORDER else "unknown") > VERDICT_ORDER.index(verdict):
+            verdict = v
+
     from ..connectors.base import all_manifests
 
     enrichable_types = [m.type for m in all_manifests() if "enrich" in m.capabilities]
@@ -74,8 +93,16 @@ def run_enrichment(db: Session, payload: dict[str, Any]) -> None:
         except ConnectorError as e:
             errors += 1
             results[t.name] = {"error": str(e)[:200]}
+
+    reputation = enrichment_engine.compute_reputation(
+        local.get("local_intel", {}),
+        local.get("rule_matches", []),
+        {k: v for k, v in results.items() if k not in ("Local Intel", "Custom Rules")},
+    )
+    results["_reputation"] = reputation
+
     j.results, j.verdict = results, verdict
-    j.status = "failed" if tools and errors == len(tools) else "done"
+    j.status = "failed" if tools and errors == len(tools) and not local["local_intel"].get("matched") else "done"
     _write_back_enrichment(db, j)
 
 

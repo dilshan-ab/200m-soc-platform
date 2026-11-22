@@ -1,29 +1,48 @@
 import { useQuery } from '@tanstack/react-query';
-import { Activity, AlertTriangle, CheckCircle2, Clock, Database, ExternalLink, Search, Shield, XCircle } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, Clock, Database, ExternalLink, Plus, Search, Shield, Trash2, XCircle, Zap } from 'lucide-react';
 import { Fragment, useState } from 'react';
 import { Drawer, Empty, ErrorBox, Loading, PageHead, Status } from '../components/ui';
-import { get, post } from '../lib/api';
+import { del, get, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ago } from '../lib/format';
 import { useAct } from '../lib/mut';
 
 type Provider = { type: string; label: string; category: string; capabilities: string[]; setup_hint: string; configured: boolean; id?: string; name?: string; enabled?: boolean };
 type Job = { id: string; indicator: string; type: string; status: string; verdict: string; results: Record<string, any>; tlp: string; created_at: string; alert_id?: string; case_id?: string };
+type Rule = { id: string; name: string; description: string; rule_type: string; indicator_type: string; pattern: string; verdict: string; confidence: number; tags: string[]; enabled: boolean; hit_count: number; last_hit_at: string | null; created_at: string };
+type EngineStats = { indicators: { total: number; by_verdict: Record<string, number>; auto_learned: number }; rules: { total: number; enabled: number; total_hits: number } };
 
 const VERDICT_COLORS: Record<string, string> = { malicious: 'var(--bad)', suspicious: 'var(--warn)', benign: 'var(--ok)', unknown: 'var(--muted)' };
 const VERDICT_ICONS: Record<string, typeof Shield> = { malicious: XCircle, suspicious: AlertTriangle, benign: CheckCircle2, unknown: Search };
 
 export default function Enrichment() {
-  const [tab, setTab] = useState<'jobs' | 'providers'>('jobs');
+  const [tab, setTab] = useState<'jobs' | 'rules' | 'providers'>('jobs');
   return (
     <>
-      <PageHead title="Enrichment" sub="IOC enrichment across VirusTotal, AbuseIPDB, OTX, Shodan, MISP, Cortex, and OpenCTI." />
+      <PageHead title="Enrichment Engine" sub="Local IOC database, custom rules, and external provider enrichment." />
+      <EngineOverview />
       <div className="tabs" style={{ marginBottom: 16 }}>
         <button className={tab === 'jobs' ? 'active' : ''} onClick={() => setTab('jobs')}>Enrichment Jobs</button>
+        <button className={tab === 'rules' ? 'active' : ''} onClick={() => setTab('rules')}>Enrichment Rules</button>
         <button className={tab === 'providers' ? 'active' : ''} onClick={() => setTab('providers')}>Providers</button>
       </div>
-      {tab === 'jobs' ? <JobsPanel /> : <ProvidersPanel />}
+      {tab === 'jobs' ? <JobsPanel /> : tab === 'rules' ? <RulesPanel /> : <ProvidersPanel />}
     </>
+  );
+}
+
+function EngineOverview() {
+  const stats = useQuery({ queryKey: ['enrichment-stats'], queryFn: () => get<EngineStats>('/api/enrichment/stats'), refetchInterval: 30000 });
+  if (!stats.data) return null;
+  const s = stats.data;
+  return (
+    <div className="kpi-row" style={{ marginBottom: 16 }}>
+      <div className="kpi"><Database size={18} /><div><strong>{s.indicators.total}</strong><small>Local IOCs</small></div></div>
+      <div className="kpi"><XCircle size={18} style={{ color: 'var(--bad)' }} /><div><strong>{s.indicators.by_verdict?.malicious ?? 0}</strong><small>Malicious</small></div></div>
+      <div className="kpi"><Zap size={18} style={{ color: 'var(--info)' }} /><div><strong>{s.rules.enabled}</strong><small>Active rules</small></div></div>
+      <div className="kpi"><CheckCircle2 size={18} style={{ color: 'var(--ok)' }} /><div><strong>{s.rules.total_hits}</strong><small>Rule hits</small></div></div>
+      <div className="kpi"><Shield size={18} style={{ color: 'var(--accent)' }} /><div><strong>{s.indicators.auto_learned}</strong><small>Auto-learned</small></div></div>
+    </div>
   );
 }
 
@@ -83,8 +102,30 @@ function JobsPanel() {
   );
 }
 
+function ReputationBadge({ results }: { results: Record<string, any> }) {
+  const rep = results?._reputation;
+  if (!rep) return null;
+  const color = rep.score >= 75 ? 'var(--bad)' : rep.score >= 40 ? 'var(--warn)' : rep.score > 0 ? 'var(--ok)' : 'var(--muted)';
+  return (
+    <div style={{ background: 'var(--soft)', borderRadius: 8, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16 }}>
+      <div style={{ textAlign: 'center', minWidth: 60 }}>
+        <div style={{ fontSize: 28, fontWeight: 700, color, fontVariantNumeric: 'tabular-nums' }}>{rep.score}</div>
+        <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase' }}>Risk Score</div>
+      </div>
+      <div style={{ flex: 1 }}>
+        <div style={{ height: 8, borderRadius: 4, background: 'var(--border)', overflow: 'hidden', marginBottom: 6 }}>
+          <div style={{ width: `${rep.score}%`, height: '100%', background: color, borderRadius: 4 }} />
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+          {rep.sources} source{rep.sources !== 1 ? 's' : ''} · {rep.confidence}% confidence
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function JobDrawer({ job, onClose }: { job: Job; onClose: () => void }) {
-  const sources = Object.entries(job.results || {});
+  const sources = Object.entries(job.results || {}).filter(([k]) => k !== '_reputation');
   const Icon = VERDICT_ICONS[job.verdict] || Search;
   return (
     <Drawer title={job.indicator} onClose={onClose}>
@@ -95,6 +136,7 @@ function JobDrawer({ job, onClose }: { job: Job; onClose: () => void }) {
         <span className={`badge tlp-${job.tlp?.toLowerCase()}`}>{job.tlp}</span>
         <Status v={job.status} />
       </div>
+      <ReputationBadge results={job.results} />
       <dl className="kv">
         <dt>Created</dt><dd>{ago(job.created_at)}</dd>
         {job.alert_id && <><dt>Alert</dt><dd className="mono">{job.alert_id}</dd></>}
@@ -165,6 +207,37 @@ function KvFallback({ data }: { data: Record<string, any> }) {
 function SourceResult({ name, data }: { name: string; data: Record<string, any> }) {
   if (data.error) return <p style={{ color: 'var(--bad)', fontSize: 13, marginTop: 8 }}>{String(data.error)}</p>;
 
+  if (name === 'Local Intel' && data.matched) {
+    return (
+      <div style={{ marginTop: 8 }}>
+        <dl className="kv">
+          <dt>Verdict</dt><dd style={{ color: VERDICT_COLORS[data.verdict] }}>{data.verdict}</dd>
+          <dt>Confidence</dt><dd>{data.confidence}%</dd>
+          <dt>Source</dt><dd>{data.source}</dd>
+          <dt>Sightings</dt><dd>{data.sightings}</dd>
+          {data.labels?.length > 0 && <><dt>Labels</dt><dd>{data.labels.join(', ')}</dd></>}
+          {data.first_seen && <><dt>First seen</dt><dd>{data.first_seen}</dd></>}
+        </dl>
+      </div>
+    );
+  }
+
+  if (name === 'Custom Rules' && data.matches) {
+    return (
+      <div style={{ marginTop: 8 }}>
+        {data.tags?.length > 0 && <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>{data.tags.map((t: string) => <span key={t} className="badge">{t}</span>)}</div>}
+        {data.matches.map((m: any) => (
+          <div key={m.rule_id} style={{ fontSize: 13, padding: '4px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Zap size={12} style={{ color: VERDICT_COLORS[m.verdict] }} />
+            <strong>{m.rule_name}</strong>
+            <span style={{ color: VERDICT_COLORS[m.verdict] }}>{m.verdict}</span>
+            <span style={{ color: 'var(--muted)', fontSize: 11 }}>{m.confidence}% confidence</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   if (name === 'VirusTotal' && data.stats) {
     const stats = data.stats as Record<string, number>;
     const total = Object.values(stats).reduce((a, b) => a + b, 0);
@@ -220,6 +293,70 @@ function SourceResult({ name, data }: { name: string; data: Record<string, any> 
   }
 
   return <KvFallback data={data} />;
+}
+
+function RulesPanel() {
+  const { can } = useAuth();
+  const rules = useQuery({ queryKey: ['enrichment-rules'], queryFn: () => get<Rule[]>('/api/enrichment/rules'), refetchInterval: 15000 });
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ name: '', description: '', rule_type: 'cidr', indicator_type: 'ip', pattern: '', verdict: 'suspicious', confidence: 70, tags: '' });
+  const create = useAct(() => post('/api/enrichment/rules', { ...form, confidence: Number(form.confidence), tags: form.tags ? form.tags.split(',').map((t) => t.trim()) : [] }), ['enrichment-rules', 'enrichment-stats'], 'Rule created', () => { setShowAdd(false); setForm({ name: '', description: '', rule_type: 'cidr', indicator_type: 'ip', pattern: '', verdict: 'suspicious', confidence: 70, tags: '' }); });
+  const remove = useAct((id: string) => del(`/api/enrichment/rules/${id}`), ['enrichment-rules', 'enrichment-stats'], 'Rule deleted');
+
+  const RULE_TYPES: Record<string, string> = { cidr: 'CIDR Range', domain_pattern: 'Domain Pattern', hash_list: 'Hash List', regex: 'Regex' };
+  const HINTS: Record<string, string> = { cidr: '10.0.0.0/8, 192.168.1.0/24', domain_pattern: '*.evil.com, *.malware.xyz', hash_list: 'abc123..., def456...', regex: '.*\\.ru$' };
+
+  return (
+    <>
+      {can('intel.enrich') && (
+        <div style={{ marginBottom: 16 }}>
+          {!showAdd ? (
+            <button className="btn primary" onClick={() => setShowAdd(true)}><Plus size={14} /> Add Rule</button>
+          ) : (
+            <div className="card" style={{ padding: 16 }}>
+              <h4 style={{ marginBottom: 12 }}>New Enrichment Rule</h4>
+              <form onSubmit={(e) => { e.preventDefault(); if (form.name.length >= 2 && form.pattern.length >= 1) create.mutate(undefined); }} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <input placeholder="Rule name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={{ gridColumn: '1 / -1' }} />
+                <select value={form.rule_type} onChange={(e) => setForm({ ...form, rule_type: e.target.value })}>
+                  {Object.entries(RULE_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+                <select value={form.indicator_type} onChange={(e) => setForm({ ...form, indicator_type: e.target.value })}>
+                  <option value="ip">IP</option><option value="domain">Domain</option><option value="hash">Hash</option><option value="url">URL</option><option value="any">Any</option>
+                </select>
+                <textarea placeholder={HINTS[form.rule_type] || 'Pattern'} value={form.pattern} onChange={(e) => setForm({ ...form, pattern: e.target.value })} rows={2} style={{ gridColumn: '1 / -1' }} />
+                <select value={form.verdict} onChange={(e) => setForm({ ...form, verdict: e.target.value })}>
+                  <option value="malicious">Malicious</option><option value="suspicious">Suspicious</option><option value="benign">Benign</option>
+                </select>
+                <input type="number" min={0} max={100} placeholder="Confidence (0-100)" value={form.confidence} onChange={(e) => setForm({ ...form, confidence: Number(e.target.value) })} />
+                <input placeholder="Tags (comma-separated)" value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} />
+                <input placeholder="Description (optional)" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+                <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8 }}>
+                  <button className="btn primary" type="submit" disabled={form.name.length < 2 || form.pattern.length < 1 || create.isPending}>Create</button>
+                  <button className="btn" type="button" onClick={() => setShowAdd(false)}>Cancel</button>
+                </div>
+              </form>
+              {create.error && <ErrorBox error={create.error} />}
+            </div>
+          )}
+        </div>
+      )}
+      {rules.isLoading ? <Loading /> : rules.error ? <ErrorBox error={rules.error} /> : rules.data!.length === 0 ? <Empty>No enrichment rules. Create rules to auto-tag and score indicators from CIDR ranges, domain patterns, hash watchlists, or regex.</Empty> : (
+        <div className="table-wrap"><table><thead><tr><th>Name</th><th>Type</th><th>Indicator</th><th>Verdict</th><th>Confidence</th><th>Hits</th><th>Status</th><th /></tr></thead>
+          <tbody>{rules.data!.map((r) => (
+            <tr key={r.id}>
+              <td><strong>{r.name}</strong>{r.description && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{r.description}</div>}</td>
+              <td><span className="badge">{RULE_TYPES[r.rule_type] || r.rule_type}</span></td>
+              <td><span className="badge">{r.indicator_type}</span></td>
+              <td><span style={{ color: VERDICT_COLORS[r.verdict] }}>{r.verdict}</span></td>
+              <td>{r.confidence}%</td>
+              <td>{r.hit_count}{r.last_hit_at && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{ago(r.last_hit_at)}</div>}</td>
+              <td><span className={`badge ${r.enabled ? 'st-ok' : 'st-down'}`}>{r.enabled ? 'Active' : 'Disabled'}</span></td>
+              <td>{can('intel.enrich') && <button className="btn small" onClick={() => remove.mutate(r.id)} title="Delete"><Trash2 size={13} /></button>}</td>
+            </tr>
+          ))}</tbody></table></div>
+      )}
+    </>
+  );
 }
 
 function ProvidersPanel() {

@@ -79,6 +79,9 @@ def change_status(db: Session, case: Case, new: str, actor: str, resolution: str
     case.status = new
     case.version += 1
     events.publish(db, "case.updated", id=case.id, client_id=case.client_id, severity=case.severity)
+    if new == "resolved" and resolution in ("true_positive", "false_positive"):
+        from . import enrichment_engine
+        enrichment_engine.learn_from_case(db, case.id, resolution, case.owner_id or "")
 
 
 def valid_severity(s: str) -> str:
