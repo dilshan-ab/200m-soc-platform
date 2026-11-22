@@ -38,6 +38,7 @@ const ThreatIntelSharing = lazy(() => import('./pages/ThreatIntelSharing'));
 const ShiftHandoff = lazy(() => import('./pages/ShiftHandoff'));
 const WarRoom = lazy(() => import('./pages/WarRoom'));
 const Clients = lazy(() => import('./pages/Clients'));
+const LogSearch = lazy(() => import('./pages/LogSearch'));
 const Xdr = lazy(() => import('./pages/DetectionWorkspaces').then(({ Xdr }) => ({ default: Xdr })));
 const RiskAnalytics = lazy(() => import('./pages/DetectionWorkspaces').then(({ RiskAnalytics }) => ({ default: RiskAnalytics })));
 const Admin = lazy(() => import('./pages/Admin'));
@@ -100,6 +101,7 @@ export default function App() {
           <Route path="handoff" element={<Need cap="handoff.read"><ShiftHandoff /></Need>} />
           <Route path="warroom" element={<Need cap="warroom.read"><WarRoom /></Need>} />
           <Route path="clients" element={<Need cap="clients.read"><Clients /></Need>} />
+          <Route path="logs" element={<Need cap="logs.read"><LogSearch /></Need>} />
           <Route path="admin" element={<Need cap="admin.settings"><Admin /></Need>} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Route>
