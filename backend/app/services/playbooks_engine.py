@@ -4,6 +4,7 @@ response-action system (with its approvals/guardrails intact), branching on cond
 nodes, and pausing/resuming the run across async approval + execution."""
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 from typing import Any
 
@@ -20,8 +21,78 @@ TERMINAL_REQUEST_STATUSES = {"succeeded", "failed", "rejected", "cancelled", "ou
 _ALERT_STATUSES = {"acknowledged", "investigating", "false_positive", "resolved"}
 
 
+# Variables: a node's result is addressable by later nodes as "<node_id>.<key>" (dotted paths reach into nested
+# results); the triggering alert and case are "alert.<field>" and "case.<field>". Conditions can test them
+# (field = "enrich-1.verdict") and notification/note text can embed them ("{{enrich-1.score}}").
+VAR_REF = re.compile(r"^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)+$")
+VAR_TEMPLATE = re.compile(r"\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}")
+VAR_OPS = OPS | {"gt", "lt", "lte"}
+ALERT_VARS = FIELDS | {"id", "dst_ip", "file_hash"}
+CASE_VARS = {"id", "number", "title", "severity", "status"}
+
+
 class EngineError(ValueError):
     pass
+
+
+def _ancestors(edges: list[dict[str, Any]], node_id: str) -> set[str]:
+    """All nodes that can run before node_id (upstream along edges)."""
+    parents: dict[str, list[str]] = {}
+    for e in edges:
+        parents.setdefault(e.get("target", ""), []).append(e.get("source", ""))
+    seen: set[str] = set()
+    stack = list(parents.get(node_id, []))
+    while stack:
+        n = stack.pop()
+        if n not in seen:
+            seen.add(n)
+            stack.extend(parents.get(n, []))
+    return seen
+
+
+def _check_var_refs(refs: list[str], nodes: list[dict[str, Any]], edges: list[dict[str, Any]], node_id: Any, where: str) -> None:
+    by_id = {n.get("id"): n for n in nodes}
+    up = _ancestors(edges, str(node_id))
+    for ref in refs:
+        head = ref.split(".", 1)[0]
+        if head in ("alert", "case"):
+            key = ref.split(".", 1)[1]
+            if key not in (ALERT_VARS if head == "alert" else CASE_VARS):
+                raise EngineError(f"{where} {node_id}: unknown {head} field in variable {ref!r}")
+            continue
+        if head not in by_id:
+            raise EngineError(f"{where} {node_id}: variable {ref!r} refers to unknown node {head!r}")
+        if head not in up:
+            raise EngineError(f"{where} {node_id}: variable {ref!r} refers to node {head!r}, which does not run before this node")
+
+
+def _lookup_var(ref: str, variables: dict[str, Any]) -> Any:
+    cur: Any = variables
+    for part in ref.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            raise EngineError(f"unknown variable {ref!r} (the node has not run or has no such output)")
+        cur = cur[part]
+    return cur
+
+
+def _vars_for(run: PlaybookRun, alert: Alert | None, case: Case | None) -> dict[str, Any]:
+    """Variable namespace: results of completed nodes in this run (survives pause/resume) plus alert/case fields."""
+    out: dict[str, Any] = {}
+    for entry in run.execution_log or []:
+        if entry.get("status") == "completed" and isinstance(entry.get("result"), dict):
+            out[entry["node_id"]] = entry["result"]
+    if alert is not None:
+        out["alert"] = {k: getattr(alert, k, None) for k in ALERT_VARS}
+    if case is not None:
+        out["case"] = {k: getattr(case, k, None) for k in CASE_VARS}
+    return out
+
+
+def _render(text: str, variables: dict[str, Any]) -> str:
+    def sub(m: re.Match[str]) -> str:
+        return str(_lookup_var(m.group(1), variables))
+
+    return VAR_TEMPLATE.sub(sub, text)
 
 
 def validate_graph(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> None:
@@ -42,12 +113,22 @@ def validate_graph(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> 
                 raise EngineError(f"action node {n.get('id')}: request_action needs an action_key")
             if atype == "set_status" and data.get("status") not in _ALERT_STATUSES:
                 raise EngineError(f"action node {n.get('id')}: invalid status {data.get('status')!r}")
+            for key in ("text", "title"):
+                if isinstance(data.get(key), str):
+                    _check_var_refs(VAR_TEMPLATE.findall(data[key]), nodes, edges, n.get("id"), "action node")
         elif t == "condition":
-            if data.get("field") not in FIELDS or data.get("op") not in OPS:
+            field = data.get("field")
+            if isinstance(field, str) and VAR_REF.match(field) and field not in FIELDS:
+                if data.get("op") not in VAR_OPS:
+                    raise EngineError(f"condition node {n.get('id')}: invalid op {data.get('op')!r}")
+                _check_var_refs([field], nodes, edges, n.get("id"), "condition node")
+            elif field not in FIELDS or data.get("op") not in OPS:
                 raise EngineError(f"condition node {n.get('id')}: invalid field/op")
         elif t == "notification":
             if not data.get("destination_id"):
                 raise EngineError(f"notification node {n.get('id')}: destination_id is required")
+            if isinstance(data.get("message"), str):
+                _check_var_refs(VAR_TEMPLATE.findall(data["message"]), nodes, edges, n.get("id"), "notification node")
 
 
 def _find_node(pb: Playbook, node_id: str) -> dict[str, Any] | None:
@@ -83,11 +164,31 @@ def _ctx_case(db: Session, run: PlaybookRun) -> Case | None:
     return None
 
 
-def _eval_condition(data: dict[str, Any], alert: Alert | None) -> bool:
-    if alert is None:
-        return False
-    actual = getattr(alert, data.get("field", ""), None)
+def _num(x: Any) -> float | None:
+    if isinstance(x, bool):
+        return None
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return None
+
+
+def _eval_condition(data: dict[str, Any], alert: Alert | None, variables: dict[str, Any] | None = None) -> bool:
+    field = str(data.get("field", ""))
     val, op = data.get("value"), data.get("op")
+    if field not in FIELDS and VAR_REF.match(field):
+        actual = _lookup_var(field, variables or {})
+        a, b = _num(actual), _num(val)
+        if op in ("gt", "lt", "gte", "lte") and a is not None and b is not None:
+            return {"gt": a > b, "lt": a < b, "gte": a >= b, "lte": a <= b}[str(op)]
+        if op in ("gt", "lt", "lte"):
+            return False
+        if op in ("eq", "ne") and a is not None and b is not None:
+            return (a == b) == (op == "eq")
+    else:
+        if alert is None:
+            return False
+        actual = getattr(alert, field, None)
     if op == "eq":
         return actual == val
     if op == "ne":
@@ -110,7 +211,7 @@ def _send_notification(db: Session, pb: Playbook, run: PlaybookRun, node: dict[s
     dest_id = data["destination_id"]
     subject = f"[Playbook] {pb.name}: {node.get('data', {}).get('label', node['id'])}"
     body = f"Alert: {alert.title}\n" if alert else (f"Case #{case.number}: {case.title}\n" if case else "")
-    body += data.get("message", "")
+    body += _render(str(data.get("message", "")), _vars_for(run, alert, case))
     key = f"playbook:{run.id}:{node['id']}"
     d = NotificationDelivery(rule_id=None, destination_id=dest_id, event_ref=key, dedupe_key=key, subject=subject[:300], body=body, alert_id=(alert.id if alert else None))
     db.add(d)
@@ -121,7 +222,7 @@ def _send_notification(db: Session, pb: Playbook, run: PlaybookRun, node: dict[s
 
 def _run_action(db: Session, pb: Playbook, run: PlaybookRun, node: dict[str, Any], alert: Alert | None, case: Case | None) -> tuple[dict[str, Any], bool]:
     from . import cases as cases_svc
-    from . import response
+    from . import enrichment_engine, response
     from .intel import queue_enrichment
     from .settings_svc import system_user
 
@@ -140,7 +241,7 @@ def _run_action(db: Session, pb: Playbook, run: PlaybookRun, node: dict[str, Any
     if atype == "add_note":
         if alert is None:
             raise EngineError("no alert in context")
-        alert.tuning_note = (alert.tuning_note + "\n" if alert.tuning_note else "") + f"[playbook:{pb.name}] {str(data.get('text', ''))[:500]}"
+        alert.tuning_note = (alert.tuning_note + "\n" if alert.tuning_note else "") + f"[playbook:{pb.name}] {_render(str(data.get('text', '')), _vars_for(run, alert, case))[:500]}"
         return {"noted": True}, False
     if atype == "create_case":
         if alert is None:
@@ -153,8 +254,13 @@ def _run_action(db: Session, pb: Playbook, run: PlaybookRun, node: dict[str, Any
         ind = alert.src_ip or alert.file_hash
         if not ind:
             return {"skipped": "no indicator on alert"}, False
-        j = queue_enrichment(db, ind, "ip" if alert.src_ip else "hash", system_user(db).id, alert_id=alert.id, client_id=alert.client_id)
-        return {"job_id": j.id}, False
+        itype = "ip" if alert.src_ip else "hash"
+        j = queue_enrichment(db, ind, itype, system_user(db).id, alert_id=alert.id, client_id=alert.client_id)
+        # Local reputation is computed now so later nodes can branch on it; connector results still arrive via the job.
+        local = enrichment_engine.local_lookup(db, ind, itype)
+        rules = enrichment_engine.rule_match(db, ind, itype)
+        rep = enrichment_engine.compute_reputation(local, rules, {})
+        return {"job_id": j.id, "indicator": ind, "indicator_type": itype, "verdict": rep["verdict"], "score": rep["score"], "confidence": rep["confidence"], "sources": rep["sources"]}, False
     if atype == "request_action":
         target_field = data.get("target_field", "src_ip")
         target = (getattr(alert, target_field, "") if alert and target_field in ("src_ip", "host", "username") else "") or data.get("target", "")
@@ -196,7 +302,12 @@ def _advance(db: Session, pb: Playbook, run: PlaybookRun, frontier: list[str], *
             frontier.extend(_outgoing(pb, node_id))
             continue
         if ntype == "condition":
-            ok = _eval_condition(node.get("data") or {}, alert)
+            try:
+                ok = _eval_condition(node.get("data") or {}, alert, _vars_for(run, alert, case))
+            except EngineError as e:
+                _append_log(run, node_id, ntype, "failed", {"error": str(e)[:300]}, started)
+                run.status, run.error, run.finished_at = "failed", str(e)[:500], utcnow()
+                return
             _append_log(run, node_id, ntype, "completed", {"matched": ok}, started)
             frontier.extend(_outgoing(pb, node_id, "yes" if ok else "no"))
             continue
