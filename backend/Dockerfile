@@ -8,7 +8,7 @@ COPY pyproject.toml ./
 RUN python - <<'PY' > requirements.txt
 import tomllib
 p = tomllib.load(open("pyproject.toml", "rb"))["project"]
-print("\n".join(p["dependencies"] + p["optional-dependencies"]["pdf"]))
+print("\n".join(p["dependencies"] + p["optional-dependencies"]["pdf"] + p["optional-dependencies"]["connectors"]))
 PY
 RUN pip install -r requirements.txt
 COPY app ./app

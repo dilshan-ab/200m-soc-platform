@@ -43,6 +43,7 @@ def poll_tool(db: Session, tool: Tool) -> dict[str, Any]:
         return {"ok": False, "error": st.last_error}
     created = ingest_batch(db, tool, res.alerts)
     assets = ingest.upsert_assets(db, tool, res.assets) if res.assets else 0
+    findings = ingest.upsert_findings(db, tool, res.findings) if res.findings else 0
     st.checkpoint = res.checkpoint or st.checkpoint
     st.last_success_at, st.error_count, st.last_error = now, 0, ""
     day = now.strftime("%Y-%m-%d")
@@ -52,7 +53,7 @@ def poll_tool(db: Session, tool: Tool) -> dict[str, Any]:
     st.items_total += created
     newest = max((a.time for a in res.alerts if a.time), default=None)
     st.lag_seconds = max(0, int((now - newest).total_seconds())) if newest else 0
-    return {"ok": True, "alerts": len(res.alerts), "created": created, "assets": assets}
+    return {"ok": True, "alerts": len(res.alerts), "created": created, "assets": assets, "findings": findings}
 
 
 def is_due(tool: Tool) -> bool:

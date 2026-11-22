@@ -14,6 +14,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8", "fakeredis>=2.23", "ruff>=0.5", "mypy>=1.10", "types-redis"]
 pdf = ["weasyprint>=62"]
+connectors = ["pyvelociraptor>=0.1.14", "python-gvm>=27"]  # Velociraptor (gRPC) and OpenVAS/GVM (GMP) connectors
 
 [tool.ruff]
 line-length = 200
