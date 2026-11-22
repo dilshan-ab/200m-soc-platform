@@ -51,6 +51,18 @@ export const get = <T = any>(path: string, params?: Opts['params']) => api<T>(pa
 export const post = <T = any>(path: string, body?: unknown) => api<T>(path, { method: 'POST', body: body ?? {} });
 export const put = <T = any>(path: string, body?: unknown) => api<T>(path, { method: 'PUT', body });
 export const patch = <T = any>(path: string, body?: unknown) => api<T>(path, { method: 'PATCH', body });
+/** Multipart upload with the CSRF header (the JSON helper can't send FormData). */
+export async function upload<T = any>(path: string, form: FormData, params?: Opts['params']): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (csrf) headers['X-CSRF-Token'] = csrf;
+  const res = await fetch(`${path}${qs(params)}`, { method: 'POST', headers, credentials: 'same-origin', body: form });
+  const data = await res.json().catch(() => null);
+  if (res.ok) return data as T;
+  if (res.status === 401) unauthHandler?.();
+  const d = data?.detail;
+  throw new ApiError(res.status, typeof d === 'string' ? d : Array.isArray(d) ? d.map((x: any) => x.msg).join('; ') : res.statusText || `Upload failed (${res.status})`);
+}
+
 export const del = <T = any>(path: string) => api<T>(path, { method: 'DELETE' });
 
 export type Page<T> = { items: T[]; total: number; page: number; limit: number };
