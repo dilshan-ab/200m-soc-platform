@@ -2,7 +2,7 @@ import { tableKeyboard } from '../lib/tableKeyboard';
 import { KeyboardHelp, NotificationPanel, Pulse } from './Interactive';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, ArrowUp, AlertTriangle, Bell, BookMarked, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Crosshair, FileCode2, FileText, Flame, GitMerge, Globe, HeartPulse, MessagesSquare, Network, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Repeat2, ScrollText, Search, Server, Settings, Share2, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react'; // Building2 removed with the Clients & MSSP nav entry below — re-add it when un-commenting
+import { Activity, ArrowUp, AlertTriangle, Bell, BookMarked, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Crosshair, FileCode2, FileText, Flame, GitMerge, Globe, HeartPulse, MessagesSquare, Network, Package, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Repeat2, ScrollText, Search, Server, Settings, Share2, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react'; // Building2 removed with the Clients & MSSP nav entry below — re-add it when un-commenting
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { get } from '../lib/api';
@@ -39,6 +39,7 @@ const NAV: { group: string; items: Item[] }[] = [
     { to: '/app/warroom', label: 'War Room', icon: MessagesSquare, cap: 'warroom.read' },
     { to: '/app/handoff', label: 'Shift Handoff', icon: Repeat2, cap: 'handoff.read' },
     { to: '/app/logs', label: 'Log Search', icon: ScrollText, cap: 'logs.read' },
+    { to: '/app/evidence', label: 'Evidence Vault', icon: Package, cap: 'evidence.read' },
   ] },
   { group: 'SECURITY POSTURE', items: [
     { to: '/app/servers', label: 'Servers', icon: Cpu, cap: 'servers.read' },
