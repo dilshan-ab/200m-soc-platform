@@ -4,6 +4,7 @@ response-action system (with its approvals/guardrails intact), branching on cond
 nodes, and pausing/resuming the run across async approval + execution."""
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -293,3 +294,45 @@ def on_event(db: Session, ev: dict[str, Any]) -> None:
             continue
         ref = f"{'alert' if t == 'alert.created' else 'case'}:{obj.id}"
         start_run(db, pb, ref, alert=obj if t == "alert.created" else None, case=obj if t == "case.created" else None)
+
+
+MIN_SCHEDULE_MINUTES = 5
+MAX_SCHEDULE_MINUTES = 10080  # one week
+
+
+def sync_schedule(pb: Playbook, *, reset: bool = False) -> None:
+    """Keep next_run_at consistent with trigger/interval. Raises EngineError on an invalid schedule."""
+    if pb.trigger != "scheduled":
+        pb.schedule_interval_minutes, pb.next_run_at = None, None
+        return
+    iv = pb.schedule_interval_minutes
+    if iv is None or not (MIN_SCHEDULE_MINUTES <= iv <= MAX_SCHEDULE_MINUTES):
+        raise EngineError(f"scheduled playbooks need schedule_interval_minutes between {MIN_SCHEDULE_MINUTES} and {MAX_SCHEDULE_MINUTES}")
+    if reset or pb.next_run_at is None:
+        pb.next_run_at = utcnow() + timedelta(minutes=iv)
+
+
+def run_due_scheduled(db: Session) -> int:
+    """Start a run for each enabled, published scheduled playbook whose next_run_at has passed.
+
+    Missed intervals are not replayed: next_run_at moves to now + interval, so a long outage causes one run, not a burst.
+    """
+    now = utcnow()
+    n = 0
+    due = db.execute(
+        select(Playbook).where(
+            Playbook.enabled.is_(True),
+            Playbook.status == "published",
+            Playbook.trigger == "scheduled",
+            Playbook.next_run_at.is_not(None),
+            Playbook.next_run_at <= now,
+        )
+    ).scalars().all()
+    for pb in due:
+        occurrence = pb.next_run_at.isoformat() if pb.next_run_at else ""
+        pb.last_run_at = now
+        pb.next_run_at = now + timedelta(minutes=pb.schedule_interval_minutes or MAX_SCHEDULE_MINUTES)
+        start_run(db, pb, f"scheduled:{occurrence}")
+        events.publish(db, "playbook.executed", id=pb.id)
+        n += 1
+    return n
