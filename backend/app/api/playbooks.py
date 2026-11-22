@@ -26,6 +26,9 @@ def playbook_out(pb: Playbook, detail: bool = False) -> dict[str, Any]:
         "status": pb.status,
         "enabled": pb.enabled,
         "version": pb.version,
+        "schedule_interval_minutes": pb.schedule_interval_minutes,
+        "next_run_at": iso(pb.next_run_at),
+        "last_run_at": iso(pb.last_run_at),
         "client_id": pb.client_id,
         "created_by": pb.created_by,
         "created_at": iso(pb.created_at),
@@ -77,6 +80,7 @@ class PlaybookIn(BaseModel):
     trigger: Literal["manual", "alert.created", "case.created", "scheduled"] = "manual"
     nodes: list[dict[str, Any]] = Field(default_factory=list)
     edges: list[dict[str, Any]] = Field(default_factory=list)
+    schedule_interval_minutes: int | None = Field(default=None, ge=1, le=100000)
     client_id: str | None = None
 
 
@@ -90,9 +94,14 @@ def create_playbook(body: PlaybookIn, p: Principal = Depends(require("playbooks.
         trigger=body.trigger,
         nodes=body.nodes,
         edges=body.edges,
+        schedule_interval_minutes=body.schedule_interval_minutes,
         client_id=body.client_id,
         created_by=p.label,
     )
+    try:
+        playbooks_engine.sync_schedule(pb, reset=True)
+    except playbooks_engine.EngineError as e:
+        raise HTTPException(400, str(e)) from e
     db.add(pb)
     db.flush()
     audit.record(db, "playbook.create", actor=p.label, actor_id=p.user.id, resource_type="playbook", resource_id=pb.id, client_id=pb.client_id, ip=p.ip)
@@ -115,6 +124,7 @@ class PlaybookUpdate(BaseModel):
     edges: list[dict[str, Any]] | None = None
     status: Literal["draft", "published", "archived"] | None = None
     enabled: bool | None = None
+    schedule_interval_minutes: int | None = Field(default=None, ge=1, le=100000)
 
 
 @router.patch("/{playbook_id}")
@@ -125,10 +135,16 @@ def update_playbook(playbook_id: str, body: PlaybookUpdate, p: Principal = Depen
             playbooks_engine.validate_graph(body.nodes if body.nodes is not None else pb.nodes, body.edges if body.edges is not None else pb.edges)
         except playbooks_engine.EngineError as e:
             raise HTTPException(400, str(e)) from e
-    for field in ("name", "description", "trigger", "nodes", "edges", "status", "enabled"):
+    old_sched = (pb.trigger, pb.schedule_interval_minutes, pb.enabled)
+    for field in ("name", "description", "trigger", "nodes", "edges", "status", "enabled", "schedule_interval_minutes"):
         v = getattr(body, field)
         if v is not None:
             setattr(pb, field, v)
+    try:
+        # restart the countdown when the schedule or enabled state changes, so re-enabling never fires immediately
+        playbooks_engine.sync_schedule(pb, reset=(pb.trigger, pb.schedule_interval_minutes, pb.enabled) != old_sched)
+    except playbooks_engine.EngineError as e:
+        raise HTTPException(400, str(e)) from e
     if body.nodes is not None or body.edges is not None:
         pb.version += 1
     pb.updated_at = utcnow()

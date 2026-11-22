@@ -15,7 +15,7 @@ from sqlalchemy.engine import CursorResult
 from ..config import get_settings
 from ..db import session_factory, session_scope
 from ..models import Alert, EnrichmentJob, OidcState, ReportJob, RetentionPolicy, SessionRecord, WebhookReplay, utcnow
-from ..services import events, notifications, polling, reports, response
+from ..services import events, notifications, playbooks_engine, polling, reports, response
 from ..sla import check_breaches
 
 _last_low_clear_date: str | None = None
@@ -58,6 +58,7 @@ def tick_maintenance() -> None:
         response.revert_due(db)
         response.reconcile_stale(db)
         reports.run_due_schedules(db)
+        playbooks_engine.run_due_scheduled(db)
         now = utcnow()
         db.execute(delete(OidcState).where(OidcState.expires_at < now))
         db.execute(delete(WebhookReplay).where(WebhookReplay.seen_at < now - timedelta(hours=1)))

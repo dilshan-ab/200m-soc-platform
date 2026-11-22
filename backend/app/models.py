@@ -789,6 +789,9 @@ class Playbook(Base):
     status: Mapped[str] = mapped_column(String(20), default="draft", index=True)  # draft | published | archived
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     version: Mapped[int] = mapped_column(Integer, default=1)
+    schedule_interval_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)  # used when trigger == "scheduled"
+    next_run_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True, index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True, index=True)
     created_by: Mapped[str] = mapped_column(String(160), default="")
     created_at: Mapped[datetime] = _ts()
