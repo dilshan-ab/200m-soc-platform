@@ -84,6 +84,7 @@ CAPABILITIES: dict[str, str] = {
     "warroom.read": "l1",
     "warroom.write": "l1",
     "warroom.manage": "l2",
+    "logs.read": "l1",
     "clients.read": "l1",
     "clients.write": "admin",
     "clients.manage_members": "admin",
