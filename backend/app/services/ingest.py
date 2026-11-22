@@ -1,6 +1,7 @@
 """Alert normalisation pipeline: dedup, enrichment with asset/client context, SLA, events."""
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 from typing import Any
 
@@ -9,13 +10,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..connectors.base import NormAlert
-from ..models import Alert, AlertReceipt, Asset, Server, Tool, utcnow
+from ..models import Alert, AlertReceipt, Asset, Finding, Server, Tool, utcnow
 from ..policy import SEVERITIES, sev_rank
 from ..security import sha256_hex
 from ..sla import apply_sla
 from . import events
 from .settings_svc import get_setting
 
+log = logging.getLogger("soc.ingest")
 WAZUH_DEFAULT_LEVELS = [(15, "critical"), (12, "high"), (7, "medium"), (4, "low")]
 
 
@@ -161,4 +163,55 @@ def upsert_assets(db: Session, tool: Tool, items: list[dict[str, Any]]) -> int:
         a.source_ids = {**(a.source_ids or {}), tool.type: agent_id}
         n += 1
     db.flush()
+    return n
+
+
+_FINDING_SEVERITIES = {"critical", "high", "medium", "low", "info"}
+
+
+def upsert_findings(db: Session, tool: Tool, items: list[dict[str, Any]]) -> int:
+    """Create or refresh vulnerability findings reported by a scanner connector.
+
+    Only items with a vuln_id are used (other connectors put different data in PollResult.findings). A finding is
+    matched to an existing asset by hostname/name or IP; results for hosts the platform doesn't know are skipped,
+    and so are assets outside the tool's configured client.
+    """
+    items = [i for i in items if i.get("vuln_id")]
+    if not items:
+        return 0
+    by_name: dict[str, Asset] = {}
+    by_ip: dict[str, Asset] = {}
+    for a in db.execute(select(Asset).where(Asset.decommissioned.is_(False))).scalars():
+        for key in (a.name, a.hostname):
+            if key:
+                by_name[key.lower()] = a
+        for ip in a.ips or []:
+            by_ip[str(ip)] = a
+    client_id = tool.config.get("client_id")
+    now = utcnow()
+    n = skipped = 0
+    for it in items:
+        ip, hostname = str(it.get("ip") or ""), str(it.get("hostname") or "").lower()
+        asset = by_name.get(hostname) or by_ip.get(ip) or by_name.get(ip.lower())
+        if asset is None or (client_id and asset.client_id != client_id):
+            skipped += 1
+            continue
+        vuln_id, component = str(it["vuln_id"])[:60], str(it.get("component") or "")[:200]
+        severity = str(it["severity"]) if it.get("severity") in _FINDING_SEVERITIES else "medium"
+        cvss = it.get("cvss") if isinstance(it.get("cvss"), (int, float)) else None
+        f = db.execute(select(Finding).where(Finding.asset_id == asset.id, Finding.vuln_id == vuln_id, Finding.component == component)).scalars().first()
+        if f is None:
+            db.add(Finding(asset_id=asset.id, vuln_id=vuln_id, component=component, title=str(it.get("title") or vuln_id)[:400], severity=severity, cvss=cvss,
+                           client_id=asset.client_id, sources=[tool.type], first_seen=now, last_seen=now))
+            db.flush()
+        else:
+            f.title = str(it.get("title") or f.title)[:400]
+            f.severity, f.cvss, f.last_seen = severity, cvss, now
+            if tool.type not in (f.sources or []):
+                f.sources = [*(f.sources or []), tool.type]
+            if f.status == "remediated":  # the scanner still sees it
+                f.status = "open"
+        n += 1
+    if skipped:
+        log.info("%s: skipped %d findings for unknown or out-of-scope hosts", tool.type, skipped)
     return n
