@@ -4,7 +4,6 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from ..connectors.base import ConnectorError
@@ -40,9 +39,9 @@ def search_logs(
             return svc.search_wazuh(db, q=q, index=index, start=start, end=end, severity=severity,
                                      host=host, rule_id=rule_id, agent_id=agent_id, src_ip=src_ip,
                                      size=size, from_=from_, sort_order=sort)
-        except ConnectorError:
+        except ConnectorError as err:
             if source == "wazuh":
-                raise HTTPException(503, "Wazuh indexer not available")
+                raise HTTPException(503, "Wazuh indexer not available") from err
 
     return svc.search_local(db, p.scope(None), q=q, start=start, end=end, severity=severity,
                              host=host, rule_id=rule_id, src_ip=src_ip, size=size, from_=from_, sort_order=sort)

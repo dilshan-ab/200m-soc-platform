@@ -1,6 +1,7 @@
 """SOAR metrics: playbook effectiveness, automation coverage, response action stats."""
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import timedelta
 from typing import Any
 
@@ -23,7 +24,7 @@ from ..models import (
 router = APIRouter(prefix="/api/soar", tags=["soar"])
 
 
-def _avg_minutes(pairs: list[tuple[Any, Any]]) -> float | None:
+def _avg_minutes(pairs: Sequence[Any]) -> float | None:
     deltas = [(end - start).total_seconds() for start, end in pairs if start and end]
     return round(sum(deltas) / len(deltas) / 60, 1) if deltas else None
 

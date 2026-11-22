@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from .. import audit
 from ..db import get_db
 from ..deps import Principal, require
-from ..models import EnrichmentRule, utcnow
+from ..models import EnrichmentRule
 from ..services import enrichment_engine as engine
 from .common import iso
 
@@ -128,11 +128,12 @@ def bulk_lookup(body: BulkLookupIn, p: Principal = Depends(require("intel.read")
 @router.get("/stats")
 def enrichment_stats(p: Principal = Depends(require("intel.read")), db: Session = Depends(get_db)) -> dict[str, Any]:
     from sqlalchemy import func
-    from ..models import ThreatIndicator, EnrichmentJob
+
+    from ..models import ThreatIndicator
 
     total_indicators = db.execute(select(func.count()).select_from(ThreatIndicator).where(ThreatIndicator.revoked.is_(False))).scalar_one()
     by_verdict = dict(db.execute(select(ThreatIndicator.verdict, func.count()).where(ThreatIndicator.revoked.is_(False)).group_by(ThreatIndicator.verdict)).all())
-    by_source = dict(db.execute(select(func.substr(ThreatIndicator.source, 1, 10), func.count()).where(ThreatIndicator.revoked.is_(False)).group_by(func.substr(ThreatIndicator.source, 1, 10))).all())
+    by_source: dict[Any, Any] = dict(db.execute(select(func.substr(ThreatIndicator.source, 1, 10), func.count()).where(ThreatIndicator.revoked.is_(False)).group_by(func.substr(ThreatIndicator.source, 1, 10))).all())
     total_rules = db.execute(select(func.count()).select_from(EnrichmentRule)).scalar_one()
     enabled_rules = db.execute(select(func.count()).where(EnrichmentRule.enabled.is_(True))).scalar_one()
     total_rule_hits = db.execute(select(func.sum(EnrichmentRule.hit_count)).where(EnrichmentRule.enabled.is_(True))).scalar_one() or 0
