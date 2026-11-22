@@ -23,7 +23,7 @@ import { del, get, patch, post, type Page } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useAct } from '../lib/mut';
 
-type PB = { id: string; name: string; description: string; trigger: string; status: string; enabled: boolean; version: number; client_id: string | null; created_by: string; created_at: string; updated_at: string; nodes?: any[]; edges?: any[]; runs?: Run[] };
+type PB = { id: string; name: string; description: string; trigger: string; status: string; enabled: boolean; version: number; schedule_interval_minutes?: number | null; next_run_at?: string | null; last_run_at?: string | null; client_id: string | null; created_by: string; created_at: string; updated_at: string; nodes?: any[]; edges?: any[]; runs?: Run[] };
 type Run = { id: string; playbook_id: string; trigger_ref: string; status: string; current_node: string; execution_log: any[]; error: string; started_at: string; finished_at: string | null };
 type ActionSpec = { key: string; label: string; system: string; risk: string; reversible: boolean; approvals: number; target_kind: string; params: string[]; capability: string };
 type Destination = { id: string; name: string; channel: string };
@@ -169,7 +169,7 @@ function PlaybookDetail({ id, onClose, onEdit }: { id: string; onClose: () => vo
     <Drawer title={pb.name} onClose={onClose}>
       <div className="row" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
         <Status v={pb.status} />
-        <span style={{ color: 'var(--muted)' }}>v{pb.version} · {pb.trigger}</span>
+        <span style={{ color: 'var(--muted)' }}>v{pb.version} · {pb.trigger}{pb.trigger === 'scheduled' && pb.schedule_interval_minutes ? ` every ${pb.schedule_interval_minutes} min${pb.next_run_at ? ` · next ${new Date(pb.next_run_at).toLocaleString()}` : ''}` : ''}</span>
         <span className="spacer" />
         {can('playbooks.write') && <button className="btn small" onClick={() => onEdit(id)}>Edit in builder</button>}
         {can('playbooks.write') && pb.status === 'draft' && <button className="btn small primary" onClick={() => publish.mutate(undefined)}>Publish</button>}
@@ -239,9 +239,9 @@ function PlaybookDetail({ id, onClose, onEdit }: { id: string; onClose: () => vo
 }
 
 function CreatePlaybook({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
-  const [v, setV] = useState({ name: '', description: '', trigger: 'manual' as string });
+  const [v, setV] = useState({ name: '', description: '', trigger: 'manual' as string, schedule_interval_minutes: 60 });
   const create = useAct(
-    () => post('/api/playbooks', { ...v, nodes: DEFAULT_NODES, edges: DEFAULT_EDGES }),
+    () => post('/api/playbooks', { ...v, schedule_interval_minutes: v.trigger === 'scheduled' ? v.schedule_interval_minutes : null, nodes: DEFAULT_NODES, edges: DEFAULT_EDGES }),
     ['playbooks'],
     'Playbook created',
     (r: any) => onCreated(r.id),
@@ -259,8 +259,13 @@ function CreatePlaybook({ onClose, onCreated }: { onClose: () => void; onCreated
           <option value="scheduled">Scheduled</option>
         </select>
       </Field>
+      {v.trigger === 'scheduled' && (
+        <Field label="Run every (minutes, 5 to 10080)" id="pb-interval">
+          <input id="pb-interval" type="number" min={5} max={10080} value={v.schedule_interval_minutes} onChange={(e) => setV({ ...v, schedule_interval_minutes: Number(e.target.value) })} />
+        </Field>
+      )}
       {create.error && <ErrorBox error={create.error} />}
-      <button className="btn primary" disabled={create.isPending || v.name.trim().length < 2} onClick={() => create.mutate(undefined)}>Create and open builder</button>
+      <button className="btn primary" disabled={create.isPending || v.name.trim().length < 2 || (v.trigger === 'scheduled' && !(v.schedule_interval_minutes >= 5 && v.schedule_interval_minutes <= 10080))} onClick={() => create.mutate(undefined)}>Create and open builder</button>
     </Modal>
   );
 }

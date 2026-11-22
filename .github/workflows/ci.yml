@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [dev]
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - run: pip install -e ".[dev]"
+      - name: Tests
+        run: pytest -q
+      # ruff and mypy report existing findings on dev (22 and 30 at the time this gate was added).
+      # They run so new findings are visible, but do not block until the backlog is cleared.
+      # Remove continue-on-error once `ruff check app tests` and `mypy app` are clean.
+      - name: Lint (ruff, non-blocking)
+        continue-on-error: true
+        run: ruff check app tests
+      - name: Types (mypy, non-blocking)
+        continue-on-error: true
+        run: mypy app
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      # One existing eslint error (LogSearch.tsx) at the time this gate was added; non-blocking until fixed.
+      - name: Lint (eslint, non-blocking)
+        continue-on-error: true
+        run: npm run lint
+
+  deploy-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test deployment recovery
+        run: python3 -m unittest discover -s scripts/tests -v
