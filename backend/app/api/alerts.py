@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
@@ -230,7 +231,7 @@ class DeleteAlertsIn(BaseModel):
     ids: list[str] = Field(min_length=1, max_length=100)
 
 
-def _delete_alerts(db: Session, p: Principal, ids: list[str]) -> int:
+def _delete_alerts(db: Session, p: Principal, ids: Sequence[str]) -> int:
     policy = db.execute(select(RetentionPolicy).where(RetentionPolicy.dataset == "alerts")).scalar_one_or_none()
     if policy and policy.legal_hold:
         raise HTTPException(409, "alerts are under legal hold; an administrator must release the hold before deletion")

@@ -396,15 +396,16 @@ def on_event(db: Session, ev: dict[str, Any]) -> None:
         return
     if t not in ("alert.created", "case.created"):
         return
-    model = Alert if t == "alert.created" else Case
-    obj = db.get(model, ev.get("id", ""))
+    alert = db.get(Alert, ev.get("id", "")) if t == "alert.created" else None
+    case = db.get(Case, ev.get("id", "")) if t == "case.created" else None
+    obj = alert or case
     if obj is None:
         return
     for pb in db.execute(select(Playbook).where(Playbook.enabled.is_(True), Playbook.status == "published", Playbook.trigger == t)).scalars():
         if pb.client_id and pb.client_id != obj.client_id:
             continue
-        ref = f"{'alert' if t == 'alert.created' else 'case'}:{obj.id}"
-        start_run(db, pb, ref, alert=obj if t == "alert.created" else None, case=obj if t == "case.created" else None)
+        ref = f"{'alert' if alert is not None else 'case'}:{obj.id}"
+        start_run(db, pb, ref, alert=alert, case=case)
 
 
 MIN_SCHEDULE_MINUTES = 5

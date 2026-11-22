@@ -1,14 +1,13 @@
 """Log search service: queries Wazuh indexer (OpenSearch) and falls back to local alerts DB."""
 from __future__ import annotations
 
-from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..connectors.base import ConnectorError
-from ..models import Alert, Tool, utcnow
+from ..models import Alert, Tool
 from . import tools_svc
 
 

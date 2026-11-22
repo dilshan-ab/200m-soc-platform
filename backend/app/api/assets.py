@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
 from .. import audit
@@ -68,7 +69,7 @@ def patch_asset(aid: str, body: AssetPatch, p: Principal = Depends(require("asse
         if data.get("criticality") is None:
             raise HTTPException(400, "criticality is required with expected_criticality")
         result = db.execute(update(Asset).where(Asset.id == a.id, Asset.criticality == body.expected_criticality).values(**data).execution_options(synchronize_session=False))
-        if result.rowcount != 1:
+        if cast(CursorResult[Any], result).rowcount != 1:
             raise HTTPException(409, "Asset criticality changed since your update. Reload before changing it again.")
         db.refresh(a)
     else:

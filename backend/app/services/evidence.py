@@ -3,14 +3,13 @@ from __future__ import annotations
 
 import hashlib
 import os
-import shutil
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import Case, CaseEvidence, utcnow
+from ..models import CaseEvidence
 
 EVIDENCE_DIR = Path(os.environ.get("EVIDENCE_DIR", "/data/evidence"))
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB

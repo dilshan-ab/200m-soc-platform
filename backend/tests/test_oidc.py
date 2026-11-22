@@ -225,6 +225,7 @@ def test_rotated_signing_key_is_refreshed_in_same_login(app, idp):
 
 def test_browser_expired_callback_returns_to_recoverable_login(app, idp):
     from datetime import timedelta
+
     from app.models import AuditEvent, utcnow
 
     c, q = _begin(app, '/api/auth/oidc/login?return_to=/login%3Fentry%3D1%26next%3D%252Fapp%252Falerts')
@@ -284,6 +285,7 @@ def test_provider_cancel_consumes_state_and_does_not_echo_provider_text(app, idp
 
 def test_step_up_expired_session_recovers_without_reactivating_it(app, idp):
     from datetime import timedelta
+
     from app.models import utcnow
 
     c, q = _begin(app)
