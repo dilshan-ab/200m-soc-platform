@@ -990,6 +990,26 @@ class ThreatFeed(Base):
     created_at: Mapped[datetime] = _ts()
 
 
+class EnrichmentRule(Base):
+    """Custom enrichment rules: CIDR ranges, domain patterns, hash watchlists."""
+
+    __tablename__ = "enrichment_rules"
+    id: Mapped[str] = _pk()
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    rule_type: Mapped[str] = mapped_column(String(20))  # cidr|domain_pattern|hash_list|regex
+    indicator_type: Mapped[str] = mapped_column(String(20))  # ip|domain|hash|url|any
+    pattern: Mapped[str] = mapped_column(Text)  # CIDR notation, glob, comma-separated hashes, or regex
+    verdict: Mapped[str] = mapped_column(String(20), default="suspicious")
+    confidence: Mapped[int] = mapped_column(Integer, default=70)
+    tags: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    hit_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_hit_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _ts()
+
+
 # --------------------------------------------------------------------------- shift handoff
 class ShiftHandoff(Base):
     """An end-of-shift report: what's open, what to watch, and notes for the next analyst."""
