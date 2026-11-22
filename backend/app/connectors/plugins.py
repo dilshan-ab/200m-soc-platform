@@ -2,12 +2,22 @@
 from __future__ import annotations
 
 import base64
+import ipaddress
+import json
+import re
 import smtplib
+import socket
+import ssl
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
 from email.message import EmailMessage
 from typing import Any
 
+import yaml
+
+from ..security import validate_egress_url
 from .base import (
     CheckResult,
     Connector,
@@ -214,55 +224,305 @@ class Misp(Connector):
         return {"matches": len(attrs), "events": sorted({a.get("event_id") for a in attrs}), "verdict": "malicious" if attrs else "unknown"}
 
 
+_HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$")
+_ARTIFACT_RE = re.compile(r"^[A-Za-z0-9_.]{1,200}$")
+_VELO_CONFIG_KEYS = ("ca_certificate", "client_cert", "client_private_key", "api_connection_string")
+# Remediation artifacts shipped with Velociraptor; the same artifact removes its policy with RemovePolicy=Y.
+_QUARANTINE_ARTIFACTS = {"windows": "Windows.Remediation.Quarantine", "linux": "Linux.Remediation.Quarantine"}
+_MAX_VELO_ROWS = 10_000
+
+
 @register
 class Velociraptor(Connector):
     manifest = Manifest(
         "velociraptor", "Velociraptor", "response", "gRPC API", ["pull", "action"], "API client certificate (YAML)",
-        [F("api_config", "API client config (portal_api.yaml)", "file", secret=True), F("allowed_artifacts", "Allowed artifacts", "list", required=False)],
+        [F("api_config", "API client config (api_client.conf.yaml)", "textarea", secret=True,
+           help="Output of: velociraptor config api_client. Needs the ca_certificate, client_cert, client_private_key and api_connection_string keys."),
+         F("allowed_artifacts", "Allowed artifacts", "list", required=False, help="Only these artifacts can be collected. Isolation uses a built-in quarantine artifact.")],
         ["action"], ["SELECT * FROM info() returns"],
+        setup_hint="Create an API client with the minimum role (for example investigator) and allow the gRPC port from this node.",
     )
 
-    def _query(self, vql: str) -> list[dict[str, Any]]:
+    def _config(self) -> dict[str, str]:
         try:
-            import pyvelociraptor  # type: ignore[import-not-found]  # noqa: F401
+            cfg = yaml.safe_load(self.secrets.get("api_config", ""))
+        except yaml.YAMLError as e:
+            raise ConnectorError("api_config is not valid YAML") from e
+        if not isinstance(cfg, dict):
+            raise ConnectorError("api_config must be the YAML written by 'velociraptor config api_client'")
+        missing = [k for k in _VELO_CONFIG_KEYS if not isinstance(cfg.get(k), str) or not cfg[k]]
+        if missing:
+            raise ConnectorError("api_config is missing: " + ", ".join(missing))
+        return {k: cfg[k] for k in _VELO_CONFIG_KEYS}
+
+    def _run(self, vql: str, env: dict[str, str] | None = None, *, timeout: int = 30) -> list[dict[str, Any]]:
+        """Run one VQL query. Caller-supplied values go in `env` (referenced by name in the VQL), never into the query text."""
+        try:
+            import grpc  # type: ignore[import-not-found]
+            from pyvelociraptor import api_pb2, api_pb2_grpc  # type: ignore[import-not-found]
         except ImportError as e:
             raise ConnectorError("pyvelociraptor is not installed on this node") from e
-        raise ConnectorError("gRPC channel not available in this environment")  # pragma: no cover
+        cfg = self._config()
+        target = cfg["api_connection_string"]
+        try:
+            validate_egress_url(f"https://{target}")
+        except ValueError as e:
+            raise ConnectorError(f"egress policy: {e}") from e
+        request = api_pb2.VQLCollectorArgs(
+            max_wait=1, max_row=1000, timeout=timeout,
+            Query=[api_pb2.VQLRequest(Name="soc", VQL=vql)],
+            env=[api_pb2.VQLEnv(key=k, value=v) for k, v in (env or {}).items()],
+        )
+        rows: list[dict[str, Any]] = []
+        try:
+            creds = grpc.ssl_channel_credentials(
+                root_certificates=cfg["ca_certificate"].encode(), private_key=cfg["client_private_key"].encode(), certificate_chain=cfg["client_cert"].encode())
+            # The server certificate is issued to "VelociraptorServer" regardless of how it is reached; trust is pinned to the configured CA.
+            options = (("grpc.ssl_target_name_override", "VelociraptorServer"),)
+            with grpc.secure_channel(target, creds, options) as channel:
+                for resp in api_pb2_grpc.APIStub(channel).Query(request, timeout=timeout + 10):
+                    if resp.Response:
+                        rows.extend(json.loads(resp.Response))
+                    if len(rows) > _MAX_VELO_ROWS:
+                        raise ConnectorError("velociraptor returned too many rows")
+        except grpc.RpcError as e:
+            code = e.code().name if hasattr(e, "code") and callable(e.code) else "RpcError"
+            raise ConnectorError(f"request failed: {code}") from e
+        except ValueError as e:
+            raise ConnectorError("invalid response from velociraptor") from e
+        return rows
 
     def test(self) -> list[CheckResult]:
-        self._query("SELECT * FROM info()")
-        return [CheckResult("SELECT * FROM info() returns", True)]
+        rows = self._run("SELECT * FROM info()")
+        if not rows:
+            raise ConnectorError("info() returned no rows")
+        return [CheckResult("SELECT * FROM info() returns", True, str(rows[0].get("Hostname", "")))]
+
+    def _resolve_client(self, host: str) -> dict[str, str]:
+        rows = self._run(
+            "SELECT client_id, os_info.system AS os, os_info.hostname AS hostname, os_info.fqdn AS fqdn FROM clients(search=Search)",
+            {"Search": f"host:{host}"},
+        )
+        want = host.lower()
+        hits = [r for r in rows if want in (str(r.get("hostname", "")).lower(), str(r.get("fqdn", "")).lower())]
+        if not hits:
+            raise ConnectorError(f"no Velociraptor client found for host {host}")
+        if len(hits) > 1:
+            raise ConnectorError(f"host {host} matches {len(hits)} Velociraptor clients; refusing to guess")
+        return {"client_id": str(hits[0].get("client_id", "")), "os": str(hits[0].get("os", "")).lower()}
+
+    def _collect(self, client_id: str, artifact: str, artifact_params: dict[str, str]) -> str:
+        rows = self._run(
+            "SELECT collect_client(client_id=ClientId, artifacts=Artifact, env=parse_json(data=ArtifactParams)) AS Flow FROM scope()",
+            {"ClientId": client_id, "Artifact": artifact, "ArtifactParams": json.dumps(artifact_params)},
+        )
+        flow = (rows[0].get("Flow") if rows else None) or {}
+        flow_id = flow.get("flow_id") if isinstance(flow, dict) else None
+        if not flow_id:
+            raise ConnectorError("collection was not scheduled")
+        return str(flow_id)
 
     def execute(self, action_key: str, targets: list[str], params: dict[str, Any]) -> dict[str, Any]:
         allowed = set(self.cfg.get("allowed_artifacts") or [])
         if action_key == "collect_artifact" and params.get("artifact") not in allowed:
             raise ConnectorError("artifact not on allow-list")
-        vql = {"isolate_host": "quarantine", "release_host": "unquarantine", "kill_process": "kill", "collect_artifact": "collect"}.get(action_key)
-        if vql is None:
+        if action_key == "kill_process":
+            raise ConnectorError("kill_process is not supported: the request carries no process identifier")
+        if action_key not in ("isolate_host", "release_host", "collect_artifact"):
             raise ConnectorError(f"unsupported action {action_key}")
-        self._query(f"/* {vql} */")
-        return {}  # pragma: no cover
+        if not targets:
+            raise ConnectorError("no target host")
+        for h in targets:
+            if not _HOST_RE.match(h):
+                raise ConnectorError(f"invalid host name {h!r}")
+        artifact = str(params.get("artifact", ""))
+        if action_key == "collect_artifact" and not _ARTIFACT_RE.match(artifact):
+            raise ConnectorError("invalid artifact name")
+        extra = {str(k): str(v) for k, v in (params.get("artifact_params") or {}).items()} if action_key == "collect_artifact" else {}
+        done: dict[str, Any] = {}
+        failed: dict[str, str] = {}
+        for host in targets:
+            try:
+                client = self._resolve_client(host)
+                if action_key == "collect_artifact":
+                    flow = self._collect(client["client_id"], artifact, extra)
+                else:
+                    art = _QUARANTINE_ARTIFACTS.get(client["os"])
+                    if art is None:
+                        raise ConnectorError(f"isolation is not supported for {client['os'] or 'unknown'} hosts")
+                    flow = self._collect(client["client_id"], art, {"RemovePolicy": "Y" if action_key == "release_host" else "N"})
+                done[host] = {"client_id": client["client_id"], "flow_id": flow}
+            except ConnectorError as e:
+                failed[host] = str(e)
+        if failed:
+            raise ConnectorError("failed for " + "; ".join(f"{h}: {m}" for h, m in failed.items()) + (f" (succeeded for {', '.join(done)})" if done else ""))
+        return {"hosts": done}
+
+
+_GVM_SEVERITIES = ((9.0, "critical"), (7.0, "high"), (4.0, "medium"))
+_MAX_SCAN_TARGETS = 64
+
+
+def _gvm_severity(cvss: float) -> str:
+    return next((name for floor, name in _GVM_SEVERITIES if cvss >= floor), "low")
+
+
+def _gvm_finding(r: Any) -> dict[str, Any] | None:
+    """Normalise one GMP <result> element. Returns None when it has no usable identifier."""
+    host = r.find("host")
+    ip = (host.text or "").strip() if host is not None and host.text else ""
+    nvt = r.find("nvt")
+    oid = nvt.get("oid", "") if nvt is not None else ""
+    cves = [ref.get("id", "") for ref in (nvt.iterfind("refs/ref") if nvt is not None else []) if ref.get("type", "").lower() == "cve" and ref.get("id")]
+    vuln_id = cves[0] if cves else oid
+    if not vuln_id:
+        return None
+    try:
+        cvss = float(r.findtext("severity") or 0)
+    except ValueError:
+        cvss = 0.0
+    return {
+        "vuln_id": vuln_id, "oid": oid, "cves": cves, "title": (r.findtext("name") or vuln_id)[:400], "cvss": cvss, "severity": _gvm_severity(cvss),
+        "component": (r.findtext("port") or "")[:200], "ip": ip, "hostname": (host.findtext("hostname") or "").strip() if host is not None else "",
+        "result_id": r.get("id", ""), "modified": r.findtext("modification_time") or r.findtext("creation_time") or "",
+    }
 
 
 @register
 class OpenVas(Connector):
     manifest = Manifest(
         "openvas", "OpenVAS / GVM", "vuln", "GMP (python-gvm)", ["pull", "action"], "GVM user",
-        [F("host", "Host or socket path"), F("port", "Port", "number", required=False, default=9390), F("username", "User"),
-         F("password", "Password", "password", secret=True), F("allowed_scan_configs", "Allowed scan configs", "list", required=False)],
+        [F("host", "Host or socket path", help="Hostname/IP of gvmd, or an absolute path to its unix socket"), F("port", "Port", "number", required=False, default=9390),
+         F("username", "User"), F("password", "Password", "password", secret=True),
+         F("ca_cert", "CA certificate (PEM)", "textarea", required=False, help="Required for TCP connections: the gvmd certificate is verified against this CA."),
+         F("allowed_scan_configs", "Allowed scan configs", "list", required=False, help="Names or IDs; scans can only use these")],
         ["poll_findings", "action"], ["Version + task list returned"],
+        setup_hint="Needs GVM 22.4 or newer (GMP 22.4+). Use a dedicated GVM user with only the roles it needs.",
     )
 
-    def _gmp(self) -> Any:
+    def _connection(self) -> Any:
         try:
-            from gvm.connections import TLSConnection  # type: ignore[import-not-found]  # noqa: F401
+            from gvm.connections import TLSConnection, UnixSocketConnection  # type: ignore[import-not-found]
         except ImportError as e:
             raise ConnectorError("python-gvm is not installed on this node") from e
-        raise ConnectorError("GMP connection unavailable in this environment")  # pragma: no cover
+        host = str(self.cfg.get("host", "")).strip()
+        if not host:
+            raise ConnectorError("host is required")
+        if host.startswith("/"):
+            return UnixSocketConnection(path=host, timeout=30)
+        port = int(self.cfg.get("port") or 9390)
+        ca = self.cfg.get("ca_cert")
+        if not ca:
+            raise ConnectorError("a CA certificate is required to verify the GVM TLS connection")
+        try:
+            validate_egress_url(f"https://{host}:{port}")
+        except ValueError as e:
+            raise ConnectorError(f"egress policy: {e}") from e
+
+        class PinnedTLS(TLSConnection):  # python-gvm's TLSConnection does not verify the server unless client certs are also configured
+            def _new_socket(self) -> ssl.SSLSocket:
+                ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cadata=ca)
+                ctx.check_hostname = False  # gvmd certificates are rarely issued for the address used; trust is pinned to the CA instead
+                ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+                sock = ctx.wrap_socket(socket.socket(socket.AF_INET, socket.SOCK_STREAM), server_side=False)
+                sock.settimeout(self._timeout)
+                return sock
+
+        return PinnedTLS(hostname=host, port=port, timeout=30)
+
+    @contextmanager
+    def _gmp(self) -> Iterator[Any]:
+        try:
+            from gvm.errors import GvmError  # type: ignore[import-not-found]
+            from gvm.protocols.gmp import GMP  # type: ignore[import-not-found]
+            from gvm.transforms import EtreeCheckCommandTransform  # type: ignore[import-not-found]
+        except ImportError as e:
+            raise ConnectorError("python-gvm is not installed on this node") from e
+        conn = self._connection()
+        try:
+            with GMP(conn, transform=EtreeCheckCommandTransform()) as gmp:
+                try:
+                    gmp.authenticate(str(self.cfg.get("username", "")), self.secrets.get("password", ""))
+                except GvmError as e:
+                    raise ConnectorError("GVM authentication failed") from e
+                yield gmp
+        except ConnectorError:
+            raise
+        except (GvmError, OSError) as e:
+            raise ConnectorError(f"request failed: {type(e).__name__}") from e
 
     def test(self) -> list[CheckResult]:
-        self._gmp()
-        return []  # pragma: no cover
+        with self._gmp() as gmp:
+            version = gmp.get_version().findtext("version") or "unknown"
+            tasks = gmp.get_tasks(filter_string="rows=1")
+            count = tasks.findtext("task_count") or str(len(tasks.findall("task")))
+        return [CheckResult("Version + task list returned", True, f"GMP {version}, {count} tasks")]
+
+    def poll(self, checkpoint: dict[str, Any], limit: int = 500) -> PollResult:
+        last = _parse_ts(checkpoint["last_modified"]) if checkpoint.get("last_modified") else None
+        with self._gmp() as gmp:
+            resp = gmp.get_results(filter_string=f"severity>0 sort-reverse=modified rows={min(max(limit, 1), 1000)}", details=True)
+            findings: list[dict[str, Any]] = []
+            newest = last
+            for r in resp.findall("result"):
+                f = _gvm_finding(r)
+                if f is None:
+                    continue
+                ts = _parse_ts(f["modified"]) if f["modified"] else None
+                if last is not None and ts is not None and ts <= last:
+                    continue
+                if ts is not None and (newest is None or ts > newest):
+                    newest = ts
+                findings.append(f)
+        cp = {"last_modified": newest.isoformat()} if newest else dict(checkpoint)
+        return PollResult(findings=findings, checkpoint=cp)
+
+    @staticmethod
+    def _pick(resp: Any, tag: str, *, id_or_name: str | None = None, prefer: tuple[str, ...] = ()) -> Any:
+        items = resp.findall(tag)
+        if id_or_name is not None:
+            return next((i for i in items if id_or_name in (i.get("id"), i.findtext("name"))), None)
+        for name in prefer:
+            hit = next((i for i in items if i.findtext("name") == name), None)
+            if hit is not None:
+                return hit
+        return items[0] if items else None
+
+    def execute(self, action_key: str, targets: list[str], params: dict[str, Any]) -> dict[str, Any]:
+        if action_key != "run_scan":
+            raise ConnectorError(f"unsupported action: {action_key}")
+        want = str(params.get("scan_config", ""))
+        if not want or want not in set(self.cfg.get("allowed_scan_configs") or []):
+            raise ConnectorError("scan config not on allow-list")
+        if not targets or len(targets) > _MAX_SCAN_TARGETS:
+            raise ConnectorError(f"between 1 and {_MAX_SCAN_TARGETS} scan targets are required")
+        for t in targets:
+            try:
+                ipaddress.ip_network(t, strict=False)
+            except ValueError:
+                if not _HOST_RE.match(t):
+                    raise ConnectorError(f"invalid scan target {t!r}") from None
+        with self._gmp() as gmp:
+            config = self._pick(gmp.get_scan_configs(), "config", id_or_name=want)
+            if config is None:
+                raise ConnectorError("scan config not found on GVM")
+            scanner = self._pick(gmp.get_scanners(), "scanner", prefer=("OpenVAS Default",))
+            port_list = self._pick(gmp.get_port_lists(), "port_list", prefer=("All IANA assigned TCP",))
+            if scanner is None or port_list is None:
+                raise ConnectorError("GVM has no scanner or port list available")
+            tag = uuid.uuid4().hex[:8]
+            target_id = task_id = ""
+            try:
+                target_id = gmp.create_target(f"soc-{tag}", hosts=list(targets), port_list_id=port_list.get("id")).get("id", "")
+                task_id = gmp.create_task(f"soc-scan-{tag}", config.get("id"), target_id, scanner.get("id")).get("id", "")
+                report_id = gmp.start_task(task_id).findtext("report_id") or ""
+            except Exception:
+                for cleanup, rid in ((gmp.delete_task, task_id), (gmp.delete_target, target_id)):
+                    if rid:
+                        with suppress(Exception):
+                            cleanup(rid)
+                raise
+        return {"task_id": task_id, "target_id": target_id, "report_id": report_id, "scan_config": want}
 
 
 @register

@@ -1,4 +1,5 @@
 from datetime import datetime
+
 from app import db as dbmod
 from app.models import Asset, AuditEvent
 from tests.helpers import mk_alert
@@ -50,7 +51,7 @@ def test_dashboard_bucket_links_match_chart_counts(admin, clients):
             if point['critical']:
                 critical = admin.get('/api/alerts', params={'since': point['since'], 'until': point['until'], 'severity': 'critical'}).json()
                 assert critical['total'] == point['critical']
-        for first, second in zip(response['series'], response['series'][1:]):
+        for first, second in zip(response['series'], response['series'][1:], strict=False):
             end = datetime.fromisoformat(first['until'].replace('Z', '+00:00'))
             start = datetime.fromisoformat(second['since'].replace('Z', '+00:00'))
             assert end < start

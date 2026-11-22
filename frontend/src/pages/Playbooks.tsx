@@ -30,6 +30,32 @@ type Destination = { id: string; name: string; channel: string };
 
 const CONDITION_FIELDS = ['severity', 'source', 'rule_id', 'host', 'category', 'title', 'client_id', 'src_ip', 'username', 'status'];
 const CONDITION_OPS = ['eq', 'ne', 'in', 'gte', 'contains', 'startswith'];
+const VARIABLE_OPS = [...CONDITION_OPS, 'gt', 'lt', 'lte'];
+// Keys each node type puts into the run context for later nodes (see playbooks_engine.py).
+const OUTPUTS: Record<string, string[]> = {
+  enrich: ['verdict', 'score', 'confidence', 'sources', 'indicator', 'job_id'],
+  create_case: ['case_id', 'number'],
+  set_status: ['status'],
+  request_action: ['request_id', 'status'],
+};
+
+// Variables a node can use: alert fields plus the outputs of every node upstream of it.
+function availableVars(nodeId: string, nodes: Node[], edges: Edge[]): string[] {
+  const parents = new Map<string, string[]>();
+  edges.forEach((e) => parents.set(e.target, [...(parents.get(e.target) ?? []), e.source]));
+  const seen = new Set<string>();
+  const stack = [...(parents.get(nodeId) ?? [])];
+  while (stack.length) {
+    const n = stack.pop()!;
+    if (!seen.has(n)) { seen.add(n); stack.push(...(parents.get(n) ?? [])); }
+  }
+  const out: string[] = [];
+  nodes.filter((n) => seen.has(n.id)).forEach((n) => {
+    const keys = n.type === 'action' ? OUTPUTS[String((n.data as Record<string, unknown>).action_type)] ?? [] : [];
+    keys.forEach((k) => out.push(`${n.id}.${k}`));
+  });
+  return out;
+}
 const ALERT_STATUSES = ['acknowledged', 'investigating', 'false_positive', 'resolved'];
 const ACTION_TYPES = [
   { value: 'set_status', label: 'Set alert status' },
@@ -380,12 +406,12 @@ function BuilderInner({ pb, onClose }: { pb: PB; onClose: () => void }) {
           <MiniMap nodeColor={(n) => NODE_COLORS[n.type ?? ''] ?? '#6b7280'} style={{ background: 'var(--card)' }} />
         </ReactFlow>
       </div>
-      {configuring && <NodeConfigModal node={configuring} onClose={() => setConfiguring(null)} onSave={saveNodeData} />}
+      {configuring && <NodeConfigModal node={configuring} variables={availableVars(configuring.id, nodes, edges)} onClose={() => setConfiguring(null)} onSave={saveNodeData} />}
     </div>
   );
 }
 
-function NodeConfigModal({ node, onClose, onSave }: { node: Node; onClose: () => void; onSave: (id: string, data: Record<string, unknown>) => void }) {
+function NodeConfigModal({ node, variables, onClose, onSave }: { node: Node; variables: string[]; onClose: () => void; onSave: (id: string, data: Record<string, unknown>) => void }) {
   const [data, setData] = useState<Record<string, unknown>>({ ...node.data });
   const set = (patch: Record<string, unknown>) => setData((d) => ({ ...d, ...patch }));
   const type = node.type as string;
@@ -459,12 +485,13 @@ function NodeConfigModal({ node, onClose, onSave }: { node: Node; onClose: () =>
             <select id="nc-field" value={String(data.field ?? '')} onChange={(e) => set({ field: e.target.value })}>
               <option value="">Select…</option>
               {CONDITION_FIELDS.map((f) => <option key={f} value={f}>{f}</option>)}
+              {variables.length > 0 && <optgroup label="Outputs of earlier nodes">{variables.map((v) => <option key={v} value={v}>{v}</option>)}</optgroup>}
             </select>
           </Field>
           <Field label="Operator" id="nc-op">
             <select id="nc-op" value={String(data.op ?? '')} onChange={(e) => set({ op: e.target.value })}>
               <option value="">Select…</option>
-              {CONDITION_OPS.map((o) => <option key={o} value={o}>{o}</option>)}
+              {(String(data.field ?? '').includes('.') ? VARIABLE_OPS : CONDITION_OPS).map((o) => <option key={o} value={o}>{o}</option>)}
             </select>
           </Field>
           <Field label="Value" id="nc-value" hint="outgoing edges labelled 'Yes'/'No' are followed based on this check">
@@ -481,7 +508,7 @@ function NodeConfigModal({ node, onClose, onSave }: { node: Node; onClose: () =>
               {destinations.data?.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.channel})</option>)}
             </select>
           </Field>
-          <Field label="Message" id="nc-message"><textarea id="nc-message" value={String(data.message ?? '')} onChange={(e) => set({ message: e.target.value })} /></Field>
+          <Field label="Message" id="nc-message" hint={variables.length ? `Insert earlier results with {{node.key}}, e.g. {{${variables[0]}}}` : 'Insert alert fields with {{alert.severity}}'}><textarea id="nc-message" value={String(data.message ?? '')} onChange={(e) => set({ message: e.target.value })} /></Field>
         </>
       )}
 

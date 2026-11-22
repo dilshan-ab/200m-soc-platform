@@ -58,7 +58,8 @@ export default function LogSearch() {
   const toggle = useCallback((id: string) => {
     setExpanded(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }, []);
@@ -172,7 +173,7 @@ function LogTable({ logs, expanded, onToggle }: { logs: LogEntry[]; expanded: Se
                   {log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}
                 </td>
                 <td>
-                  <span className="badge" style={{ background: levelColor(log.rule_level), color: '#fff', fontSize: 10 }}>
+                  <span className={`badge sev-${levelLabel(log.rule_level)}`}>
                     {log.rule_level} · {levelLabel(log.rule_level)}
                   </span>
                 </td>
@@ -225,7 +226,7 @@ function LogDetail({ log }: { log: LogEntry }) {
       {Array.isArray(mitreIds) && mitreIds.length > 0 && (
         <div style={{ marginBottom: 8 }}>
           <span style={{ fontSize: 11, color: 'var(--muted)' }}>MITRE ATT&CK: </span>
-          {mitreIds.map((id: string) => <span key={id} className="badge" style={{ marginRight: 4, background: 'var(--accent)', color: '#fff' }}>{id}</span>)}
+          {mitreIds.map((id: string) => <span key={id} className="badge" style={{ marginRight: 4 }}>{id}</span>)}
         </div>
       )}
 

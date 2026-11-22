@@ -7,11 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from .. import audit
 from ..db import get_db
 from ..deps import Principal, require
 from ..models import Case, CaseEvidence, utcnow
-from .. import audit
-from ..services import cases as case_svc, evidence as svc
+from ..services import cases as case_svc
+from ..services import evidence as svc
 
 router = APIRouter(prefix="/api/evidence", tags=["evidence"])
 
@@ -86,8 +87,8 @@ def download_evidence(evidence_id: str, p: Principal = Depends(require("evidence
 
     try:
         path, filename = svc.read_file(e.storage_ref)
-    except FileNotFoundError:
-        raise HTTPException(404, "Evidence file not found on disk")
+    except FileNotFoundError as err:
+        raise HTTPException(404, "Evidence file not found on disk") from err
 
     chain = list(e.chain_of_custody or [])
     chain.append({"actor": p.label, "action": "downloaded", "at": utcnow().isoformat(), "note": "File downloaded"})

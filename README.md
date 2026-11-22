@@ -90,7 +90,7 @@ connector call, signed/bearer webhooks with replay protection, rate limits, CSP 
 ## Known limits (read before go-live)
 
 - Not exercised against real tools: tests use mocked HTTP for connectors, `fakeredis`, and a locally generated OIDC key. Validate each integration with **Test connection** against your real instances.
-- Velociraptor (gRPC) and OpenVAS (GMP) connectors report "library not installed"; `pyvelociraptor` / `python-gvm` still need wiring.
+- Velociraptor (gRPC) and OpenVAS (GMP) connectors are implemented against `pyvelociraptor` / `python-gvm` (the `connectors` extra, included in the Docker image) and tested with fakes, but not yet against a live Velociraptor or GVM 22.4+ server. Velociraptor `kill_process` is not supported. Remediation artifact names are Velociraptor's stock `*.Remediation.Quarantine` artifacts.
 - Migrations and the app were tested on SQLite; run the suite against PostgreSQL (and review `alembic upgrade head`) before production.
 - Slack/Telegram notifiers call those SaaS APIs directly (outside the egress allow-list). Scheduled reports are generated but not emailed. Workers run in-process (not arq). OpenSearch is not used yet (alert search uses the database).
 - There is no first-run setup screen and no per-user TOTP enrolment page (OIDC mode delegates MFA to Keycloak).

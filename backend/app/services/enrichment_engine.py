@@ -6,7 +6,7 @@ import ipaddress
 import re
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import (
@@ -131,7 +131,7 @@ def compute_reputation(
     for hit in rule_hits:
         verdicts.append((hit["verdict"], hit["confidence"]))
 
-    for source_name, data in external_results.items():
+    for data in external_results.values():
         if isinstance(data, dict) and not data.get("error"):
             v = data.get("verdict", "unknown")
             confidence = 60

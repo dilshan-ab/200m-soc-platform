@@ -195,7 +195,9 @@ def test_missing_keycloak_account_is_actionable(superadmin, kc, monkeypatch):
 
 def test_password_reset_requires_fresh_mfa(superadmin, make_session):
     from datetime import timedelta
+
     from sqlalchemy import select
+
     from app import db as dbmod
     from app.models import SessionRecord, utcnow
     target = make_session("reset@t.local", "viewer")

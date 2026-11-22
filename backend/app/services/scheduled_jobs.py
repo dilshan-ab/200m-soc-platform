@@ -62,63 +62,63 @@ def list_jobs(db: Session, category: str | None = None, status: str | None = Non
     items: list[dict[str, Any]] = []
 
     if not category or category == "enrichment":
-        q = select(EnrichmentJob)
+        eq = select(EnrichmentJob)
         if status:
-            q = q.where(EnrichmentJob.status == status)
-        for j in db.execute(q.order_by(EnrichmentJob.created_at.desc()).limit(size)).scalars():
+            eq = eq.where(EnrichmentJob.status == status)
+        for ej in db.execute(eq.order_by(EnrichmentJob.created_at.desc()).limit(size)).scalars():
             items.append({
-                "id": j.id, "category": "enrichment", "name": f"Enrich: {j.indicator}",
-                "type": j.indicator_type, "status": j.status, "verdict": j.verdict,
-                "created_at": j.created_at.isoformat() if j.created_at else "",
+                "id": ej.id, "category": "enrichment", "name": f"Enrich: {ej.indicator}",
+                "type": ej.indicator_type, "status": ej.status, "verdict": ej.verdict,
+                "created_at": ej.created_at.isoformat() if ej.created_at else "",
                 "finished_at": "", "error": "",
             })
 
     if not category or category == "report":
-        q = select(ReportJob)
+        rq = select(ReportJob)
         if status:
-            q = q.where(ReportJob.status == status)
-        for j in db.execute(q.order_by(ReportJob.created_at.desc()).limit(size)).scalars():
+            rq = rq.where(ReportJob.status == status)
+        for rj in db.execute(rq.order_by(ReportJob.created_at.desc()).limit(size)).scalars():
             items.append({
-                "id": j.id, "category": "report", "name": f"Report: {j.kind} ({j.fmt})",
-                "type": j.kind, "status": j.status, "verdict": "",
-                "created_at": j.created_at.isoformat() if j.created_at else "",
-                "finished_at": j.finished_at.isoformat() if j.finished_at else "",
-                "error": j.error,
+                "id": rj.id, "category": "report", "name": f"Report: {rj.kind} ({rj.fmt})",
+                "type": rj.kind, "status": rj.status, "verdict": "",
+                "created_at": rj.created_at.isoformat() if rj.created_at else "",
+                "finished_at": rj.finished_at.isoformat() if rj.finished_at else "",
+                "error": rj.error,
             })
 
     if not category or category == "automation":
-        q = select(AutomationRun)
+        aq = select(AutomationRun)
         if status:
-            q = q.where(AutomationRun.status == status)
-        for r in db.execute(q.order_by(AutomationRun.created_at.desc()).limit(size)).scalars():
-            rule = db.get(AutomationRule, r.rule_id)
+            aq = aq.where(AutomationRun.status == status)
+        for ar in db.execute(aq.order_by(AutomationRun.created_at.desc()).limit(size)).scalars():
+            rule = db.get(AutomationRule, ar.rule_id)
             items.append({
-                "id": r.id, "category": "automation", "name": f"Rule: {rule.name if rule else r.rule_id[:8]}",
-                "type": "automation_run", "status": r.status,
-                "verdict": "matched" if r.matched else "no_match",
-                "created_at": r.created_at.isoformat() if r.created_at else "",
+                "id": ar.id, "category": "automation", "name": f"Rule: {rule.name if rule else ar.rule_id[:8]}",
+                "type": "automation_run", "status": ar.status,
+                "verdict": "matched" if ar.matched else "no_match",
+                "created_at": ar.created_at.isoformat() if ar.created_at else "",
                 "finished_at": "", "error": "",
             })
 
     if not category or category == "playbook":
-        q = select(PlaybookRun)
+        pq = select(PlaybookRun)
         if status:
-            q = q.where(PlaybookRun.status == status)
-        for r in db.execute(q.order_by(PlaybookRun.started_at.desc()).limit(size)).scalars():
+            pq = pq.where(PlaybookRun.status == status)
+        for pr in db.execute(pq.order_by(PlaybookRun.started_at.desc()).limit(size)).scalars():
             items.append({
-                "id": r.id, "category": "playbook", "name": f"Playbook run: {r.trigger_ref}",
-                "type": "playbook_run", "status": r.status, "verdict": "",
-                "created_at": r.started_at.isoformat() if r.started_at else "",
-                "finished_at": r.finished_at.isoformat() if r.finished_at else "",
-                "error": r.error,
+                "id": pr.id, "category": "playbook", "name": f"Playbook run: {pr.trigger_ref}",
+                "type": "playbook_run", "status": pr.status, "verdict": "",
+                "created_at": pr.started_at.isoformat() if pr.started_at else "",
+                "finished_at": pr.finished_at.isoformat() if pr.finished_at else "",
+                "error": pr.error,
             })
 
     if not category or category == "backup":
-        for j in db.execute(select(BackupJob).order_by(BackupJob.name)).scalars():
+        for bj in db.execute(select(BackupJob).order_by(BackupJob.name)).scalars():
             items.append({
-                "id": j.id, "category": "backup", "name": f"Backup: {j.name}",
-                "type": j.component, "status": j.last_status, "verdict": "",
-                "created_at": j.last_success_at.isoformat() if j.last_success_at else "",
+                "id": bj.id, "category": "backup", "name": f"Backup: {bj.name}",
+                "type": bj.component, "status": bj.last_status, "verdict": "",
+                "created_at": bj.last_success_at.isoformat() if bj.last_success_at else "",
                 "finished_at": "", "error": "",
             })
 

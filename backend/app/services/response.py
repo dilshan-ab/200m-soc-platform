@@ -112,7 +112,8 @@ def create_request(
     if owner_override:
         from ..deps import require_step_up
 
-        require_step_up(scope)
+        if scope is not None:  # always true here (owner_override requires scope); narrows the type
+            require_step_up(scope)
     window = int(get_setting(db, "approval_window_minutes", 240))
     req = ActionRequest(
         action_key=action_key, targets=clean, params=params, payload_hash=payload_hash({"a": action_key, "t": clean, "p": params, "c": cid}), requester_id=requester.id,

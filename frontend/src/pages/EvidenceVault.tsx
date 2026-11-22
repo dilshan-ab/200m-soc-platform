@@ -1,23 +1,28 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Download, File, FileCode, FileImage, FileText, HardDrive, Package, Search, Shield, Trash2, Upload } from 'lucide-react';
-import { Fragment, useRef, useState } from 'react';
-import { Empty, ErrorBox, Loading, PageHead } from '../components/ui';
-import { del, get } from '../lib/api';
+import { useQuery } from '@tanstack/react-query';
+import { Download, File, FileCode, FileImage, FileText, Package, Trash2, Upload } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Skeleton } from '../components/Interactive';
+import { Chips, Summary } from '../components/manage';
+import { Drawer, Empty, ErrorBox, Field, Modal, PageHead, Pager, SearchBox } from '../components/ui';
+import { del, get, upload, type Page } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { ago, when } from '../lib/format';
+import { useAct } from '../lib/mut';
 
+type Custody = { actor: string; action: string; at: string; note: string };
 type EvidenceItem = {
   id: string; case_id: string; name: string; type: string; description: string;
   hash_sha256: string; file_size: number; storage_ref: string; has_file: boolean;
-  tags: string[]; collected_by: string; collected_at: string;
-  chain_of_custody: { actor: string; action: string; at: string; note: string }[];
-  observable_id: string | null; alert_id: string | null; client_id: string | null; created_at: string;
+  tags: string[]; collected_by: string; collected_at: string; chain_of_custody: Custody[];
 };
 type Stats = { total_items: number; total_size_bytes: number; items_with_files: number; items_metadata_only: number; by_type: Record<string, number> };
 
 const TYPE_ICONS: Record<string, typeof File> = { file: File, screenshot: FileImage, pcap: FileCode, log: FileText, artifact: Package, note: FileText };
+const UPLOAD_TYPES = ['file', 'screenshot', 'pcap', 'log', 'artifact'];
+const KEYS = ['evidence', 'evidence-stats'];
 
 function formatSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
+  if (!bytes) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
@@ -25,234 +30,134 @@ function formatSize(bytes: number): string {
 
 export default function EvidenceVault() {
   const { can } = useAuth();
-  const qc = useQueryClient();
   const [q, setQ] = useState('');
-  const [submitted, setSubmitted] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
+  const [type, setType] = useState('');
   const [page, setPage] = useState(1);
-  const [size] = useState(50);
-  const [showUpload, setShowUpload] = useState(false);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [open, setOpen] = useState<EvidenceItem | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const limit = 50;
 
-  const params = new URLSearchParams();
-  if (submitted) params.set('q', submitted);
-  if (typeFilter) params.set('type', typeFilter);
-  params.set('page', String(page));
-  params.set('size', String(size));
-
-  const items = useQuery({
-    queryKey: ['evidence', submitted, typeFilter, page],
-    queryFn: () => get<{ total: number; items: EvidenceItem[] }>(`/api/evidence/?${params.toString()}`),
-  });
+  const list = useQuery({ queryKey: ['evidence', q, type, page], queryFn: () => get<Page<EvidenceItem>>('/api/evidence/', { q, type, page, size: limit }) });
   const stats = useQuery({ queryKey: ['evidence-stats'], queryFn: () => get<Stats>('/api/evidence/stats') });
-
-  const deleteMut = useMutation({
-    mutationFn: (id: string) => del(`/api/evidence/${id}`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['evidence'] }); qc.invalidateQueries({ queryKey: ['evidence-stats'] }); },
-  });
-
-  const totalPages = items.data ? Math.ceil(items.data.total / size) : 0;
+  const remove = useAct((e: EvidenceItem) => del(`/api/evidence/${e.id}`), KEYS, 'Evidence deleted', () => setOpen(null));
+  const confirmDelete = (e: EvidenceItem) => { if (confirm(`Delete "${e.name}"? This also removes its stored file.`)) remove.mutate(e); };
+  const filter = (v: string) => { setType(v); setPage(1); };
+  const st = stats.data;
 
   return (
     <>
-      <PageHead title="Evidence Vault" sub="Upload, browse, and download forensic evidence files attached to cases. Full chain-of-custody tracking." />
-
-      {stats.data && (
-        <div className="kpi-strip" style={{ marginBottom: 16 }}>
-          <div className="kpi"><HardDrive size={18} /><div><strong>{stats.data.total_items}</strong><small>Total items</small></div></div>
-          <div className="kpi"><Upload size={18} /><div><strong>{stats.data.items_with_files}</strong><small>With files</small></div></div>
-          <div className="kpi"><Shield size={18} /><div><strong>{formatSize(stats.data.total_size_bytes)}</strong><small>Total size</small></div></div>
-          {Object.entries(stats.data.by_type).map(([t, c]) => {
-            const Icon = TYPE_ICONS[t] || File;
-            return <div className="kpi" key={t}><Icon size={18} /><div><strong>{c}</strong><small>{t}</small></div></div>;
-          })}
-        </div>
-      )}
-
-      <form className="row" onSubmit={e => { e.preventDefault(); setSubmitted(q); setPage(1); }} style={{ gap: 8, marginBottom: 12 }}>
-        <div style={{ flex: 1, position: 'relative' }}>
-          <Search size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search evidence by name, description, or tags..." style={{ paddingLeft: 32, width: '100%' }} />
-        </div>
-        <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setPage(1); }} style={{ width: 140 }}>
-          <option value="">All types</option>
-          <option value="file">File</option><option value="screenshot">Screenshot</option>
-          <option value="pcap">PCAP</option><option value="log">Log</option>
-          <option value="artifact">Artifact</option><option value="note">Note</option>
-        </select>
-        <button className="btn primary" type="submit"><Search size={14} /> Search</button>
-        {can('evidence.write') && <button className="btn" type="button" onClick={() => setShowUpload(!showUpload)}><Upload size={14} /> Upload</button>}
-      </form>
-
-      {showUpload && <UploadPanel onDone={() => { setShowUpload(false); qc.invalidateQueries({ queryKey: ['evidence'] }); qc.invalidateQueries({ queryKey: ['evidence-stats'] }); }} />}
-
-      {items.isLoading ? <Loading /> : items.error ? <ErrorBox error={items.error} /> : items.data!.items.length === 0 ? (
-        <Empty>{submitted ? `No evidence matching "${submitted}"` : 'No evidence items found. Upload evidence files to get started.'}</Empty>
+      <PageHead title="Evidence Vault" sub="Forensic files attached to cases, with hashes and a full chain of custody.">
+        {can('evidence.write') && <button className="btn primary" onClick={() => setUploading(true)}><Upload size={14} /> Upload evidence</button>}
+      </PageHead>
+      {st && <Summary items={[
+        { label: 'Total items', value: st.total_items },
+        { label: 'With files', value: st.items_with_files, tone: 'ok' },
+        { label: 'Metadata only', value: st.items_metadata_only },
+        { label: 'Stored size', value: formatSize(st.total_size_bytes) },
+      ]} />}
+      <Chips items={[
+        { label: 'All', active: !type, onClick: () => filter(''), count: st?.total_items },
+        ...Object.entries(st?.by_type ?? {}).map(([t, c]) => ({ label: t, active: type === t, onClick: () => filter(t), count: c })),
+      ]} />
+      <div className="filters">
+        <SearchBox value={q} onChange={(v) => { setQ(v); setPage(1); }} placeholder="Search name, description or tags…" label="Search evidence" />
+        {(q || type) && <button className="btn" onClick={() => { setQ(''); filter(''); }}>Clear filters</button>}
+      </div>
+      {list.isLoading ? <Skeleton lines={6} /> : list.error ? <ErrorBox error={list.error} onRetry={() => void list.refetch()} retrying={list.isFetching} /> : list.data!.items.length === 0 ? (
+        <Empty action={q || type ? 'Clear filters' : undefined} onAction={q || type ? () => { setQ(''); filter(''); } : undefined}>{q || type ? 'No evidence matches these filters.' : 'No evidence yet. Upload a file to a case to start the chain of custody.'}</Empty>
       ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Size</th>
-                <th>Hash (SHA-256)</th>
-                <th>Collected by</th>
-                <th>Collected at</th>
-                <th>Tags</th>
-                <th style={{ width: 90 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.data!.items.map(e => {
-                const Icon = TYPE_ICONS[e.type] || File;
-                return (
-                  <Fragment key={e.id}>
-                    <tr onClick={() => setExpanded(expanded === e.id ? null : e.id)} style={{ cursor: 'pointer' }} className={expanded === e.id ? 'selected' : ''}>
-                      <td style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon size={15} /> {e.name}</td>
-                      <td><span className="badge">{e.type}</span></td>
-                      <td style={{ fontSize: 12 }}>{e.file_size ? formatSize(e.file_size) : '—'}</td>
-                      <td><span className="mono" style={{ fontSize: 11 }}>{e.hash_sha256 ? e.hash_sha256.slice(0, 16) + '...' : '—'}</span></td>
-                      <td style={{ fontSize: 12 }}>{e.collected_by}</td>
-                      <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{e.collected_at ? new Date(e.collected_at).toLocaleString() : '—'}</td>
-                      <td>{e.tags?.map(t => <span key={t} className="badge" style={{ marginRight: 3 }}>{t}</span>)}</td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          {e.has_file && (
-                            <a href={`/api/evidence/download/${e.id}`} className="btn small" title="Download" onClick={ev => ev.stopPropagation()}>
-                              <Download size={13} />
-                            </a>
-                          )}
-                          {can('evidence.write') && (
-                            <button className="btn small danger" title="Delete" onClick={ev => { ev.stopPropagation(); if (confirm(`Delete "${e.name}"?`)) deleteMut.mutate(e.id); }}>
-                              <Trash2 size={13} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                    {expanded === e.id && (
-                      <tr>
-                        <td colSpan={8} style={{ padding: 0 }}>
-                          <EvidenceDetail item={e} />
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="table-wrap"><table>
+            <thead><tr><th>Name</th><th>Type</th><th>Size</th><th>SHA-256</th><th>Collected by</th><th>Collected</th><th /></tr></thead>
+            <tbody>{list.data!.items.map((e) => {
+              const Icon = TYPE_ICONS[e.type] ?? File;
+              return (
+                <tr key={e.id} tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => setOpen(e)} onKeyDown={(ev) => { if (ev.target === ev.currentTarget && ev.key === 'Enter') { ev.preventDefault(); setOpen(e); } }}>
+                  <td className="wrap"><span className="row" style={{ gap: 8 }}><Icon size={15} style={{ color: 'var(--muted)', flexShrink: 0 }} />{e.name}</span></td>
+                  <td><span className="badge">{e.type}</span></td>
+                  <td>{e.file_size ? formatSize(e.file_size) : '—'}</td>
+                  <td className="mono">{e.hash_sha256 ? `${e.hash_sha256.slice(0, 12)}…` : '—'}</td>
+                  <td>{e.collected_by}</td>
+                  <td title={when(e.collected_at)}>{ago(e.collected_at)}</td>
+                  <td>
+                    <span className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                      {e.has_file && <a className="btn small" href={`/api/evidence/download/${e.id}`} aria-label={`Download ${e.name}`} onClick={(ev) => ev.stopPropagation()}><Download size={13} /></a>}
+                      {can('evidence.write') && <button className="btn small danger" aria-label={`Delete ${e.name}`} onClick={(ev) => { ev.stopPropagation(); confirmDelete(e); }}><Trash2 size={13} /></button>}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}</tbody>
+          </table></div>
+          <Pager page={page} limit={limit} total={list.data!.total} set={setPage} />
+        </>
       )}
-
-      {totalPages > 1 && (
-        <div className="row" style={{ justifyContent: 'center', gap: 8, marginTop: 16 }}>
-          <button className="btn small" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</button>
-          <span style={{ fontSize: 13, color: 'var(--muted)', padding: '6px 12px' }}>Page {page} of {totalPages}</span>
-          <button className="btn small" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next</button>
-        </div>
-      )}
+      {open && <EvidenceDrawer item={open} onClose={() => setOpen(null)} onDelete={can('evidence.write') ? () => confirmDelete(open) : undefined} />}
+      {uploading && <UploadModal onClose={() => setUploading(false)} />}
     </>
   );
 }
 
-function EvidenceDetail({ item }: { item: EvidenceItem }) {
-  return (
-    <div style={{ padding: '12px 16px', background: 'var(--soft)', borderTop: '1px solid var(--border)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8, marginBottom: 12 }}>
-        <div><span style={{ fontSize: 11, color: 'var(--muted)' }}>Case ID</span><div className="mono" style={{ fontSize: 12 }}>{item.case_id}</div></div>
-        <div><span style={{ fontSize: 11, color: 'var(--muted)' }}>Full SHA-256</span><div className="mono" style={{ fontSize: 11, wordBreak: 'break-all' }}>{item.hash_sha256 || '—'}</div></div>
-        <div><span style={{ fontSize: 11, color: 'var(--muted)' }}>Storage Reference</span><div className="mono" style={{ fontSize: 11 }}>{item.storage_ref || 'metadata only'}</div></div>
-        {item.description && <div style={{ gridColumn: '1 / -1' }}><span style={{ fontSize: 11, color: 'var(--muted)' }}>Description</span><div style={{ fontSize: 13 }}>{item.description}</div></div>}
-      </div>
+function Meta({ label, children, mono }: { label: string; children: React.ReactNode; mono?: boolean }) {
+  return <div style={{ marginBottom: 12 }}><div className="hint" style={{ marginBottom: 2 }}>{label}</div><div className={mono ? 'mono' : undefined} style={{ wordBreak: 'break-all' }}>{children}</div></div>;
+}
 
-      {item.chain_of_custody?.length > 0 && (
-        <div>
-          <span style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Chain of custody</span>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {item.chain_of_custody.map((c, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 12 }}>
-                <span style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>{c.at ? new Date(c.at).toLocaleString() : '—'}</span>
-                <span className="badge">{c.action}</span>
-                <span>{c.actor}</span>
-                {c.note && <span style={{ color: 'var(--muted)' }}>— {c.note}</span>}
-              </div>
-            ))}
-          </div>
+function EvidenceDrawer({ item: e, onClose, onDelete }: { item: EvidenceItem; onClose: () => void; onDelete?: () => void }) {
+  const Icon = TYPE_ICONS[e.type] ?? File;
+  return (
+    <Drawer title={e.name} onClose={onClose}>
+      <div className="row" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
+        <Icon size={16} style={{ color: 'var(--muted)' }} /><span className="badge">{e.type}</span>
+        {e.tags?.map((t) => <span key={t} className="badge">{t}</span>)}
+        <span className="spacer" />
+        {e.has_file && <a className="btn small" href={`/api/evidence/download/${e.id}`}><Download size={13} /> Download</a>}
+        {onDelete && <button className="btn small danger" onClick={onDelete}>Delete</button>}
+      </div>
+      {e.description && <p style={{ whiteSpace: 'pre-wrap' }}>{e.description}</p>}
+      <Meta label="Collected">{e.collected_by} · {when(e.collected_at)}</Meta>
+      <Meta label="Size">{e.file_size ? formatSize(e.file_size) : 'Metadata only'}</Meta>
+      <Meta label="SHA-256" mono>{e.hash_sha256 || '—'}</Meta>
+      <Meta label="Case" mono>{e.case_id}</Meta>
+      <h4 style={{ margin: '16px 0 8px' }}>Chain of custody ({e.chain_of_custody?.length ?? 0})</h4>
+      {!e.chain_of_custody?.length ? <Empty>No custody events recorded.</Empty> : (
+        <div style={{ position: 'relative', paddingLeft: 24 }}>
+          <div style={{ position: 'absolute', left: 8, top: 0, bottom: 0, width: 2, background: 'var(--border)' }} />
+          {e.chain_of_custody.map((c, i) => (
+            <div key={i} style={{ position: 'relative', marginBottom: 12 }}>
+              <div style={{ position: 'absolute', left: -20, top: 4, width: 12, height: 12, borderRadius: '50%', background: 'var(--surface)', border: '2px solid var(--accent)' }} />
+              <div className="row" style={{ gap: 6, fontSize: 13 }}><strong>{c.actor}</strong><span className="badge">{c.action}</span><span className="spacer" /><span style={{ color: 'var(--muted)', fontSize: 12 }}>{when(c.at)}</span></div>
+              {c.note && <div style={{ fontSize: 13, marginTop: 2 }}>{c.note}</div>}
+            </div>
+          ))}
         </div>
       )}
-    </div>
+    </Drawer>
   );
 }
 
-function UploadPanel({ onDone }: { onDone: () => void }) {
+function UploadModal({ onClose }: { onClose: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [caseId, setCaseId] = useState('');
-  const [evidenceType, setEvidenceType] = useState('file');
-  const [description, setDescription] = useState('');
-  const [tags, setTags] = useState('');
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleUpload = async () => {
-    const file = fileRef.current?.files?.[0];
-    if (!file || !caseId.trim()) { setError('Select a file and enter a case ID'); return; }
-    setUploading(true); setError('');
-    try {
-      const form = new FormData();
-      form.append('file', file);
-      const params = new URLSearchParams({ evidence_type: evidenceType });
-      if (description) params.set('description', description);
-      if (tags) params.set('tags', tags);
-      const resp = await fetch(`/api/evidence/upload/${caseId.trim()}?${params.toString()}`, {
-        method: 'POST', body: form, credentials: 'include',
-      });
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({ detail: resp.statusText }));
-        throw new Error(data.detail || resp.statusText);
-      }
-      onDone();
-    } catch (e: any) {
-      setError(e.message || 'Upload failed');
-    } finally {
-      setUploading(false);
-    }
-  };
-
+  const [v, setV] = useState({ case_id: '', evidence_type: 'file', tags: '', description: '' });
+  const [file, setFile] = useState<File | null>(null);
+  const cases = useQuery({ queryKey: ['cases-for-evidence'], queryFn: () => get<Page<any>>('/api/cases', { limit: 50 }) });
+  const send = useAct(
+    () => { const f = new FormData(); f.append('file', file!); return upload(`/api/evidence/upload/${v.case_id}`, f, { evidence_type: v.evidence_type, description: v.description, tags: v.tags }); },
+    KEYS, 'Evidence uploaded', onClose,
+  );
   return (
-    <div className="card" style={{ padding: 16, marginBottom: 16 }}>
-      <div style={{ fontWeight: 600, marginBottom: 8 }}>Upload evidence file</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
-        <div>
-          <label style={{ fontSize: 11, color: 'var(--muted)' }}>Case ID *</label>
-          <input value={caseId} onChange={e => setCaseId(e.target.value)} placeholder="Paste case UUID" />
-        </div>
-        <div>
-          <label style={{ fontSize: 11, color: 'var(--muted)' }}>Type</label>
-          <select value={evidenceType} onChange={e => setEvidenceType(e.target.value)}>
-            <option value="file">File</option><option value="screenshot">Screenshot</option>
-            <option value="pcap">PCAP</option><option value="log">Log</option><option value="artifact">Artifact</option>
-          </select>
-        </div>
-        <div>
-          <label style={{ fontSize: 11, color: 'var(--muted)' }}>Tags (comma-separated)</label>
-          <input value={tags} onChange={e => setTags(e.target.value)} placeholder="malware, forensics" />
-        </div>
-        <div style={{ gridColumn: '1 / -1' }}>
-          <label style={{ fontSize: 11, color: 'var(--muted)' }}>Description</label>
-          <input value={description} onChange={e => setDescription(e.target.value)} placeholder="What is this evidence?" />
-        </div>
-        <div>
-          <label style={{ fontSize: 11, color: 'var(--muted)' }}>File *</label>
-          <input ref={fileRef} type="file" />
-        </div>
-      </div>
-      {error && <div className="error" style={{ marginTop: 8, fontSize: 13 }}>{error}</div>}
-      <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-        <button className="btn primary" onClick={handleUpload} disabled={uploading}>{uploading ? 'Uploading...' : 'Upload'}</button>
-        <button className="btn" onClick={onDone}>Cancel</button>
-      </div>
-    </div>
+    <Modal title="Upload evidence" onClose={onClose}>
+      <Field label="Case" id="ev-case" hint="Evidence is stored against a case and recorded in its timeline.">
+        <select id="ev-case" value={v.case_id} onChange={(e) => setV({ ...v, case_id: e.target.value })}>
+          <option value="">{cases.isLoading ? 'Loading cases…' : 'Select a case…'}</option>
+          {cases.data?.items.map((c) => <option key={c.id} value={c.id}>#{c.number} {c.title}</option>)}
+        </select>
+      </Field>
+      <Field label="Type" id="ev-type"><select id="ev-type" value={v.evidence_type} onChange={(e) => setV({ ...v, evidence_type: e.target.value })}>{UPLOAD_TYPES.map((t) => <option key={t}>{t}</option>)}</select></Field>
+      <Field label="File" id="ev-file" hint={file ? `${file.name} · ${formatSize(file.size)}` : undefined}><input id="ev-file" ref={fileRef} type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></Field>
+      <Field label="Description" id="ev-desc" hint="optional"><textarea id="ev-desc" value={v.description} onChange={(e) => setV({ ...v, description: e.target.value })} placeholder="What is this evidence and where did it come from?" /></Field>
+      <Field label="Tags" id="ev-tags" hint="comma-separated, optional"><input id="ev-tags" value={v.tags} onChange={(e) => setV({ ...v, tags: e.target.value })} placeholder="malware, memory-dump" /></Field>
+      {send.error && <div className="error" role="alert">{send.error.message}</div>}
+      <button className="btn primary" disabled={send.isPending || !file || !v.case_id} onClick={() => send.mutate(undefined)}>{send.isPending ? 'Uploading…' : 'Upload'}</button>
+    </Modal>
   );
 }
