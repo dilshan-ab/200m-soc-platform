@@ -71,15 +71,15 @@ export default function SOARMetrics() {
                 <div><dt>Failures</dt><dd>{num.format(d.automation.failures)}</dd></div>
               </dl>
               <h4 style={{ marginTop: 12 }}>Coverage</h4>
-              <div className="cov-bar" style={{ display: 'flex', borderRadius: 4, overflow: 'hidden', height: 24, marginTop: 4 }}>
+              <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', height: 26, marginTop: 4, border: '1px solid var(--border)' }}>
                 {(d.automation.coverage.auto_resolved + d.automation.coverage.manual_resolved) > 0 ? (<>
-                  <div style={{ flex: d.automation.coverage.auto_resolved, background: 'var(--ok, #27ae60)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#fff', fontWeight: 600 }}>
+                  <div style={{ flex: d.automation.coverage.auto_resolved, background: 'color-mix(in srgb, var(--ok) 22%, var(--surface))', color: 'var(--ok)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600 }}>
                     {d.automation.coverage.auto_resolved > 0 && `Auto ${pct(d.automation.coverage.auto_pct)}`}
                   </div>
-                  <div style={{ flex: d.automation.coverage.manual_resolved, background: 'var(--accent, #2980b9)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#fff', fontWeight: 600 }}>
+                  <div style={{ flex: d.automation.coverage.manual_resolved, background: 'color-mix(in srgb, var(--accent) 22%, var(--surface))', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600 }}>
                     {d.automation.coverage.manual_resolved > 0 && 'Manual'}
                   </div>
-                </>) : <div style={{ flex: 1, background: 'var(--border, #333)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--muted)' }}>No resolved alerts</div>}
+                </>) : <div style={{ flex: 1, background: 'var(--soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--muted)' }}>No resolved alerts</div>}
               </div>
               <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>Auto: {num.format(d.automation.coverage.auto_resolved)} · Manual: {num.format(d.automation.coverage.manual_resolved)}</p>
             </section>
@@ -109,7 +109,8 @@ export default function SOARMetrics() {
               <h3>Alert overview</h3>
               <dl className="stat-grid">
                 <div><dt>Total alerts</dt><dd>{num.format(d.alerts.total)}</dd></div>
-                <div><dt>SLA breaches</dt><dd style={{ color: d.alerts.sla_breached > 0 ? 'var(--danger, #c0392b)' : undefined }}>{num.format(d.alerts.sla_breached)}</dd></div>
+                <div><dt>SLA breaches</dt><dd style={{ color: d.alerts.sla_breached > 0 ? 'var(--bad)' : undefined }}>{num.format(d.alerts.sla_breached)}</dd></div>
+                <div><dt>SLA compliance</dt><dd>{pct(d.alerts.sla_compliance_pct)}</dd></div>
               </dl>
               {Object.keys(d.alerts.by_severity).length > 0 && (<>
                 <h4 style={{ marginTop: 12 }}>By severity</h4>
