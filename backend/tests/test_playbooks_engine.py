@@ -190,3 +190,90 @@ def test_changing_trigger_clears_schedule(admin):
     pid = _mk_scheduled(admin, "sched-switch")
     r = admin.patch(f"/api/playbooks/{pid}", {"trigger": "manual"}).json()
     assert r["next_run_at"] is None and r["schedule_interval_minutes"] is None
+
+
+# --------------------------------------------------------------------------- variables between nodes
+def _add_indicator(value, verdict, confidence=90):
+    from app.db import session_scope
+    from app.models import ThreatIndicator
+    from app.services.settings_svc import system_user
+
+    with session_scope() as db:
+        db.add(ThreatIndicator(type="ip", value=value, verdict=verdict, confidence=confidence, source="test", labels=[], created_by=system_user(db).id))
+
+
+def _enrich_branch_graph(op="gte", value=50):
+    nodes = [
+        {"id": "t1", "type": "trigger", "data": {}},
+        {"id": "enrich1", "type": "action", "data": {"action_type": "enrich"}},
+        {"id": "c1", "type": "condition", "data": {"field": "enrich1.score", "op": op, "value": value}},
+        {"id": "yes", "type": "action", "data": {"action_type": "add_note", "text": "bad: {{enrich1.verdict}} score={{enrich1.score}} sev={{alert.severity}}"}},
+        {"id": "no", "type": "action", "data": {"action_type": "add_note", "text": "clean"}},
+        {"id": "e1", "type": "end", "data": {}},
+    ]
+    edges = [
+        {"id": "x1", "source": "t1", "target": "enrich1"},
+        {"id": "x2", "source": "enrich1", "target": "c1"},
+        {"id": "x3", "source": "c1", "target": "yes", "label": "Yes"},
+        {"id": "x4", "source": "c1", "target": "no", "label": "No"},
+        {"id": "x5", "source": "yes", "target": "e1"},
+        {"id": "x6", "source": "no", "target": "e1"},
+    ]
+    return nodes, edges
+
+
+def _run_enrich_flow(admin, clients, name, src_ip, **kw):
+    aid = mk_alert(clients[0], severity="high", src_ip=src_ip)
+    nodes, edges = _enrich_branch_graph(**kw)
+    pb = admin.post("/api/playbooks", {"name": name, "trigger": "manual", "nodes": nodes, "edges": edges}).json()
+    assert admin.patch(f"/api/playbooks/{pb['id']}", {"status": "published"}).status_code == 200
+    run = admin.post(f"/api/playbooks/{pb['id']}/execute", {"alert_id": aid}).json()
+    return aid, run
+
+
+def test_enrichment_output_drives_condition_and_note(admin, clients):
+    _add_indicator("198.51.100.66", "malicious")
+    aid, run = _run_enrich_flow(admin, clients, "vars-bad", "198.51.100.66")
+    assert run["status"] == "completed", run
+    log = {e["node_id"]: e for e in run["execution_log"]}
+    assert log["enrich1"]["result"]["verdict"] == "malicious"
+    assert log["c1"]["result"]["matched"] is True and "yes" in log and "no" not in log
+    with dbmod.session_scope() as db:
+        assert "bad: malicious score=" in db.get(Alert, aid).tuning_note and "sev=high" in db.get(Alert, aid).tuning_note
+
+
+def test_unknown_indicator_takes_other_branch(admin, clients):
+    _, run = _run_enrich_flow(admin, clients, "vars-clean", "192.0.2.250")
+    assert run["status"] == "completed"
+    log = {e["node_id"]: e for e in run["execution_log"]}
+    assert log["c1"]["result"]["matched"] is False and "no" in log and "yes" not in log
+
+
+def test_publish_rejects_bad_variable_references(admin):
+    def publish(name, nodes, edges):
+        pb = admin.post("/api/playbooks", {"name": name, "trigger": "manual", "nodes": nodes, "edges": edges}).json()
+        return admin.patch(f"/api/playbooks/{pb['id']}", {"status": "published"})
+
+    nodes, edges = _enrich_branch_graph()
+    # condition reads a node that does not exist
+    bad = [dict(n, data=dict(n["data"], field="ghost.score")) if n["id"] == "c1" else n for n in nodes]
+    r = publish("vars-ghost", bad, edges)
+    assert r.status_code == 400 and "unknown node" in r.text
+    # condition reads a node that runs after it
+    late = [dict(n, data=dict(n["data"], field="yes.status")) if n["id"] == "c1" else n for n in nodes]
+    r = publish("vars-late", late, edges)
+    assert r.status_code == 400 and "does not run before" in r.text
+    # unknown alert field in a note template
+    badnote = [dict(n, data=dict(n["data"], text="{{alert.nope}}")) if n["id"] == "yes" else n for n in nodes]
+    r = publish("vars-alertfield", badnote, edges)
+    assert r.status_code == 400 and "unknown alert field" in r.text
+
+
+def test_missing_variable_at_runtime_fails_run_clearly(admin, clients):
+    # enrich is skipped when the alert has no indicator, so enrich1.score is absent -> clear failure, no silent branch
+    aid = mk_alert(clients[0], severity="high", src_ip="")
+    nodes, edges = _enrich_branch_graph()
+    pb = admin.post("/api/playbooks", {"name": "vars-missing", "trigger": "manual", "nodes": nodes, "edges": edges}).json()
+    admin.patch(f"/api/playbooks/{pb['id']}", {"status": "published"})
+    run = admin.post(f"/api/playbooks/{pb['id']}/execute", {"alert_id": aid}).json()
+    assert run["status"] == "failed" and "unknown variable 'enrich1.score'" in run["error"]
