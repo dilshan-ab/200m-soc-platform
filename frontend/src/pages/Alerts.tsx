@@ -237,7 +237,6 @@ function DeleteAllAlertsModal({ total, onClose, onDeleted }: { total: number; on
     void qc.invalidateQueries();
   });
   return <Modal title={`Delete all ${total} alerts`} onClose={() => { if (!remove.isPending) onClose(); }}>
-    <p>Permanently delete every alert in your scope (not just this page or filter) — {total} alert{total === 1 ? '' : 's'} in total. This action cannot be undone.</p>
     <Field label="Type DELETE to confirm" id="confirm-delete-all">
       <input id="confirm-delete-all" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="DELETE" autoFocus />
     </Field>
