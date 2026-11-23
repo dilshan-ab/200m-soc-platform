@@ -193,7 +193,7 @@ def test_missing_keycloak_account_is_actionable(superadmin, kc, monkeypatch):
     assert not kc
 
 
-def test_password_reset_requires_fresh_mfa(superadmin, make_session):
+def test_password_reset_requires_fresh_mfa(superadmin, make_session, step_up_on):
     from datetime import timedelta
 
     from sqlalchemy import select

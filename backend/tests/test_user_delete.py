@@ -85,7 +85,7 @@ def test_super_admin_and_admins_can_delete_accounts(superadmin, admin, make_sess
     assert admin.delete(f"/api/admin/users/{_uid('b@t.local')}").status_code == 200
 
 
-def test_delete_requires_recent_mfa(make_session):
+def test_delete_requires_recent_mfa(make_session, step_up_on):
     from app.models import SessionRecord as SR
 
     weak = make_session("stale-admin@t.local", "admin")

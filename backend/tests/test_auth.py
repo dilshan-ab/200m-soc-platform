@@ -134,7 +134,7 @@ def test_unauthenticated_endpoints_rejected(app):
         assert c.get(path).status_code == 401, path
 
 
-def test_step_up_required_for_admin_changes(app, superadmin):
+def test_step_up_required_for_admin_changes(app, superadmin, step_up_on):
     admin = superadmin
     other = {"email": "n@t.local", "role": "viewer", "password": PASSWORD}
     # login grants a fresh step-up window; simulate expiry

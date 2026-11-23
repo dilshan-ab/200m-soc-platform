@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useRef, useState } from 'react';
 import { Summary } from '../components/manage';
-import { Empty, ErrorBox, Field, Loading, Modal, PageHead, Pager, SearchBox, useToast } from '../components/ui';
+import { Empty, ErrorBox, Field, Loading, Modal, PageHead, Pager, PasswordInput, SearchBox, useToast } from '../components/ui';
 import { del, get, patch, post, put, type Page } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { SEVERITIES, ago, titleCase, when } from '../lib/format';
@@ -107,7 +107,7 @@ function AddUser({ oidc, clients, onClose, onSecret }: { oidc: boolean; clients:
       <Field label="Email" id="ue"><input id="ue" type="email" value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} /></Field>
       <Field label="Name" id="un"><input id="un" value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} /></Field>
       <Field label="Role" id="ur" hint="Administrators can create users and other administrators directly."><select id="ur" value={v.role} onChange={(e) => setV({ ...v, role: e.target.value })}>{['viewer', 'l1', 'l2', 'admin'].map((r) => <option key={r}>{r}</option>)}</select></Field>
-      <Field label={oidc ? "Temporary password (12+ chars, upper, lower, digit)" : "Initial password (12+ chars, upper, lower, digit)"} id="up"><input id="up" type="password" autoComplete="new-password" value={v.password} onChange={(e) => setV({ ...v, password: e.target.value })} /></Field>
+      <Field label={oidc ? "Temporary password (12+ chars, upper, lower, digit)" : "Initial password (12+ chars, upper, lower, digit)"} id="up"><PasswordInput id="up" value={v.password} onChange={(x) => setV({ ...v, password: x })} /></Field>
       <ClientPicker clients={clients} sel={v.client_ids} all={v.all_clients} onSel={(s) => setV({ ...v, client_ids: s })} onAll={(b) => setV({ ...v, all_clients: b })} />
       {m.error && <ErrorBox error={m.error} />}
       <button className="btn primary" disabled={m.isPending || !v.email.includes('@') || v.password.length < 12} onClick={() => m.mutate(undefined)}>Create</button>
@@ -124,7 +124,7 @@ function DeleteUser({ u, oidc, onClose }: { u: any; oidc: boolean; onClose: () =
     onClose();
   });
   return <Modal title={`Delete ${u.email}`} onClose={() => { if (!m.isPending) onClose(); }}>
-    <p>{linked ? 'This removes the account from Keycloak and from SOC.' : oidc ? 'This removes the SOC account. It has no linked Keycloak account, so Keycloak is not changed.' : 'This removes the local SOC account.'} They are signed out immediately and their open alerts, cases and tasks are unassigned. Past requests, approvals and the audit log are kept.</p>
+    <p>{linked ? 'Removes the account from Keycloak and SOC.' : oidc ? 'Removes the SOC account (it has no Keycloak account).' : 'Removes the local SOC account.'} They are signed out and their open items are unassigned.</p>
     <Field label={`Type ${u.email} to confirm`} id="del-confirm"><input id="del-confirm" autoFocus value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder={u.email} /></Field>
     {m.error && <ErrorBox error={m.error} />}
     <div className="row">
@@ -134,19 +134,22 @@ function DeleteUser({ u, oidc, onClose }: { u: any; oidc: boolean; onClose: () =
   </Modal>;
 }
 
-type SyncResult = { imported: string[]; linked: string[]; updated: string[]; skipped: { email: string; reason: string }[]; removed: string[]; orphans: string[]; groups_created: string[]; groups_error: string };
+type SyncResult = { imported: string[]; linked: string[]; updated: string[]; skipped: { email: string; reason: string }[]; removed: string[]; orphans: string[]; groups_created: string[]; groups_error: string; acl: Partial<Record<'permissions_created' | 'permissions_updated' | 'mappings_added' | 'mappings_removed', number>>; acl_error: string; realm: string; keycloak_users: number };
 
 function SyncKeycloak({ onClose }: { onClose: () => void }) {
   const [result, setResult] = useState<SyncResult | null>(null);
   const run = useAct((prune: boolean) => post<SyncResult>('/api/admin/users/sync', { prune }), ['users', 'sessions'], undefined, (r: SyncResult) => setResult(r));
   const list = (label: string, items: string[]) => items.length > 0 && <p><b>{label} ({items.length}):</b> {items.join(', ')}</p>;
   return <Modal title="Sync with Keycloak" onClose={() => { if (!run.isPending) onClose(); }}>
-    <p>Imports users created in Keycloak, links local placeholders, and takes name, role and enabled state from Keycloak. It also creates the SOC role groups there (SOC Admins, SOC L2 Analysts, SOC L1 Analysts, SOC Viewers) if they are missing: adding a user to a group is what grants that role. Accounts deleted in Keycloak are listed first and only removed from SOC when you confirm.</p>
+    <p>Brings users, roles and groups in line with Keycloak.</p>
     {run.error && <ErrorBox error={run.error} />}
     {result && <div className="notice">
-      {!result.imported.length && !result.linked.length && !result.updated.length && !result.removed.length && !result.orphans.length && !result.groups_created.length && <p>Already in sync.</p>}
+      <p>Realm <b>{result.realm}</b> · {result.keycloak_users} user{result.keycloak_users === 1 ? '' : 's'} in Keycloak</p>
+      {!result.imported.length && !result.linked.length && !result.updated.length && !result.removed.length && !result.orphans.length && !result.groups_created.length && !result.groups_error && !result.acl_error && !Object.values(result.acl).some(Boolean) && <p>Already in sync.</p>}
       {list('Groups created in Keycloak', result.groups_created)}
       {result.groups_error && <p><b>Groups not created:</b> {result.groups_error}</p>}
+      {!result.groups_error && !result.acl_error && Object.values(result.acl).some(Boolean) && <p><b>Permissions mirrored to Keycloak:</b> {result.acl.permissions_created ?? 0} created, {result.acl.permissions_updated ?? 0} updated, {result.acl.mappings_added ?? 0} mapped, {result.acl.mappings_removed ?? 0} unmapped.</p>}
+      {result.acl_error && <p><b>Permissions not mirrored:</b> {result.acl_error}</p>}
       {list('Imported', result.imported)}{list('Linked', result.linked)}{list('Updated', result.updated)}{list('Removed from SOC', result.removed)}
       {list('Skipped', result.skipped.map((s) => `${s.email} (${s.reason})`))}
       {result.orphans.length > 0 && <p><b>No longer in Keycloak ({result.orphans.length}):</b> {result.orphans.join(', ')}</p>}
@@ -169,8 +172,8 @@ function UserPassword({ u, oidc, onClose }: { u: any; oidc: boolean; onClose: ()
     <p>{oidc ? 'Set a temporary password. The user must change it at their next Keycloak sign-in. Existing SOC sessions will end.' : 'Set a new local SOC password. Existing sessions will end; authenticator enrolment stays unchanged.'}</p>
     {oidc && ['local', 'pending'].includes(u.identity_status) && <label className="row"><input type="checkbox" checked={provision} disabled={m.isPending} onChange={(e) => setProvision(e.target.checked)} /> Create in Keycloak (if this account does not exist there yet)</label>}
     <form onSubmit={(e) => { e.preventDefault(); if (valid && !m.isPending) m.mutate(undefined); }}>
-      <Field label={oidc ? 'Temporary password' : 'New password'} id="reset-password" hint="At least 12 characters, with uppercase, lowercase and a digit."><input id="reset-password" type="password" autoComplete="new-password" maxLength={256} value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
-      <Field label="Confirm password" id="confirm-password"><input id="confirm-password" type="password" autoComplete="new-password" maxLength={256} value={confirm} onChange={(e) => setConfirm(e.target.value)} /></Field>
+      <Field label={oidc ? 'Temporary password' : 'New password'} id="reset-password" hint="At least 12 characters, with uppercase, lowercase and a digit."><PasswordInput id="reset-password" maxLength={256} value={password} onChange={setPassword} /></Field>
+      <Field label="Confirm password" id="confirm-password"><PasswordInput id="confirm-password" maxLength={256} value={confirm} onChange={setConfirm} /></Field>
       {confirm && password !== confirm && <p role="status">Passwords do not match.</p>}
       {m.error && <ErrorBox error={m.error} />}
       <button type="submit" className="btn primary" disabled={!valid || m.isPending}>{m.isPending ? 'Saving…' : provision ? 'Create in Keycloak' : 'Reset password'}</button>

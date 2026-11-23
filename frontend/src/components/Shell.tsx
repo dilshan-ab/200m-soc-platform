@@ -262,7 +262,7 @@ export function Shell() {
               <dt>Role</dt><dd>{ROLE_LABEL[me?.role ?? ''] ?? me?.role}</dd>
               <dt>Sign-in</dt><dd>{me?.auth_mode === 'oidc' ? 'Company SSO (Keycloak, MFA)' : 'Local development account'}</dd>
               <dt>Client scope</dt><dd>{me?.all_clients ? 'All clients' : `${me?.client_ids?.length ?? 0} client(s)`}</dd>
-              <dt>Recent verification</dt><dd>{me?.step_up_until && new Date(me.step_up_until) > new Date() ? <><Check size={13} style={{ verticalAlign: -2 }} /> active</> : 'not active'}</dd>
+              {me?.step_up_required && <><dt>Recent verification</dt><dd>{me?.step_up_until && new Date(me.step_up_until) > new Date() ? <><Check size={13} style={{ verticalAlign: -2 }} /> active</> : 'not active'}</dd></>}
             </dl>
             <p className="muted">Access is monitored and audited · Asia/Colombo</p>
             {authConfig.data?.account_url && (
