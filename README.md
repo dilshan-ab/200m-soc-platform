@@ -59,6 +59,12 @@ password, requires a change at the next sign-in, and ends existing Keycloak and 
 For an older local/pending SOC account missing from Keycloak, select **Create in Keycloak** in the password dialog; this preserves its SOC ID,
 client access and history. If it already exists in Keycloak, leave that option off and reset its password to link it.
 In the Keycloak admin console, select the `soc` realm (or your configured `SOC_KC_REALM`) to find SOC users.
+
+Administrators and the super admin can **Delete** an account (confirm by typing its email). In Keycloak mode the account is removed from Keycloak first, then from SOC; if Keycloak fails nothing changes, and a retry works if the Keycloak account is already gone. The user is signed out immediately, their API tokens, sessions and client access are removed, and their open alerts, cases and tasks are unassigned. If past requests, approvals or records still reference them, the row is kept as an anonymised "Deleted user" (so history stays intact) and the email can be reused. You cannot delete yourself or the super admin.
+
+**Groups set privileges.** The `soc` realm has one group per SOC role: **SOC Admins**, **SOC L2 Analysts**, **SOC L1 Analysts** and **SOC Viewers**, each mapped to the matching realm role. Adding a user to a group (in the Keycloak console or by changing their role in SOC) is what grants the role; SOC reads it from the sign-in token, which includes roles inherited from groups. Users created or changed from SOC are put in the right group and any leftover direct role is removed, so moving them between groups in Keycloak takes effect. `superadmin` has no group on purpose: assign that realm role directly. New installs get the groups from the realm import; for an existing realm, **Sync with Keycloak** creates them (it needs the `soc-admin` service account to manage groups, which `manage-users` covers). If it cannot manage groups, SOC falls back to direct realm roles and tells you why.
+
+To manage users from Keycloak instead, use **Sync with Keycloak**: it imports users created there (role from their realm role), links local placeholders, and takes name, role and enabled state from Keycloak. Accounts deleted in Keycloak are listed and only removed from SOC after you confirm. Imported users have no client access until you assign it.
 Development mode creates local SOC users only; it does not synchronize users to Keycloak. The owner's own password is changed on the Keycloak account page.
 
 
