@@ -566,6 +566,52 @@
       },
       "subGroups": [
         {
+          "name": "SOC L1 Analysts",
+          "realmRoles": [
+            "l1"
+          ],
+          "clientRoles": {
+            "soc-platform": [
+              "admin.tokens",
+              "alerts.read",
+              "alerts.triage",
+              "assets.read",
+              "cases.read",
+              "cases.write",
+              "clients.read",
+              "compliance.read",
+              "copilot.read",
+              "correlation.read",
+              "detections.read",
+              "evidence.read",
+              "evidence.write",
+              "handoff.read",
+              "handoff.write",
+              "incidents.read",
+              "incidents.write",
+              "intel.enrich",
+              "intel.read",
+              "logs.read",
+              "metrics.read",
+              "notebooks.read",
+              "notebooks.write",
+              "playbooks.execute",
+              "playbooks.read",
+              "reports.generate",
+              "reports.read",
+              "response.read",
+              "response.request",
+              "runbooks.read",
+              "servers.read",
+              "threat_intel.read",
+              "ueba.read",
+              "vulns.read",
+              "warroom.read",
+              "warroom.write"
+            ]
+          }
+        },
+        {
           "name": "SOC L2 Analysts",
           "realmRoles": [
             "l2"
