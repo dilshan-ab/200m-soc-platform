@@ -35,6 +35,7 @@ class GroupKeycloak:
         self.deny_client_roles = False  # cannot create client roles (no manage-clients)
         self.deny_client_list = False  # cannot even read clients (no view-clients)
         self.client_id = "soc-platform"
+        self.sa_roles: list[str] | None = None  # realm-management roles held by the soc-admin service account (None = not readable)
         self.client_exists = True
         self.deny_group_put = False  # cannot edit groups (attributes)
         self.n = 0
@@ -183,6 +184,10 @@ class GroupKeycloak:
         return httpx.Response(201, headers={"location": f"{KC}/admin/realms/soc/groups/{self.add_group(name, parent=parent)}"})
 
     def _users(self, m, parts, q, body, first, mx):
+        if q.get("username") == "service-account-soc-admin":  # service accounts are not in the normal user list
+            return httpx.Response(200, json=[{"id": "sa-1"}] if self.sa_roles is not None else [])
+        if parts[:3] == ["users", "sa-1", "role-mappings"]:
+            return httpx.Response(200, json={"clientMappings": {"realm-management": {"mappings": [{"name": r} for r in self.sa_roles or []]}}})
         if len(parts) == 1 and m == "GET":
             found = [u for u in self.users.values() if q.get("email") in (None, u["email"]) and q.get("username") in (None, u["username"])]
             return httpx.Response(200, json=found if ("email" in q or "username" in q) else list(self.users.values())[first:first + mx])
@@ -450,3 +455,45 @@ def test_realm_import_matches_the_rbac_definition():
     realm = json.load(open("../deploy/keycloak/soc-realm.json"))
     assert realm["groups"] == acl.realm_groups()
     assert realm["roles"]["client"][acl.CLIENT_ID] == acl.realm_client_roles()
+
+
+# --------------------------------------------------------------------------- sync diagnostics
+def test_sync_reports_which_service_account_roles_are_missing_for_role_mappings(superadmin, kcg):
+    kcg.add_user("u@t.local", direct={"l1"})
+    kcg.deny_client_list = True  # attributes mode: the roles are not there yet
+    kcg.sa_roles = ["manage-users", "view-users", "view-clients"]
+    out = superadmin.post("/api/admin/users/sync", {}).json()
+    assert out["acl_mode"] == "attributes"
+    assert out["access"] == {"roles": ["manage-users", "view-clients", "view-users"], "missing_for_role_mappings": ["manage-clients"]}
+
+
+def test_realm_admin_counts_as_having_everything(superadmin, kcg):
+    kcg.add_user("u@t.local", direct={"l1"})
+    kcg.deny_client_list = True
+    kcg.sa_roles = ["realm-admin"]
+    assert superadmin.post("/api/admin/users/sync", {}).json()["access"]["missing_for_role_mappings"] == []
+
+
+def test_access_is_omitted_when_keycloak_will_not_say_and_when_roles_are_mirrored(superadmin, kcg):
+    kcg.add_user("u@t.local", direct={"l1"})
+    kcg.deny_client_list = True
+    assert superadmin.post("/api/admin/users/sync", {}).json()["access"] is None  # sa_roles is None: unreadable, sync unaffected
+    kcg.deny_client_list = False
+    kcg.sa_roles = ["manage-clients", "view-clients"]
+    out = superadmin.post("/api/admin/users/sync", {}).json()
+    assert out["acl_mode"] == "roles" and out["access"] is None  # nothing to diagnose
+
+
+def test_sync_lists_soc_accounts_that_were_never_created_in_keycloak(superadmin, kcg):
+    kcg.add_user("linked@t.local", direct={"l1"})
+    kcg.add_user("placeholder@t.local", direct={"viewer"})  # exists in Keycloak: gets linked by this sync, so it is not "unlinked"
+    with dbmod.session_scope() as db:
+        db.add(User(subject="pending:never@t.local", email="never@t.local", role="viewer"))
+        db.add(User(subject="dev:old@t.local", email="old@t.local", role="l1"))
+        db.add(User(subject="pending:off@t.local", email="off@t.local", role="viewer", active=False))
+        db.add(User(subject="deleted:gone", email="deleted-x@deleted.invalid", role="viewer", active=False))
+        db.add(User(subject="pending:placeholder@t.local", email="placeholder@t.local", role="viewer"))
+    out = superadmin.post("/api/admin/users/sync", {}).json()
+    # (the test's own sign-in account is a local dev: account too, so it is listed as well)
+    assert {"never@t.local", "old@t.local"} <= set(out["unlinked"]) and out["linked"] == ["placeholder@t.local"]
+    assert not {"off@t.local", "placeholder@t.local", "deleted-x@deleted.invalid", "linked@t.local"} & set(out["unlinked"])  # disabled, just linked, deleted and linked ones are not listed

@@ -288,6 +288,20 @@ class SyncIn(BaseModel):
     prune: bool = False
 
 
+ROLE_MAPPING_ROLES = ("view-clients", "manage-clients")  # what the service account needs to list permissions as role mappings
+
+
+def _service_account_access() -> dict[str, Any] | None:
+    try:
+        roles = kc.service_account_roles(get_http())
+    except kc.KcError:
+        return None
+    if roles is None:
+        return None
+    full = "realm-admin" in roles
+    return {"roles": roles, "missing_for_role_mappings": [] if full else [r for r in ROLE_MAPPING_ROLES if r not in roles]}
+
+
 def _mirror_acl(group_ids: dict[str, str]) -> tuple[str, dict[str, int], str]:
     """Mirror SOC's permissions into Keycloak. Prefers client roles (needs the service account's manage-clients role); if
     Keycloak refuses, lists them as group attributes instead, which needs nothing extra. Returns (mode, counts, error)."""
@@ -308,7 +322,8 @@ def sync_users(body: SyncIn, p: Principal = Depends(require_admin_step_up("users
     """Reconcile SOC with Keycloak. Always additive: imports users created in Keycloak, links local placeholders, and takes
     name, role and enabled state from Keycloak. Accounts that no longer exist in Keycloak are only listed, and are removed
     from SOC when `prune` is true. Also creates the SOC role groups in Keycloak and mirrors SOC's RBAC permissions onto them
-    (needs the service account's manage-clients role; a failure is reported, not fatal). Reports which realm it is talking to."""
+    (needs the service account's manage-clients role; a failure is reported, not fatal). Reports which realm it is talking to,
+    which SOC accounts have no Keycloak account yet, and which Keycloak roles the service account is missing."""
     if get_settings().auth_mode != "oidc" or _external_idp():
         raise HTTPException(400, "Keycloak sync is only available when users are managed in the bundled Keycloak")
     groups_created: list[str] = []
@@ -372,6 +387,7 @@ def sync_users(body: SyncIn, p: Principal = Depends(require_admin_step_up("users
             if r["email"] not in linked:
                 updated.append(r["email"])
             audit.record(db, "user.sync_update", actor=p.label, actor_id=p.user.id, resource_type="user", resource_id=u.id, ip=p.ip, meta={"email": r["email"], "changes": list(changes)})
+    unlinked = sorted(u.email for u in local.values() if u.subject.startswith(("dev:", "pending:")) and u.active)  # in SOC but never created in Keycloak
     orphans = [u for sub, u in local.items() if not sub.startswith(("dev:", "pending:")) and sub not in by_id and u.role != "superadmin" and u.id != p.user.id]
     removed: list[str] = []
     if body.prune:
@@ -382,7 +398,8 @@ def sync_users(body: SyncIn, p: Principal = Depends(require_admin_step_up("users
             removed.append(email)
             audit.record(db, "user.sync_remove", actor=p.label, actor_id=p.user.id, resource_type="user", resource_id=u.id, ip=p.ip, meta={"email": email, "kept_as_deleted_user": anonymised})
     return {"imported": imported, "linked": linked, "updated": updated, "skipped": skipped, "removed": removed, "orphans": [] if body.prune else [u.email for u in orphans], "groups_created": groups_created, "groups_error": groups_error,
-            "acl": acl, "acl_mode": acl_mode, "acl_error": acl_error, "realm": get_settings().kc_realm, "keycloak_users": len(remote)}
+            "acl": acl, "acl_mode": acl_mode, "acl_error": acl_error, "realm": get_settings().kc_realm, "keycloak_users": len(remote),
+            "unlinked": unlinked, "access": _service_account_access() if acl_mode != "roles" else None}
 
 
 @router.post("/admin/users/{uid}/revoke-sessions")
