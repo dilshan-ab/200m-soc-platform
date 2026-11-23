@@ -59,6 +59,10 @@ password, requires a change at the next sign-in, and ends existing Keycloak and 
 For an older local/pending SOC account missing from Keycloak, select **Create in Keycloak** in the password dialog; this preserves its SOC ID,
 client access and history. If it already exists in Keycloak, leave that option off and reset its password to link it.
 In the Keycloak admin console, select the `soc` realm (or your configured `SOC_KC_REALM`) to find SOC users.
+
+Administrators and the super admin can **Delete** an account (confirm by typing its email). In Keycloak mode the account is removed from Keycloak first, then from SOC; if Keycloak fails nothing changes, and a retry works if the Keycloak account is already gone. The user is signed out immediately, their API tokens, sessions and client access are removed, and their open alerts, cases and tasks are unassigned. If past requests, approvals or records still reference them, the row is kept as an anonymised "Deleted user" (so history stays intact) and the email can be reused. You cannot delete yourself or the super admin.
+
+To manage users from Keycloak instead, use **Sync with Keycloak**: it imports users created there (role from their realm role), links local placeholders, and takes name, role and enabled state from Keycloak. Accounts deleted in Keycloak are listed and only removed from SOC after you confirm. Imported users have no client access until you assign it.
 Development mode creates local SOC users only; it does not synchronize users to Keycloak. The owner's own password is changed on the Keycloak account page.
 
 
