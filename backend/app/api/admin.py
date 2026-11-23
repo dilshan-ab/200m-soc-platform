@@ -19,6 +19,7 @@ from ..deps import Principal, require, require_admin_step_up
 from ..models import ApiToken, AuditEvent, BackupJob, Client, ClientMembership, RetentionPolicy, SessionRecord, SlaPolicy, User, utcnow
 from ..policy import CAPABILITIES, ROLES, SEVERITIES, role_capabilities, set_role_overrides
 from ..security import hash_password, new_token, new_totp_secret, password_policy_ok, sha256_hex
+from ..services import user_admin
 from ..services.settings_svc import get_setting, set_setting
 from ..sessions import revoke_all
 from ..sla import active_policy
@@ -37,7 +38,7 @@ def user_out(db: Session, u: User) -> dict[str, Any]:
 
 @router.get("/admin/users")
 def list_users(p: Principal = Depends(require("admin.users")), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
-    return [user_out(db, u) for u in db.execute(select(User).where(User.subject != "system:automation").order_by(User.email)).scalars()]
+    return [user_out(db, u) for u in db.execute(select(User).where(User.subject != "system:automation", User.subject.not_like(f"{user_admin.TOMBSTONE_PREFIX}%")).order_by(User.email)).scalars()]
 
 
 @router.get("/users/assignable")
@@ -255,6 +256,106 @@ def patch_user(uid: str, body: UserPatch, p: Principal = Depends(require_admin_s
         revoke_all(db, u.id)
     audit.record(db, "user.update", actor=p.label, actor_id=p.user.id, resource_type="user", resource_id=u.id, ip=p.ip, meta=meta)
     return user_out(db, u)
+
+
+@router.delete("/admin/users/{uid}")
+def delete_user(uid: str, p: Principal = Depends(require_admin_step_up("users.provision")), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Remove an account from Keycloak and from SOC. Keycloak goes first: if it fails nothing is changed here, and a
+    retry after a partial failure works because an account that is already gone from Keycloak counts as removed."""
+    u = db.get(User, uid)
+    if u is None or u.subject == "system:automation" or user_admin.is_tombstone(u):
+        raise HTTPException(404, "user not found")
+    if u.id == p.user.id:
+        raise HTTPException(403, "you cannot delete your own account")
+    if u.role == "superadmin":
+        raise HTTPException(403, "the super admin account cannot be deleted")
+    keycloak = "not_linked"
+    if get_settings().auth_mode == "oidc":
+        if _external_idp():
+            raise HTTPException(400, "accounts are managed in the identity provider; remove the user there")
+        if not u.subject.startswith(("dev:", "pending:")):  # only a linked identity is addressed, and only by its ID, never by email
+            keycloak = "deleted" if _kc(kc.delete_user, u.subject) else "already_gone"
+    email, role = u.email, u.role
+    revoke_all(db, u.id)
+    supersede_changes(db, "user.role", "user_id", u.id, p)
+    anonymised = user_admin.remove_user(db, u)
+    audit.record(db, "user.delete", actor=p.label, actor_id=p.user.id, resource_type="user", resource_id=uid, ip=p.ip, meta={"email": email, "role": role, "keycloak": keycloak, "kept_as_deleted_user": anonymised})
+    return {"deleted": True, "keycloak": keycloak, "kept_as_deleted_user": anonymised}
+
+
+class SyncIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    prune: bool = False
+
+
+@router.post("/admin/users/sync")
+def sync_users(body: SyncIn, p: Principal = Depends(require_admin_step_up("users.provision")), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Reconcile SOC with Keycloak. Always additive: imports users created in Keycloak, links local placeholders, and takes
+    name, role and enabled state from Keycloak. Accounts that no longer exist in Keycloak are only listed, and are removed
+    from SOC when `prune` is true."""
+    if get_settings().auth_mode != "oidc" or _external_idp():
+        raise HTTPException(400, "Keycloak sync is only available when users are managed in the bundled Keycloak")
+    remote = _kc(kc.list_users)
+    if not remote:
+        raise HTTPException(409, "Keycloak returned no users; refusing to change anything")
+    by_id = {r["id"]: r for r in remote}
+    local = {u.subject: u for u in db.execute(select(User).where(User.subject != "system:automation")).scalars() if not user_admin.is_tombstone(u)}
+    by_email = {u.email: u for u in local.values()}
+    imported: list[str] = []
+    linked: list[str] = []
+    updated: list[str] = []
+    skipped: list[dict[str, str]] = []
+    for r in remote:
+        if r["role"] == "superadmin" or r["role"] == "" or not r["email"]:
+            if r["role"] != "superadmin":
+                skipped.append({"email": r["email"] or r["id"], "reason": "no SOC role in Keycloak" if r["email"] else "no email"})
+            continue
+        u = local.get(r["id"])
+        if u is None:
+            existing = by_email.get(r["email"])
+            if existing is not None and not existing.subject.startswith(("dev:", "pending:")):
+                skipped.append({"email": r["email"], "reason": "email belongs to a different Keycloak identity"})
+                continue
+            if existing is not None:  # a local placeholder: link it to its Keycloak account, which now owns its credentials
+                existing.subject, existing.password_hash, existing.totp_secret = r["id"], None, None
+                u = existing
+                linked.append(r["email"])
+            else:
+                u = User(subject=r["id"], email=r["email"], name=r["name"], role=r["role"], active=r["enabled"], all_clients=False)
+                db.add(u)
+                db.flush()
+                imported.append(r["email"])
+                audit.record(db, "user.sync_import", actor=p.label, actor_id=p.user.id, resource_type="user", resource_id=u.id, ip=p.ip, meta={"email": r["email"], "role": r["role"]})
+                continue
+        if u.role == "superadmin" or u.id == p.user.id:
+            continue
+        changes: dict[str, Any] = {}
+        if u.role != r["role"]:
+            changes["role"] = r["role"]
+        if u.active != r["enabled"]:
+            changes["active"] = r["enabled"]
+        if r["name"] and u.name != r["name"]:
+            changes["name"] = r["name"]
+        if u.email != r["email"] and not db.execute(select(User.id).where(User.email == r["email"], User.id != u.id)).first():
+            changes["email"] = r["email"]
+        if changes:
+            for k, v in changes.items():
+                setattr(u, k, v)
+            if "role" in changes or "active" in changes or "email" in changes:
+                revoke_all(db, u.id)
+            if r["email"] not in linked:
+                updated.append(r["email"])
+            audit.record(db, "user.sync_update", actor=p.label, actor_id=p.user.id, resource_type="user", resource_id=u.id, ip=p.ip, meta={"email": r["email"], "changes": list(changes)})
+    orphans = [u for sub, u in local.items() if not sub.startswith(("dev:", "pending:")) and sub not in by_id and u.role != "superadmin" and u.id != p.user.id]
+    removed: list[str] = []
+    if body.prune:
+        for u in orphans:
+            email = u.email
+            revoke_all(db, u.id)
+            anonymised = user_admin.remove_user(db, u)
+            removed.append(email)
+            audit.record(db, "user.sync_remove", actor=p.label, actor_id=p.user.id, resource_type="user", resource_id=u.id, ip=p.ip, meta={"email": email, "kept_as_deleted_user": anonymised})
+    return {"imported": imported, "linked": linked, "updated": updated, "skipped": skipped, "removed": removed, "orphans": [] if body.prune else [u.email for u in orphans]}
 
 
 @router.post("/admin/users/{uid}/revoke-sessions")

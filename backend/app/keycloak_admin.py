@@ -175,3 +175,43 @@ def set_profile(client: httpx.Client, old_email: str, name: str, email: str, exp
     if r.status_code not in (200, 204):
         raise KcError("could not update the profile in Keycloak")
     return str(uid)
+
+
+def delete_user(client: httpx.Client, uid: str) -> bool:
+    """Delete a Keycloak account by its ID. Returns False when it was already gone (so a retry after a partial failure succeeds)."""
+    r = _call(client, "DELETE", f"/users/{quote(uid, safe='')}")
+    if r.status_code == 404:
+        return False
+    if r.status_code not in (200, 204):
+        raise KcError(f"could not delete the user in Keycloak (HTTP {r.status_code}); check service account user-management permissions")
+    return True
+
+
+def _paged(client: httpx.Client, path: str, what: str, page: int = 100, limit: int = 20000) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    while len(rows) < limit:
+        r = _call(client, "GET", path, params={"first": len(rows), "max": page})
+        if r.status_code != 200:
+            raise KcError(f"could not list {what} in Keycloak; check service account permissions")
+        batch = list(r.json())
+        rows.extend(batch)
+        if len(batch) < page:
+            return rows
+    raise KcError(f"too many {what} in Keycloak to sync")
+
+
+def list_users(client: httpx.Client) -> list[dict[str, Any]]:
+    """Every Keycloak user with its highest SOC realm role: [{id, email, name, enabled, role}] (role may be '' or 'superadmin')."""
+    ranks = (*ASSIGNABLE_ROLES, "superadmin")
+    role_of: dict[str, str] = {}
+    for role in ranks:  # ascending, so a later (higher) role overwrites an earlier one
+        for u in _paged(client, f"/roles/{quote(role, safe='')}/users", f"users with role {role}"):
+            role_of[str(u["id"])] = role
+    out = []
+    for u in _paged(client, "/users", "users"):
+        uid = str(u["id"])
+        out.append({
+            "id": uid, "email": str(u.get("email") or "").strip().lower(), "enabled": bool(u.get("enabled", True)), "role": role_of.get(uid, ""),
+            "name": " ".join(x for x in (u.get("firstName"), u.get("lastName")) if x).strip(),
+        })
+    return out

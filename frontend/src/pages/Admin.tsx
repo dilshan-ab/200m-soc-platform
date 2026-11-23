@@ -43,6 +43,8 @@ function Users() {
   const [add, setAdd] = useState(false);
   const [edit, setEdit] = useState<any>(null);
   const [passwordUser, setPasswordUser] = useState<any>(null);
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [syncing, setSyncing] = useState(false);
   const [uq, setUq] = useState('');
   const [ur, setUr] = useState('');
   const revoke = useAct((id: string) => post(`/api/admin/users/${id}/revoke-sessions`), ['users', 'sessions'], 'Sessions revoked');
@@ -54,6 +56,7 @@ function Users() {
       <div className="row" style={{ marginBottom: 8 }}><h2>Users</h2><span className="spacer" />
         {!oidc && <span style={{ color: 'var(--muted)' }}>Development mode: users and passwords are local to SOC; they are not created in Keycloak.</span>}
         {oidc && <span style={{ color: 'var(--muted)' }}>{provisioning ? 'Account profiles, roles and passwords are synced with Keycloak.' : 'Accounts and roles are managed in your identity provider; users appear here after their first sign-in.'}</span>}
+        {canProvision && oidc && <button className="btn small" onClick={() => setSyncing(true)}>Sync with Keycloak</button>}
         {canProvision && <button className="btn small" onClick={() => setAdd(true)}>Add user</button>}</div>
       {users.data && (
         <>
@@ -71,12 +74,15 @@ function Users() {
           <tbody>{rows.map((u) => <tr key={u.id}><td>{u.email}{oidc && u.identity_status === 'local' && <small className="block">Local account · needs Keycloak provisioning</small>}</td><td>{u.name}</td><td>{u.role}</td><td>{u.all_clients ? 'All clients' : `${u.client_ids.length} client(s)`}</td><td>{ago(u.last_login_at)}</td><td>{u.active ? 'Active' : 'Disabled'}</td>
             <td className="row">{canProvision && u.id !== me?.id && u.role !== 'superadmin' && <button className="btn small" onClick={() => setPasswordUser(u)}>Reset password</button>}
               {u.id !== me?.id && u.role !== 'superadmin' && <button className="btn small" onClick={() => setEdit(u)}>Edit</button>}{(u.role !== 'superadmin' || me?.role === 'superadmin') && <button className="btn small" onClick={() => revoke.mutate(u.id)}>Sign out everywhere</button>}
-              {u.id !== me?.id && u.role !== 'superadmin' && <button className="btn small" onClick={() => setActive.mutate({ id: u.id, active: !u.active })}>{u.active ? 'Disable' : 'Enable'}</button>}</td></tr>)}</tbody></table></div>
+              {u.id !== me?.id && u.role !== 'superadmin' && <button className="btn small" onClick={() => setActive.mutate({ id: u.id, active: !u.active })}>{u.active ? 'Disable' : 'Enable'}</button>}
+              {canProvision && u.id !== me?.id && u.role !== 'superadmin' && <button className="btn small danger" onClick={() => setDeleteTarget(u)}>Delete</button>}</td></tr>)}</tbody></table></div>
       )}
       <h2 style={{ margin: '22px 0 8px' }}>Active sessions</h2>
       {sessions.data && sessions.data.length ? <div className="table-wrap"><table><thead><tr><th>User</th><th>IP</th><th>Started</th><th>Last seen</th></tr></thead><tbody>{sessions.data.map((s) => <tr key={s.id}><td>{s.user}</td><td className="mono">{s.ip}</td><td>{ago(s.created_at)}</td><td>{ago(s.last_seen_at)}</td></tr>)}</tbody></table></div> : <Empty>No active sessions.</Empty>}
       {add && <AddUser oidc={oidc} clients={clients.data ?? []} onClose={() => setAdd(false)} onSecret={(s) => toast(`Authenticator secret (shown once): ${s}`)} />}
       {passwordUser && <UserPassword u={passwordUser} oidc={oidc} onClose={() => setPasswordUser(null)} />}
+      {deleteTarget && <DeleteUser u={deleteTarget} oidc={oidc} onClose={() => setDeleteTarget(null)} />}
+      {syncing && <SyncKeycloak onClose={() => setSyncing(false)} />}
       {edit && <EditUser u={edit} canChangeRole={canProvision} clients={clients.data ?? []} onClose={() => setEdit(null)} />}
     </>
   );
@@ -107,6 +113,48 @@ function AddUser({ oidc, clients, onClose, onSecret }: { oidc: boolean; clients:
       <button className="btn primary" disabled={m.isPending || !v.email.includes('@') || v.password.length < 12} onClick={() => m.mutate(undefined)}>Create</button>
     </Modal>
   );
+}
+
+function DeleteUser({ u, oidc, onClose }: { u: any; oidc: boolean; onClose: () => void }) {
+  const toast = useToast();
+  const [confirm, setConfirm] = useState('');
+  const linked = oidc && u.identity_status === 'linked';
+  const m = useAct(() => del<{ keycloak: string }>(`/api/admin/users/${u.id}`), ['users', 'sessions'], undefined, (r) => {
+    toast(`${u.email} deleted${r.keycloak === 'deleted' ? ' from SOC and Keycloak' : r.keycloak === 'already_gone' ? ' (it was already gone from Keycloak)' : ''}`);
+    onClose();
+  });
+  return <Modal title={`Delete ${u.email}`} onClose={() => { if (!m.isPending) onClose(); }}>
+    <p>{linked ? 'This removes the account from Keycloak and from SOC.' : oidc ? 'This removes the SOC account. It has no linked Keycloak account, so Keycloak is not changed.' : 'This removes the local SOC account.'} They are signed out immediately and their open alerts, cases and tasks are unassigned. Past requests, approvals and the audit log are kept.</p>
+    <Field label={`Type ${u.email} to confirm`} id="del-confirm"><input id="del-confirm" autoFocus value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder={u.email} /></Field>
+    {m.error && <ErrorBox error={m.error} />}
+    <div className="row">
+      <button className="btn" disabled={m.isPending} onClick={onClose}>Cancel</button>
+      <button className="btn danger" disabled={m.isPending || confirm.trim().toLowerCase() !== u.email.toLowerCase()} onClick={() => m.mutate(undefined)}>{m.isPending ? 'Deleting…' : 'Delete account'}</button>
+    </div>
+  </Modal>;
+}
+
+type SyncResult = { imported: string[]; linked: string[]; updated: string[]; skipped: { email: string; reason: string }[]; removed: string[]; orphans: string[] };
+
+function SyncKeycloak({ onClose }: { onClose: () => void }) {
+  const [result, setResult] = useState<SyncResult | null>(null);
+  const run = useAct((prune: boolean) => post<SyncResult>('/api/admin/users/sync', { prune }), ['users', 'sessions'], undefined, (r: SyncResult) => setResult(r));
+  const list = (label: string, items: string[]) => items.length > 0 && <p><b>{label} ({items.length}):</b> {items.join(', ')}</p>;
+  return <Modal title="Sync with Keycloak" onClose={() => { if (!run.isPending) onClose(); }}>
+    <p>Imports users created in Keycloak, links local placeholders, and takes name, role and enabled state from Keycloak. Accounts deleted in Keycloak are listed first and only removed from SOC when you confirm.</p>
+    {run.error && <ErrorBox error={run.error} />}
+    {result && <div className="notice">
+      {!result.imported.length && !result.linked.length && !result.updated.length && !result.removed.length && !result.orphans.length && <p>Already in sync.</p>}
+      {list('Imported', result.imported)}{list('Linked', result.linked)}{list('Updated', result.updated)}{list('Removed from SOC', result.removed)}
+      {list('Skipped', result.skipped.map((s) => `${s.email} (${s.reason})`))}
+      {result.orphans.length > 0 && <p><b>No longer in Keycloak ({result.orphans.length}):</b> {result.orphans.join(', ')}</p>}
+    </div>}
+    <div className="row">
+      <button className="btn" disabled={run.isPending} onClick={onClose}>Close</button>
+      <button className="btn primary" disabled={run.isPending} onClick={() => run.mutate(false)}>{run.isPending ? 'Syncing…' : result ? 'Sync again' : 'Sync now'}</button>
+      {result && result.orphans.length > 0 && <button className="btn danger" disabled={run.isPending} onClick={() => run.mutate(true)}>Remove {result.orphans.length} from SOC</button>}
+    </div>
+  </Modal>;
 }
 
 function UserPassword({ u, oidc, onClose }: { u: any; oidc: boolean; onClose: () => void }) {
