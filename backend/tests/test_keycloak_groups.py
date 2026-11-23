@@ -385,11 +385,14 @@ def test_acl_error_when_neither_client_roles_nor_attributes_are_allowed(superadm
     assert out["acl_mode"] == "" and "not allowed to edit groups" in out["acl_error"] and out["groups_error"] == ""
 
 
-def test_a_missing_client_is_reported_not_papered_over_with_attributes(superadmin, kcg):
+def test_an_empty_client_search_is_treated_as_not_visible_and_falls_back(superadmin, kcg):
+    """Keycloak answers an empty list, not a 403, when the service account may not view the client; SOC signs in through that client, so it exists."""
     kcg.add_user("u@t.local", direct={"l1"})
     kcg.client_exists = False
     out = superadmin.post("/api/admin/users/sync", {}).json()
-    assert out["acl_mode"] == "" and "does not exist" in out["acl_error"] and "SOC_OIDC_CLIENT_ID" in out["acl_error"]
+    assert out["acl_mode"] == "attributes" and out["acl_error"] == "" and out["acl"]["groups_updated"] == len(G)
+    with pytest.raises(kc.KcForbidden, match="cannot see the 'soc-platform' client"):
+        kc.sync_acl(_client(kcg), kc.ensure_groups(_client(kcg))[0])
 
 
 def test_the_configured_client_id_is_the_one_that_gets_the_permissions(superadmin, kcg, monkeypatch):
