@@ -292,13 +292,20 @@ class SyncIn(BaseModel):
 def sync_users(body: SyncIn, p: Principal = Depends(require_admin_step_up("users.provision")), db: Session = Depends(get_db)) -> dict[str, Any]:
     """Reconcile SOC with Keycloak. Always additive: imports users created in Keycloak, links local placeholders, and takes
     name, role and enabled state from Keycloak. Accounts that no longer exist in Keycloak are only listed, and are removed
-    from SOC when `prune` is true. Also creates the SOC role groups in Keycloak if they are missing."""
+    from SOC when `prune` is true. Also creates the SOC role groups in Keycloak and mirrors SOC's RBAC permissions onto them
+    (needs the service account's manage-clients role; a failure is reported, not fatal). Reports which realm it is talking to."""
     if get_settings().auth_mode != "oidc" or _external_idp():
         raise HTTPException(400, "Keycloak sync is only available when users are managed in the bundled Keycloak")
     groups_created: list[str] = []
     groups_error = ""
+    acl: dict[str, int] = {}
+    acl_error = ""
     try:  # additive and idempotent; a failure here (e.g. missing permission) must not block the user sync
-        _, groups_created = kc.ensure_groups(get_http())
+        group_ids, groups_created = kc.ensure_groups(get_http())
+        try:
+            acl = kc.sync_acl(get_http(), group_ids)
+        except kc.KcError as e:
+            acl_error = str(e)
     except kc.KcError as e:
         groups_error = str(e)
     remote = _kc(kc.list_users)
@@ -361,7 +368,8 @@ def sync_users(body: SyncIn, p: Principal = Depends(require_admin_step_up("users
             anonymised = user_admin.remove_user(db, u)
             removed.append(email)
             audit.record(db, "user.sync_remove", actor=p.label, actor_id=p.user.id, resource_type="user", resource_id=u.id, ip=p.ip, meta={"email": email, "kept_as_deleted_user": anonymised})
-    return {"imported": imported, "linked": linked, "updated": updated, "skipped": skipped, "removed": removed, "orphans": [] if body.prune else [u.email for u in orphans], "groups_created": groups_created, "groups_error": groups_error}
+    return {"imported": imported, "linked": linked, "updated": updated, "skipped": skipped, "removed": removed, "orphans": [] if body.prune else [u.email for u in orphans], "groups_created": groups_created, "groups_error": groups_error,
+            "acl": acl, "acl_error": acl_error, "realm": get_settings().kc_realm, "keycloak_users": len(remote)}
 
 
 @router.post("/admin/users/{uid}/revoke-sessions")
@@ -631,7 +639,15 @@ def set_permissions(body: PermissionsIn, p: Principal = Depends(require_admin_st
     set_setting(db, "role_permissions", body.matrix)
     set_role_overrides(body.matrix)
     audit.record(db, "permissions.update", actor=p.label, actor_id=p.user.id, ip=p.ip, meta={"roles": list(body.matrix.keys())})
-    return {"status": "ok"}
+    acl = "skipped"
+    if get_settings().auth_mode == "oidc" and kc.configured() and not _external_idp():  # keep the Keycloak group permissions in step; never fail the save
+        try:
+            group_ids, _ = kc.ensure_groups(get_http())
+            kc.sync_acl(get_http(), group_ids)
+            acl = "synced"
+        except kc.KcError as e:
+            acl = f"not synced: {e}"
+    return {"status": "ok", "keycloak_acl": acl}
 
 
 @router.get("/admin/sessions")

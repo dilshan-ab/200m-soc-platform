@@ -134,19 +134,22 @@ function DeleteUser({ u, oidc, onClose }: { u: any; oidc: boolean; onClose: () =
   </Modal>;
 }
 
-type SyncResult = { imported: string[]; linked: string[]; updated: string[]; skipped: { email: string; reason: string }[]; removed: string[]; orphans: string[]; groups_created: string[]; groups_error: string };
+type SyncResult = { imported: string[]; linked: string[]; updated: string[]; skipped: { email: string; reason: string }[]; removed: string[]; orphans: string[]; groups_created: string[]; groups_error: string; acl: Partial<Record<'permissions_created' | 'permissions_updated' | 'mappings_added' | 'mappings_removed', number>>; acl_error: string; realm: string; keycloak_users: number };
 
 function SyncKeycloak({ onClose }: { onClose: () => void }) {
   const [result, setResult] = useState<SyncResult | null>(null);
   const run = useAct((prune: boolean) => post<SyncResult>('/api/admin/users/sync', { prune }), ['users', 'sessions'], undefined, (r: SyncResult) => setResult(r));
   const list = (label: string, items: string[]) => items.length > 0 && <p><b>{label} ({items.length}):</b> {items.join(', ')}</p>;
   return <Modal title="Sync with Keycloak" onClose={() => { if (!run.isPending) onClose(); }}>
-    <p>Imports users created in Keycloak, links local placeholders, and takes name, role and enabled state from Keycloak. It also creates the SOC role groups there (SOC Admins, SOC L2 Analysts, SOC L1 Analysts, SOC Viewers) if they are missing: adding a user to a group is what grants that role. Accounts deleted in Keycloak are listed first and only removed from SOC when you confirm.</p>
+    <p>Imports users created in Keycloak, links local placeholders, and takes name, role and enabled state from Keycloak. It also creates the SOC groups there (SOC Super Admins, SOC Admins, SOC Analysts with a SOC L2 Analysts subgroup, SOC Viewers) and lists each role's SOC permissions on them as role mappings. Adding a user to a group is what grants that role; the permissions come from SOC's RBAC. Accounts deleted in Keycloak are listed first and only removed from SOC when you confirm.</p>
     {run.error && <ErrorBox error={run.error} />}
     {result && <div className="notice">
-      {!result.imported.length && !result.linked.length && !result.updated.length && !result.removed.length && !result.orphans.length && !result.groups_created.length && <p>Already in sync.</p>}
+      <p>Connected to Keycloak realm <b>{result.realm}</b>: {result.keycloak_users} user{result.keycloak_users === 1 ? '' : 's'}.</p>
+      {!result.imported.length && !result.linked.length && !result.updated.length && !result.removed.length && !result.orphans.length && !result.groups_created.length && !result.groups_error && !result.acl_error && !Object.values(result.acl).some(Boolean) && <p>Already in sync.</p>}
       {list('Groups created in Keycloak', result.groups_created)}
       {result.groups_error && <p><b>Groups not created:</b> {result.groups_error}</p>}
+      {!result.groups_error && !result.acl_error && Object.values(result.acl).some(Boolean) && <p><b>Permissions mirrored to Keycloak:</b> {result.acl.permissions_created ?? 0} created, {result.acl.permissions_updated ?? 0} updated, {result.acl.mappings_added ?? 0} mapped, {result.acl.mappings_removed ?? 0} unmapped.</p>}
+      {result.acl_error && <p><b>Permissions not mirrored:</b> {result.acl_error}</p>}
       {list('Imported', result.imported)}{list('Linked', result.linked)}{list('Updated', result.updated)}{list('Removed from SOC', result.removed)}
       {list('Skipped', result.skipped.map((s) => `${s.email} (${s.reason})`))}
       {result.orphans.length > 0 && <p><b>No longer in Keycloak ({result.orphans.length}):</b> {result.orphans.join(', ')}</p>}
