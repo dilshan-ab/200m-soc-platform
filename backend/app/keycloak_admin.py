@@ -437,3 +437,17 @@ def list_users(client: httpx.Client) -> list[dict[str, Any]]:
             "name": " ".join(x for x in (u.get("firstName"), u.get("lastName")) if x).strip(),
         })
     return out
+
+
+def service_account_roles(client: httpx.Client) -> list[str] | None:
+    """The realm-management roles the soc-admin service account holds (best effort; None if Keycloak will not say).
+    Read through the service account user's role mappings, which needs only user management."""
+    uname = f"service-account-{get_settings().kc_admin_client_id}"
+    r = _call(client, "GET", "/users", params={"username": uname, "exact": "true"})
+    if r.status_code != 200 or not r.json():
+        return None
+    m = _call(client, "GET", f"/users/{quote(str(r.json()[0]['id']), safe='')}/role-mappings")
+    if m.status_code != 200:
+        return None
+    mappings = ((m.json().get("clientMappings") or {}).get("realm-management") or {}).get("mappings") or []
+    return sorted(str(x["name"]) for x in mappings)
