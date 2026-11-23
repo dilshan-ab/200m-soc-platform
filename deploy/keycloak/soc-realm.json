@@ -60,32 +60,562 @@
         "name": "viewer",
         "description": "Read-only"
       }
-    ]
+    ],
+    "client": {
+      "soc-platform": [
+        {
+          "name": "admin.audit",
+          "description": "Admin: audit (default minimum role: admin)"
+        },
+        {
+          "name": "admin.backups",
+          "description": "Admin: backups (default minimum role: admin)"
+        },
+        {
+          "name": "admin.settings",
+          "description": "Admin: settings (default minimum role: admin)"
+        },
+        {
+          "name": "admin.tokens",
+          "description": "Admin: tokens (default minimum role: l1)"
+        },
+        {
+          "name": "admin.users",
+          "description": "Admin: users (default minimum role: admin)"
+        },
+        {
+          "name": "alerts.delete",
+          "description": "Alerts: delete (default minimum role: admin)"
+        },
+        {
+          "name": "alerts.read",
+          "description": "Alerts: read (default minimum role: viewer)"
+        },
+        {
+          "name": "alerts.triage",
+          "description": "Alerts: triage (default minimum role: l1)"
+        },
+        {
+          "name": "alerts.tune",
+          "description": "Alerts: tune (default minimum role: l2)"
+        },
+        {
+          "name": "assets.read",
+          "description": "Assets: read (default minimum role: viewer)"
+        },
+        {
+          "name": "assets.write",
+          "description": "Assets: write (default minimum role: l2)"
+        },
+        {
+          "name": "automation.read",
+          "description": "Automation: read (default minimum role: l2)"
+        },
+        {
+          "name": "automation.write",
+          "description": "Automation: write (default minimum role: admin)"
+        },
+        {
+          "name": "cases.close",
+          "description": "Cases: close (default minimum role: l2)"
+        },
+        {
+          "name": "cases.read",
+          "description": "Cases: read (default minimum role: viewer)"
+        },
+        {
+          "name": "cases.write",
+          "description": "Cases: write (default minimum role: l1)"
+        },
+        {
+          "name": "clients.manage_members",
+          "description": "Clients: manage members (default minimum role: admin)"
+        },
+        {
+          "name": "clients.read",
+          "description": "Clients: read (default minimum role: l1)"
+        },
+        {
+          "name": "clients.write",
+          "description": "Clients: write (default minimum role: admin)"
+        },
+        {
+          "name": "compliance.read",
+          "description": "Compliance: read (default minimum role: viewer)"
+        },
+        {
+          "name": "compliance.write",
+          "description": "Compliance: write (default minimum role: l2)"
+        },
+        {
+          "name": "copilot.read",
+          "description": "Copilot: read (default minimum role: l1)"
+        },
+        {
+          "name": "copilot.write",
+          "description": "Copilot: write (default minimum role: l2)"
+        },
+        {
+          "name": "correlation.read",
+          "description": "Correlation: read (default minimum role: l1)"
+        },
+        {
+          "name": "correlation.write",
+          "description": "Correlation: write (default minimum role: l2)"
+        },
+        {
+          "name": "detections.read",
+          "description": "Detections: read (default minimum role: viewer)"
+        },
+        {
+          "name": "detections.write",
+          "description": "Detections: write (default minimum role: l2)"
+        },
+        {
+          "name": "evidence.read",
+          "description": "Evidence: read (default minimum role: l1)"
+        },
+        {
+          "name": "evidence.write",
+          "description": "Evidence: write (default minimum role: l1)"
+        },
+        {
+          "name": "handoff.read",
+          "description": "Handoff: read (default minimum role: l1)"
+        },
+        {
+          "name": "handoff.write",
+          "description": "Handoff: write (default minimum role: l1)"
+        },
+        {
+          "name": "hunts.read",
+          "description": "Hunts: read (default minimum role: l2)"
+        },
+        {
+          "name": "hunts.request",
+          "description": "Hunts: request (default minimum role: l2)"
+        },
+        {
+          "name": "incidents.read",
+          "description": "Incidents: read (default minimum role: viewer)"
+        },
+        {
+          "name": "incidents.write",
+          "description": "Incidents: write (default minimum role: l1)"
+        },
+        {
+          "name": "integrations.read",
+          "description": "Integrations: read (default minimum role: l2)"
+        },
+        {
+          "name": "integrations.write",
+          "description": "Integrations: write (default minimum role: admin)"
+        },
+        {
+          "name": "intel.enrich",
+          "description": "Intel: enrich (default minimum role: l1)"
+        },
+        {
+          "name": "intel.read",
+          "description": "Intel: read (default minimum role: l1)"
+        },
+        {
+          "name": "logs.read",
+          "description": "Logs: read (default minimum role: l1)"
+        },
+        {
+          "name": "metrics.read",
+          "description": "Metrics: read (default minimum role: l1)"
+        },
+        {
+          "name": "mssp.view",
+          "description": "Mssp: view (default minimum role: l2)"
+        },
+        {
+          "name": "notebooks.read",
+          "description": "Notebooks: read (default minimum role: l1)"
+        },
+        {
+          "name": "notebooks.write",
+          "description": "Notebooks: write (default minimum role: l1)"
+        },
+        {
+          "name": "notifications.write",
+          "description": "Notifications: write (default minimum role: admin)"
+        },
+        {
+          "name": "playbooks.execute",
+          "description": "Playbooks: execute (default minimum role: l1)"
+        },
+        {
+          "name": "playbooks.read",
+          "description": "Playbooks: read (default minimum role: l1)"
+        },
+        {
+          "name": "playbooks.write",
+          "description": "Playbooks: write (default minimum role: l2)"
+        },
+        {
+          "name": "reports.generate",
+          "description": "Reports: generate (default minimum role: l1)"
+        },
+        {
+          "name": "reports.read",
+          "description": "Reports: read (default minimum role: viewer)"
+        },
+        {
+          "name": "reports.schedule",
+          "description": "Reports: schedule (default minimum role: admin)"
+        },
+        {
+          "name": "response.approve",
+          "description": "Response: approve (default minimum role: l2)"
+        },
+        {
+          "name": "response.approve_critical",
+          "description": "Response: approve critical (default minimum role: admin)"
+        },
+        {
+          "name": "response.read",
+          "description": "Response: read (default minimum role: l1)"
+        },
+        {
+          "name": "response.request",
+          "description": "Response: request (default minimum role: l1)"
+        },
+        {
+          "name": "runbooks.read",
+          "description": "Runbooks: read (default minimum role: viewer)"
+        },
+        {
+          "name": "runbooks.write",
+          "description": "Runbooks: write (default minimum role: l2)"
+        },
+        {
+          "name": "servers.read",
+          "description": "Servers: read (default minimum role: viewer)"
+        },
+        {
+          "name": "servers.write",
+          "description": "Servers: write (default minimum role: admin)"
+        },
+        {
+          "name": "simulation.read",
+          "description": "Simulation: read (default minimum role: l2)"
+        },
+        {
+          "name": "simulation.write",
+          "description": "Simulation: write (default minimum role: admin)"
+        },
+        {
+          "name": "threat_intel.admin",
+          "description": "Threat Intel: admin (default minimum role: admin)"
+        },
+        {
+          "name": "threat_intel.read",
+          "description": "Threat Intel: read (default minimum role: l1)"
+        },
+        {
+          "name": "threat_intel.write",
+          "description": "Threat Intel: write (default minimum role: l2)"
+        },
+        {
+          "name": "ueba.read",
+          "description": "Ueba: read (default minimum role: l1)"
+        },
+        {
+          "name": "ueba.write",
+          "description": "Ueba: write (default minimum role: l2)"
+        },
+        {
+          "name": "users.provision",
+          "description": "Users: provision (default minimum role: admin)"
+        },
+        {
+          "name": "vulns.read",
+          "description": "Vulns: read (default minimum role: viewer)"
+        },
+        {
+          "name": "vulns.write",
+          "description": "Vulns: write (default minimum role: l2)"
+        },
+        {
+          "name": "warroom.manage",
+          "description": "Warroom: manage (default minimum role: l2)"
+        },
+        {
+          "name": "warroom.read",
+          "description": "Warroom: read (default minimum role: l1)"
+        },
+        {
+          "name": "warroom.write",
+          "description": "Warroom: write (default minimum role: l1)"
+        }
+      ]
+    }
   },
   "groups": [
+    {
+      "name": "SOC Super Admins",
+      "realmRoles": [
+        "superadmin"
+      ],
+      "clientRoles": {
+        "soc-platform": [
+          "admin.audit",
+          "admin.backups",
+          "admin.settings",
+          "admin.tokens",
+          "admin.users",
+          "alerts.delete",
+          "alerts.read",
+          "alerts.triage",
+          "alerts.tune",
+          "assets.read",
+          "assets.write",
+          "automation.read",
+          "automation.write",
+          "cases.close",
+          "cases.read",
+          "cases.write",
+          "clients.manage_members",
+          "clients.read",
+          "clients.write",
+          "compliance.read",
+          "compliance.write",
+          "copilot.read",
+          "copilot.write",
+          "correlation.read",
+          "correlation.write",
+          "detections.read",
+          "detections.write",
+          "evidence.read",
+          "evidence.write",
+          "handoff.read",
+          "handoff.write",
+          "hunts.read",
+          "hunts.request",
+          "incidents.read",
+          "incidents.write",
+          "integrations.read",
+          "integrations.write",
+          "intel.enrich",
+          "intel.read",
+          "logs.read",
+          "metrics.read",
+          "mssp.view",
+          "notebooks.read",
+          "notebooks.write",
+          "notifications.write",
+          "playbooks.execute",
+          "playbooks.read",
+          "playbooks.write",
+          "reports.generate",
+          "reports.read",
+          "reports.schedule",
+          "response.approve",
+          "response.approve_critical",
+          "response.read",
+          "response.request",
+          "runbooks.read",
+          "runbooks.write",
+          "servers.read",
+          "servers.write",
+          "simulation.read",
+          "simulation.write",
+          "threat_intel.admin",
+          "threat_intel.read",
+          "threat_intel.write",
+          "ueba.read",
+          "ueba.write",
+          "users.provision",
+          "vulns.read",
+          "vulns.write",
+          "warroom.manage",
+          "warroom.read",
+          "warroom.write"
+        ]
+      }
+    },
     {
       "name": "SOC Admins",
       "realmRoles": [
         "admin"
-      ]
+      ],
+      "clientRoles": {
+        "soc-platform": [
+          "admin.audit",
+          "admin.backups",
+          "admin.settings",
+          "admin.tokens",
+          "admin.users",
+          "alerts.delete",
+          "alerts.read",
+          "alerts.triage",
+          "alerts.tune",
+          "assets.read",
+          "assets.write",
+          "automation.read",
+          "automation.write",
+          "cases.close",
+          "cases.read",
+          "cases.write",
+          "clients.manage_members",
+          "clients.read",
+          "clients.write",
+          "compliance.read",
+          "compliance.write",
+          "copilot.read",
+          "copilot.write",
+          "correlation.read",
+          "correlation.write",
+          "detections.read",
+          "detections.write",
+          "evidence.read",
+          "evidence.write",
+          "handoff.read",
+          "handoff.write",
+          "hunts.read",
+          "hunts.request",
+          "incidents.read",
+          "incidents.write",
+          "integrations.read",
+          "integrations.write",
+          "intel.enrich",
+          "intel.read",
+          "logs.read",
+          "metrics.read",
+          "mssp.view",
+          "notebooks.read",
+          "notebooks.write",
+          "notifications.write",
+          "playbooks.execute",
+          "playbooks.read",
+          "playbooks.write",
+          "reports.generate",
+          "reports.read",
+          "reports.schedule",
+          "response.approve",
+          "response.approve_critical",
+          "response.read",
+          "response.request",
+          "runbooks.read",
+          "runbooks.write",
+          "servers.read",
+          "servers.write",
+          "simulation.read",
+          "simulation.write",
+          "threat_intel.admin",
+          "threat_intel.read",
+          "threat_intel.write",
+          "ueba.read",
+          "ueba.write",
+          "users.provision",
+          "vulns.read",
+          "vulns.write",
+          "warroom.manage",
+          "warroom.read",
+          "warroom.write"
+        ]
+      }
     },
     {
-      "name": "SOC L2 Analysts",
-      "realmRoles": [
-        "l2"
-      ]
-    },
-    {
-      "name": "SOC L1 Analysts",
+      "name": "SOC Analysts",
       "realmRoles": [
         "l1"
+      ],
+      "clientRoles": {
+        "soc-platform": [
+          "admin.tokens",
+          "alerts.read",
+          "alerts.triage",
+          "assets.read",
+          "cases.read",
+          "cases.write",
+          "clients.read",
+          "compliance.read",
+          "copilot.read",
+          "correlation.read",
+          "detections.read",
+          "evidence.read",
+          "evidence.write",
+          "handoff.read",
+          "handoff.write",
+          "incidents.read",
+          "incidents.write",
+          "intel.enrich",
+          "intel.read",
+          "logs.read",
+          "metrics.read",
+          "notebooks.read",
+          "notebooks.write",
+          "playbooks.execute",
+          "playbooks.read",
+          "reports.generate",
+          "reports.read",
+          "response.read",
+          "response.request",
+          "runbooks.read",
+          "servers.read",
+          "threat_intel.read",
+          "ueba.read",
+          "vulns.read",
+          "warroom.read",
+          "warroom.write"
+        ]
+      },
+      "subGroups": [
+        {
+          "name": "SOC L2 Analysts",
+          "realmRoles": [
+            "l2"
+          ],
+          "clientRoles": {
+            "soc-platform": [
+              "alerts.tune",
+              "assets.write",
+              "automation.read",
+              "cases.close",
+              "compliance.write",
+              "copilot.write",
+              "correlation.write",
+              "detections.write",
+              "hunts.read",
+              "hunts.request",
+              "integrations.read",
+              "mssp.view",
+              "playbooks.write",
+              "response.approve",
+              "runbooks.write",
+              "simulation.read",
+              "threat_intel.write",
+              "ueba.write",
+              "vulns.write",
+              "warroom.manage"
+            ]
+          }
+        }
       ]
     },
     {
       "name": "SOC Viewers",
       "realmRoles": [
         "viewer"
-      ]
+      ],
+      "clientRoles": {
+        "soc-platform": [
+          "alerts.read",
+          "assets.read",
+          "cases.read",
+          "compliance.read",
+          "detections.read",
+          "incidents.read",
+          "reports.read",
+          "runbooks.read",
+          "servers.read",
+          "vulns.read"
+        ]
+      }
     }
   ],
   "authenticationFlows": [
