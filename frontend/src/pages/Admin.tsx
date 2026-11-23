@@ -124,7 +124,7 @@ function DeleteUser({ u, oidc, onClose }: { u: any; oidc: boolean; onClose: () =
     onClose();
   });
   return <Modal title={`Delete ${u.email}`} onClose={() => { if (!m.isPending) onClose(); }}>
-    <p>{linked ? 'This removes the account from Keycloak and from SOC.' : oidc ? 'This removes the SOC account. It has no linked Keycloak account, so Keycloak is not changed.' : 'This removes the local SOC account.'} They are signed out immediately and their open alerts, cases and tasks are unassigned. Past requests, approvals and the audit log are kept.</p>
+    <p>{linked ? 'Removes the account from Keycloak and SOC.' : oidc ? 'Removes the SOC account (it has no Keycloak account).' : 'Removes the local SOC account.'} They are signed out and their open items are unassigned.</p>
     <Field label={`Type ${u.email} to confirm`} id="del-confirm"><input id="del-confirm" autoFocus value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder={u.email} /></Field>
     {m.error && <ErrorBox error={m.error} />}
     <div className="row">
@@ -141,10 +141,10 @@ function SyncKeycloak({ onClose }: { onClose: () => void }) {
   const run = useAct((prune: boolean) => post<SyncResult>('/api/admin/users/sync', { prune }), ['users', 'sessions'], undefined, (r: SyncResult) => setResult(r));
   const list = (label: string, items: string[]) => items.length > 0 && <p><b>{label} ({items.length}):</b> {items.join(', ')}</p>;
   return <Modal title="Sync with Keycloak" onClose={() => { if (!run.isPending) onClose(); }}>
-    <p>Imports users created in Keycloak, links local placeholders, and takes name, role and enabled state from Keycloak. It also creates the SOC groups there (SOC Super Admins, SOC Admins, SOC Analysts with a SOC L2 Analysts subgroup, SOC Viewers) and lists each role's SOC permissions on them as role mappings. Adding a user to a group is what grants that role; the permissions come from SOC's RBAC. Accounts deleted in Keycloak are listed first and only removed from SOC when you confirm.</p>
+    <p>Brings users, roles and groups in line with Keycloak.</p>
     {run.error && <ErrorBox error={run.error} />}
     {result && <div className="notice">
-      <p>Connected to Keycloak realm <b>{result.realm}</b>: {result.keycloak_users} user{result.keycloak_users === 1 ? '' : 's'}.</p>
+      <p>Realm <b>{result.realm}</b> · {result.keycloak_users} user{result.keycloak_users === 1 ? '' : 's'} in Keycloak</p>
       {!result.imported.length && !result.linked.length && !result.updated.length && !result.removed.length && !result.orphans.length && !result.groups_created.length && !result.groups_error && !result.acl_error && !Object.values(result.acl).some(Boolean) && <p>Already in sync.</p>}
       {list('Groups created in Keycloak', result.groups_created)}
       {result.groups_error && <p><b>Groups not created:</b> {result.groups_error}</p>}

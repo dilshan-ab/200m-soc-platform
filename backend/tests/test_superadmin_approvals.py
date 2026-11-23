@@ -138,7 +138,7 @@ def test_granted_capabilities_do_not_confer_owner_bypass(make_session):
     assert r.status_code == 201 and r.json()['status'] == 'pending_approval', r.text
 
 
-def test_owner_still_needs_recent_mfa(superadmin):
+def test_owner_still_needs_recent_mfa(superadmin, step_up_on):
     user_id = uid(superadmin)
     with dbmod.session_scope() as db:
         for row in db.query(SessionRecord).filter_by(user_id=user_id):

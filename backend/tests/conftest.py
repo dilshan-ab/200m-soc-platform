@@ -107,6 +107,16 @@ def make_user(email: str, role: str = "viewer", all_clients: bool = True, client
 
 
 @pytest.fixture()
+def step_up_on(monkeypatch):
+    """Turn on SOC_STEP_UP_REQUIRED (off by default) for tests that check the re-verification requirement."""
+    monkeypatch.setenv("SOC_STEP_UP_REQUIRED", "true")
+    reset_settings_cache()
+    yield
+    monkeypatch.undo()
+    reset_settings_cache()
+
+
+@pytest.fixture()
 def make_session(app):
     def _make(email: str, role: str = "viewer", all_clients: bool = True, client_ids: list[str] | None = None) -> Session:
         _, secret = make_user(email, role, all_clients, client_ids)
