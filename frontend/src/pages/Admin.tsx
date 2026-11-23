@@ -134,17 +134,19 @@ function DeleteUser({ u, oidc, onClose }: { u: any; oidc: boolean; onClose: () =
   </Modal>;
 }
 
-type SyncResult = { imported: string[]; linked: string[]; updated: string[]; skipped: { email: string; reason: string }[]; removed: string[]; orphans: string[] };
+type SyncResult = { imported: string[]; linked: string[]; updated: string[]; skipped: { email: string; reason: string }[]; removed: string[]; orphans: string[]; groups_created: string[]; groups_error: string };
 
 function SyncKeycloak({ onClose }: { onClose: () => void }) {
   const [result, setResult] = useState<SyncResult | null>(null);
   const run = useAct((prune: boolean) => post<SyncResult>('/api/admin/users/sync', { prune }), ['users', 'sessions'], undefined, (r: SyncResult) => setResult(r));
   const list = (label: string, items: string[]) => items.length > 0 && <p><b>{label} ({items.length}):</b> {items.join(', ')}</p>;
   return <Modal title="Sync with Keycloak" onClose={() => { if (!run.isPending) onClose(); }}>
-    <p>Imports users created in Keycloak, links local placeholders, and takes name, role and enabled state from Keycloak. Accounts deleted in Keycloak are listed first and only removed from SOC when you confirm.</p>
+    <p>Imports users created in Keycloak, links local placeholders, and takes name, role and enabled state from Keycloak. It also creates the SOC role groups there (SOC Admins, SOC L2 Analysts, SOC L1 Analysts, SOC Viewers) if they are missing: adding a user to a group is what grants that role. Accounts deleted in Keycloak are listed first and only removed from SOC when you confirm.</p>
     {run.error && <ErrorBox error={run.error} />}
     {result && <div className="notice">
-      {!result.imported.length && !result.linked.length && !result.updated.length && !result.removed.length && !result.orphans.length && <p>Already in sync.</p>}
+      {!result.imported.length && !result.linked.length && !result.updated.length && !result.removed.length && !result.orphans.length && !result.groups_created.length && <p>Already in sync.</p>}
+      {list('Groups created in Keycloak', result.groups_created)}
+      {result.groups_error && <p><b>Groups not created:</b> {result.groups_error}</p>}
       {list('Imported', result.imported)}{list('Linked', result.linked)}{list('Updated', result.updated)}{list('Removed from SOC', result.removed)}
       {list('Skipped', result.skipped.map((s) => `${s.email} (${s.reason})`))}
       {result.orphans.length > 0 && <p><b>No longer in Keycloak ({result.orphans.length}):</b> {result.orphans.join(', ')}</p>}

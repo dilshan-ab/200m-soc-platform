@@ -292,9 +292,15 @@ class SyncIn(BaseModel):
 def sync_users(body: SyncIn, p: Principal = Depends(require_admin_step_up("users.provision")), db: Session = Depends(get_db)) -> dict[str, Any]:
     """Reconcile SOC with Keycloak. Always additive: imports users created in Keycloak, links local placeholders, and takes
     name, role and enabled state from Keycloak. Accounts that no longer exist in Keycloak are only listed, and are removed
-    from SOC when `prune` is true."""
+    from SOC when `prune` is true. Also creates the SOC role groups in Keycloak if they are missing."""
     if get_settings().auth_mode != "oidc" or _external_idp():
         raise HTTPException(400, "Keycloak sync is only available when users are managed in the bundled Keycloak")
+    groups_created: list[str] = []
+    groups_error = ""
+    try:  # additive and idempotent; a failure here (e.g. missing permission) must not block the user sync
+        _, groups_created = kc.ensure_groups(get_http())
+    except kc.KcError as e:
+        groups_error = str(e)
     remote = _kc(kc.list_users)
     if not remote:
         raise HTTPException(409, "Keycloak returned no users; refusing to change anything")
@@ -355,7 +361,7 @@ def sync_users(body: SyncIn, p: Principal = Depends(require_admin_step_up("users
             anonymised = user_admin.remove_user(db, u)
             removed.append(email)
             audit.record(db, "user.sync_remove", actor=p.label, actor_id=p.user.id, resource_type="user", resource_id=u.id, ip=p.ip, meta={"email": email, "kept_as_deleted_user": anonymised})
-    return {"imported": imported, "linked": linked, "updated": updated, "skipped": skipped, "removed": removed, "orphans": [] if body.prune else [u.email for u in orphans]}
+    return {"imported": imported, "linked": linked, "updated": updated, "skipped": skipped, "removed": removed, "orphans": [] if body.prune else [u.email for u in orphans], "groups_created": groups_created, "groups_error": groups_error}
 
 
 @router.post("/admin/users/{uid}/revoke-sessions")

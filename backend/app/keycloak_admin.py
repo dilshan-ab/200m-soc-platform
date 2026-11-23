@@ -94,6 +94,64 @@ def _user(client: httpx.Client, email: str, expected_uid: str | None = None) -> 
     return user
 
 
+# Privileges are granted through Keycloak groups: each SOC role has a group that maps to the realm role, so adding a
+# user to the group (in SOC or in the Keycloak console) is what sets their access. `superadmin` deliberately has no
+# group: it stays a direct, deliberate role assignment in Keycloak.
+GROUP_NAMES = {"admin": "SOC Admins", "l2": "SOC L2 Analysts", "l1": "SOC L1 Analysts", "viewer": "SOC Viewers"}
+
+
+def _group_id(client: httpx.Client, name: str) -> str | None:
+    r = _call(client, "GET", "/groups", params={"search": name, "exact": "true"})
+    if r.status_code != 200:
+        raise KcError("could not list groups in Keycloak; check service account permissions")
+    return next((str(g["id"]) for g in r.json() if g.get("name") == name), None)
+
+
+def ensure_groups(client: httpx.Client) -> tuple[dict[str, str], list[str]]:
+    """Create any missing SOC role group and make sure each maps to its realm role. Idempotent.
+    Returns ({role: group_id}, [names of groups created])."""
+    ids: dict[str, str] = {}
+    created: list[str] = []
+    for role, name in GROUP_NAMES.items():
+        gid = _group_id(client, name)
+        if gid is None:
+            r = _call(client, "POST", "/groups", json={"name": name})
+            if r.status_code not in (201, 409):
+                raise KcError(f"could not create group '{name}' in Keycloak (HTTP {r.status_code}); check service account permissions")
+            gid = r.headers.get("location", "").rstrip("/").rsplit("/", 1)[-1] if r.status_code == 201 else None
+            gid = gid or _group_id(client, name)
+            if not gid:
+                raise KcError(f"Keycloak created group '{name}' but did not return its ID")
+            created.append(name)
+        rep = _role_rep(client, role)
+        cur = _call(client, "GET", f"/groups/{quote(gid, safe='')}/role-mappings/realm")
+        if cur.status_code != 200:
+            raise KcError(f"could not read the roles of group '{name}'")
+        if not any(x.get("name") == role for x in cur.json()):
+            m = _call(client, "POST", f"/groups/{quote(gid, safe='')}/role-mappings/realm", json=[rep])
+            if m.status_code not in (200, 204):
+                raise KcError(f"could not map group '{name}' to the {role} role")
+        ids[role] = gid
+    return ids, created
+
+
+def _put_in_group(client: httpx.Client, uid: str, role: str, group_ids: dict[str, str]) -> None:
+    """Make the user a member of the group for `role` and of no other SOC role group."""
+    mine = _call(client, "GET", f"/users/{quote(uid, safe='')}/groups")
+    if mine.status_code != 200:
+        raise KcError("could not read the user's Keycloak groups")
+    member_of = {str(g["id"]) for g in mine.json()}
+    for other_role, gid in group_ids.items():
+        if other_role != role and gid in member_of:
+            d = _call(client, "DELETE", f"/users/{quote(uid, safe='')}/groups/{quote(gid, safe='')}")
+            if d.status_code not in (200, 204):
+                raise KcError("could not remove the user from their previous group")
+    if group_ids[role] not in member_of:
+        a = _call(client, "PUT", f"/users/{quote(uid, safe='')}/groups/{quote(group_ids[role], safe='')}")
+        if a.status_code not in (200, 204):
+            raise KcError("could not add the user to the group")
+
+
 def create_user(client: httpx.Client, email: str, name: str, role: str, password: str) -> str:
     rep = _role_rep(client, role)
     first, _, last = name.strip().partition(" ")
@@ -115,6 +173,12 @@ def create_user(client: httpx.Client, email: str, name: str, role: str, password
     uid = r.headers.get("location", "").rstrip("/").rsplit("/", 1)[-1] or find_user_id(client, email)
     if not uid:
         raise KcError("Keycloak created the user but did not return an account ID")
+    try:  # privileges come from the role's group; fall back to a direct role if groups cannot be managed
+        ids, _ = ensure_groups(client)
+        _put_in_group(client, uid, role, ids)
+        return uid
+    except KcError:
+        pass
     m = _call(client, "POST", f"/users/{quote(uid, safe='')}/role-mappings/realm", json=[rep])
     if m.status_code not in (200, 204):
         _call(client, "DELETE", f"/users/{quote(uid, safe='')}")  # do not leave a role-less account behind
@@ -128,14 +192,24 @@ def set_role(client: httpx.Client, email: str, role: str, expected_uid: str | No
     cur = _call(client, "GET", f"/users/{quote(uid, safe='')}/role-mappings/realm")
     if cur.status_code != 200:
         raise KcError("could not read the user's Keycloak roles")
-    old = [x for x in cur.json() if x.get("name") in ASSIGNABLE_ROLES and x.get("name") != role]
-    if old:
-        removed = _call(client, "DELETE", f"/users/{quote(uid, safe='')}/role-mappings/realm", json=old)
+    direct = [x for x in cur.json() if x.get("name") in ASSIGNABLE_ROLES]
+    via_group = False
+    try:  # privileges come from the role's group; fall back to a direct role if groups cannot be managed
+        ids, _ = ensure_groups(client)
+        _put_in_group(client, uid, role, ids)
+        via_group = True
+    except KcError:
+        pass
+    # With a group, every direct SOC role is dropped: a leftover one would keep overriding the group if they are later moved in Keycloak.
+    stale = direct if via_group else [x for x in direct if x.get("name") != role]
+    if stale:
+        removed = _call(client, "DELETE", f"/users/{quote(uid, safe='')}/role-mappings/realm", json=stale)
         if removed.status_code not in (200, 204):
             raise KcError("could not remove the previous Keycloak role")
-    m = _call(client, "POST", f"/users/{quote(uid, safe='')}/role-mappings/realm", json=[rep])
-    if m.status_code not in (200, 204):
-        raise KcError("could not assign the role in Keycloak")
+    if not via_group:
+        m = _call(client, "POST", f"/users/{quote(uid, safe='')}/role-mappings/realm", json=[rep])
+        if m.status_code not in (200, 204):
+            raise KcError("could not assign the role in Keycloak")
 
 
 def set_enabled(client: httpx.Client, email: str, enabled: bool, expected_uid: str | None = None) -> None:
@@ -207,6 +281,10 @@ def list_users(client: httpx.Client) -> list[dict[str, Any]]:
     for role in ranks:  # ascending, so a later (higher) role overwrites an earlier one
         for u in _paged(client, f"/roles/{quote(role, safe='')}/users", f"users with role {role}"):
             role_of[str(u["id"])] = role
+        gid = _group_id(client, GROUP_NAMES[role]) if role in GROUP_NAMES else None
+        if gid:  # members of the role's group hold the role through the group
+            for u in _paged(client, f"/groups/{quote(gid, safe='')}/members", f"members of {GROUP_NAMES[role]}"):
+                role_of[str(u["id"])] = role
     out = []
     for u in _paged(client, "/users", "users"):
         uid = str(u["id"])
