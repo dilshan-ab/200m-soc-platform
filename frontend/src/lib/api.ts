@@ -66,4 +66,4 @@ export async function upload<T = any>(path: string, form: FormData, params?: Opt
 export const del = <T = any>(path: string) => api<T>(path, { method: 'DELETE' });
 
 export type Page<T> = { items: T[]; total: number; page: number; limit: number };
-export type Me = { id: string; email: string; name: string; role: string; capabilities: string[]; all_clients: boolean; client_ids: string[] | null; csrf_token: string | null; step_up_until: string | null; auth_mode: 'dev' | 'oidc' };
+export type Me = { id: string; email: string; name: string; role: string; capabilities: string[]; all_clients: boolean; client_ids: string[] | null; csrf_token: string | null; step_up_until: string | null; auth_mode: 'dev' | 'oidc'; step_up_required?: boolean };

@@ -68,6 +68,7 @@ def me_payload(p: Principal) -> dict:
         "csrf_token": p.session.csrf_token if p.session else None,
         "step_up_until": p.session.step_up_until.isoformat() if p.session and p.session.step_up_until else None,
         "auth_mode": get_settings().auth_mode,
+        "step_up_required": get_settings().step_up_required,
     }
 
 

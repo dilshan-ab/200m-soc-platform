@@ -116,6 +116,8 @@ def require(cap: str) -> Callable[..., Principal]:
 def require_step_up(p: Principal = Depends(get_principal)) -> Principal:
     if p.session is None:
         raise HTTPException(403, {"code": "step_up_required", "detail": "interactive session required"})
+    if not get_settings().step_up_required:  # re-verification is off: a signed-in session is enough (API tokens are still refused above)
+        return p
     if p.session.step_up_until is None or p.session.step_up_until <= utcnow():
         raise HTTPException(403, {"code": "step_up_required", "detail": "recent MFA required"})
     return p

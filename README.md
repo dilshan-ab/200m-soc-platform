@@ -51,10 +51,10 @@ need the code at every sign-in.
 Super admins and admins can manage other people: **Administration > Users > Add user** creates the account in Keycloak (with a temporary
 password you give them, which they must change at first login, plus authenticator enrolment) and in the platform, with the role you pick
 (viewer, l1, l2 or admin) and the clients they may see. Administrators can also edit names/emails, change roles, set client access and permission overrides, and enable/disable accounts there.
-Profiles, roles and account state sync to Keycloak; client access and permission overrides are stored in SOC. Linked users are managed by their Keycloak ID, so email changes do not break account editing. User administration applies directly after fresh MFA verification. The super admin account remains protected from admin edits, password resets, session termination and token revocation; administrators cannot change their own account from this page.
+Profiles, roles and account state sync to Keycloak; client access and permission overrides are stored in SOC. Linked users are managed by their Keycloak ID, so email changes do not break account editing. User administration applies directly. The super admin account remains protected from admin edits, password resets, session termination and token revocation; administrators cannot change their own account from this page.
 There is exactly one `superadmin` role; the app never assigns it.
 
-In **Administration > Users**, administrators can **Reset password** with fresh MFA verification. In Keycloak mode this sets a temporary
+In **Administration > Users**, administrators can **Reset password**. In Keycloak mode this sets a temporary
 password, requires a change at the next sign-in, and ends existing Keycloak and SOC sessions. The account's authenticator stays enrolled.
 For an older local/pending SOC account missing from Keycloak, select **Create in Keycloak** in the password dialog; this preserves its SOC ID,
 client access and history. If it already exists in Keycloak, leave that option off and reset its password to link it.
@@ -70,7 +70,7 @@ To manage users from Keycloak instead, use **Sync with Keycloak**: it imports us
 Development mode creates local SOC users only; it does not synchronize users to Keycloak. The owner's own password is changed on the Keycloak account page.
 
 
-Roles come from the `soc_role` claim. Sensitive actions trigger a step-up re-verification (fresh TOTP, `acr=mfa-webauthn`, `auth_time` within 2 minutes).
+Roles come from the `soc_role` claim. Sign-in uses MFA through Keycloak. Sensitive admin actions do not ask for a second MFA by default; set `SOC_STEP_UP_REQUIRED=true` to require a fresh re-verification first (fresh TOTP, `acr=mfa-webauthn`, `auth_time` within 2 minutes). API tokens can never perform these actions either way.
 The app talks to Keycloak's Admin API through the `soc-admin` service account (it only has user-management rights in the `soc` realm).
 
 How it fits together: the browser talks to nginx (`web`) and to Keycloak directly. The backend validates ID tokens against the public issuer but fetches
@@ -91,7 +91,7 @@ Limits: `KC_SUPERADMIN_PASSWORD` in `.env` is only the initial password; it stop
 ## Security model (summary)
 
 HttpOnly SameSite=Strict server-side sessions (idle 15 min, absolute 8 h), CSRF token + Origin check, OIDC auth code + PKCE with pinned algorithms,
-step-up MFA for sensitive changes, RBAC with client scoping, request-approve-execute response engine (no self-approval, payload-hash binding,
+optional step-up MFA for sensitive changes (`SOC_STEP_UP_REQUIRED`), RBAC with client scoping, request-approve-execute response engine (no self-approval, payload-hash binding,
 two approvals for critical actions, kill switch), hash-chained audit log, secrets encrypted (Fernet) or in Vault and never returned, SSRF egress policy on every
 connector call, signed/bearer webhooks with replay protection, rate limits, CSP and security headers.
 
