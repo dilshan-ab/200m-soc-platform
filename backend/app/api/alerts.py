@@ -268,14 +268,23 @@ def bulk_delete(body: DeleteAlertsIn, p: Principal = Depends(require("alerts.del
     return {"deleted": _delete_alerts(db, p, body.ids)}
 
 
+DELETE_ALL_BATCH = 300  # alerts removed per request; each carries an audit entry, so one request must stay well inside the proxy timeout
+
+
 @router.post("/delete-all")
 def delete_all(p: Principal = Depends(require("alerts.delete")), db: Session = Depends(get_db)) -> dict[str, int]:
-    """Delete every alert in the caller's scope (not just the current page/filter)."""
-    all_ids = db.execute(select(Alert.id).where(p.scope(Alert.client_id))).scalars().all()
+    """Delete alerts in the caller's scope (not just the current page/filter), one batch per call.
+
+    Returns how many were deleted and how many remain; call again until `remaining` is 0. Deleting everything in a
+    single request ran past the proxy timeout (504) once there were thousands of alerts.
+    """
+    ids = db.execute(select(Alert.id).where(p.scope(Alert.client_id)).order_by(Alert.time, Alert.id).limit(DELETE_ALL_BATCH)).scalars().all()
     deleted = 0
-    for i in range(0, len(all_ids), 200):
-        deleted += _delete_alerts(db, p, all_ids[i:i + 200])
-    return {"deleted": deleted}
+    for i in range(0, len(ids), 100):
+        deleted += _delete_alerts(db, p, ids[i:i + 100])
+    db.flush()  # the session doesn't autoflush; without this the count still includes the alerts just deleted
+    remaining = db.execute(select(func.count()).select_from(Alert).where(p.scope(Alert.client_id))).scalar_one()
+    return {"deleted": deleted, "remaining": remaining}
 
 
 @router.delete("/{alert_id}", status_code=204)
