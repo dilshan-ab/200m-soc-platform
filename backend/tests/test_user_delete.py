@@ -146,6 +146,10 @@ class FakeKeycloak:
                 return httpx.Response(200, json=[self.users[i] for i in ids[first:first + mx] if i in self.users])
             if p.endswith("/users"):
                 return httpx.Response(200, json=list(self.users.values())[first:first + mx])
+            if p.endswith("/groups"):
+                return httpx.Response(200, json=[])  # no groups exist; tests for groups use their own fake
+        if req.method == "POST" and p.endswith("/groups"):
+            return httpx.Response(403)  # creating groups is refused here: sync must carry on and report it
         return httpx.Response(404)
 
 

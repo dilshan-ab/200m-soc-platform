@@ -62,6 +62,32 @@
       }
     ]
   },
+  "groups": [
+    {
+      "name": "SOC Admins",
+      "realmRoles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "SOC L2 Analysts",
+      "realmRoles": [
+        "l2"
+      ]
+    },
+    {
+      "name": "SOC L1 Analysts",
+      "realmRoles": [
+        "l1"
+      ]
+    },
+    {
+      "name": "SOC Viewers",
+      "realmRoles": [
+        "viewer"
+      ]
+    }
+  ],
   "authenticationFlows": [
     {
       "alias": "soc-browser",
