@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useRef, useState } from 'react';
 import { Summary } from '../components/manage';
-import { Empty, ErrorBox, Field, Loading, Modal, PageHead, Pager, SearchBox, useToast } from '../components/ui';
+import { Empty, ErrorBox, Field, Loading, Modal, PageHead, Pager, PasswordInput, SearchBox, useToast } from '../components/ui';
 import { del, get, patch, post, put, type Page } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { SEVERITIES, ago, titleCase, when } from '../lib/format';
@@ -107,7 +107,7 @@ function AddUser({ oidc, clients, onClose, onSecret }: { oidc: boolean; clients:
       <Field label="Email" id="ue"><input id="ue" type="email" value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} /></Field>
       <Field label="Name" id="un"><input id="un" value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} /></Field>
       <Field label="Role" id="ur" hint="Administrators can create users and other administrators directly."><select id="ur" value={v.role} onChange={(e) => setV({ ...v, role: e.target.value })}>{['viewer', 'l1', 'l2', 'admin'].map((r) => <option key={r}>{r}</option>)}</select></Field>
-      <Field label={oidc ? "Temporary password (12+ chars, upper, lower, digit)" : "Initial password (12+ chars, upper, lower, digit)"} id="up"><input id="up" type="password" autoComplete="new-password" value={v.password} onChange={(e) => setV({ ...v, password: e.target.value })} /></Field>
+      <Field label={oidc ? "Temporary password (12+ chars, upper, lower, digit)" : "Initial password (12+ chars, upper, lower, digit)"} id="up"><PasswordInput id="up" value={v.password} onChange={(x) => setV({ ...v, password: x })} /></Field>
       <ClientPicker clients={clients} sel={v.client_ids} all={v.all_clients} onSel={(s) => setV({ ...v, client_ids: s })} onAll={(b) => setV({ ...v, all_clients: b })} />
       {m.error && <ErrorBox error={m.error} />}
       <button className="btn primary" disabled={m.isPending || !v.email.includes('@') || v.password.length < 12} onClick={() => m.mutate(undefined)}>Create</button>
@@ -172,8 +172,8 @@ function UserPassword({ u, oidc, onClose }: { u: any; oidc: boolean; onClose: ()
     <p>{oidc ? 'Set a temporary password. The user must change it at their next Keycloak sign-in. Existing SOC sessions will end.' : 'Set a new local SOC password. Existing sessions will end; authenticator enrolment stays unchanged.'}</p>
     {oidc && ['local', 'pending'].includes(u.identity_status) && <label className="row"><input type="checkbox" checked={provision} disabled={m.isPending} onChange={(e) => setProvision(e.target.checked)} /> Create in Keycloak (if this account does not exist there yet)</label>}
     <form onSubmit={(e) => { e.preventDefault(); if (valid && !m.isPending) m.mutate(undefined); }}>
-      <Field label={oidc ? 'Temporary password' : 'New password'} id="reset-password" hint="At least 12 characters, with uppercase, lowercase and a digit."><input id="reset-password" type="password" autoComplete="new-password" maxLength={256} value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
-      <Field label="Confirm password" id="confirm-password"><input id="confirm-password" type="password" autoComplete="new-password" maxLength={256} value={confirm} onChange={(e) => setConfirm(e.target.value)} /></Field>
+      <Field label={oidc ? 'Temporary password' : 'New password'} id="reset-password" hint="At least 12 characters, with uppercase, lowercase and a digit."><PasswordInput id="reset-password" maxLength={256} value={password} onChange={setPassword} /></Field>
+      <Field label="Confirm password" id="confirm-password"><PasswordInput id="confirm-password" maxLength={256} value={confirm} onChange={setConfirm} /></Field>
       {confirm && password !== confirm && <p role="status">Passwords do not match.</p>}
       {m.error && <ErrorBox error={m.error} />}
       <button type="submit" className="btn primary" disabled={!valid || m.isPending}>{m.isPending ? 'Saving…' : provision ? 'Create in Keycloak' : 'Reset password'}</button>

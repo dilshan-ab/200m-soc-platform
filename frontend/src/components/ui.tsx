@@ -1,5 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog';
-import { Search, X } from 'lucide-react';
+import { Eye, EyeOff, Search, X } from 'lucide-react';
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
 import { titleCase } from '../lib/format';
 
@@ -36,6 +36,19 @@ export function Drawer({ title, children, onClose }: { title: ReactNode; childre
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+/** Password field with an eye button that shows or hides what is typed. */
+export function PasswordInput({ id, value, onChange, autoComplete = 'new-password', maxLength, placeholder }: { id: string; value: string; onChange: (v: string) => void; autoComplete?: string; maxLength?: number; placeholder?: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="password-input">
+      <input id={id} type={show ? 'text' : 'password'} autoComplete={autoComplete} maxLength={maxLength} placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} />
+      <button type="button" className="eye" aria-label={show ? 'Hide password' : 'Show password'} aria-pressed={show} title={show ? 'Hide password' : 'Show password'} onClick={() => setShow((v) => !v)}>
+        {show ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
   );
 }
 
