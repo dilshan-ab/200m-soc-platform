@@ -134,7 +134,7 @@ function DeleteUser({ u, oidc, onClose }: { u: any; oidc: boolean; onClose: () =
   </Modal>;
 }
 
-type SyncResult = { imported: string[]; linked: string[]; updated: string[]; skipped: { email: string; reason: string }[]; removed: string[]; orphans: string[]; groups_created: string[]; groups_error: string; acl: Partial<Record<'permissions_created' | 'permissions_updated' | 'mappings_added' | 'mappings_removed', number>>; acl_error: string; realm: string; keycloak_users: number };
+type SyncResult = { imported: string[]; linked: string[]; updated: string[]; skipped: { email: string; reason: string }[]; removed: string[]; orphans: string[]; groups_created: string[]; groups_error: string; acl: Partial<Record<'permissions_created' | 'permissions_updated' | 'mappings_added' | 'mappings_removed', number>>; acl_mode: string; acl_error: string; realm: string; keycloak_users: number };
 
 function SyncKeycloak({ onClose }: { onClose: () => void }) {
   const [result, setResult] = useState<SyncResult | null>(null);
@@ -148,7 +148,8 @@ function SyncKeycloak({ onClose }: { onClose: () => void }) {
       {!result.imported.length && !result.linked.length && !result.updated.length && !result.removed.length && !result.orphans.length && !result.groups_created.length && !result.groups_error && !result.acl_error && !Object.values(result.acl).some(Boolean) && <p>Already in sync.</p>}
       {list('Groups created in Keycloak', result.groups_created)}
       {result.groups_error && <p><b>Groups not created:</b> {result.groups_error}</p>}
-      {!result.groups_error && !result.acl_error && Object.values(result.acl).some(Boolean) && <p><b>Permissions mirrored to Keycloak:</b> {result.acl.permissions_created ?? 0} created, {result.acl.permissions_updated ?? 0} updated, {result.acl.mappings_added ?? 0} mapped, {result.acl.mappings_removed ?? 0} unmapped.</p>}
+      {result.acl_mode === 'attributes' && <p><b>Permissions listed on each group's Attributes tab.</b> To list them as role mappings, give the soc-admin service account the view-clients and manage-clients roles.</p>}
+      {result.acl_mode === 'roles' && !result.groups_error && !result.acl_error && Object.values(result.acl).some(Boolean) && <p><b>Permissions mirrored to Keycloak:</b> {result.acl.permissions_created ?? 0} created, {result.acl.permissions_updated ?? 0} updated, {result.acl.mappings_added ?? 0} mapped, {result.acl.mappings_removed ?? 0} unmapped.</p>}
       {result.acl_error && <p><b>Permissions not mirrored:</b> {result.acl_error}</p>}
       {list('Imported', result.imported)}{list('Linked', result.linked)}{list('Updated', result.updated)}{list('Removed from SOC', result.removed)}
       {list('Skipped', result.skipped.map((s) => `${s.email} (${s.reason})`))}

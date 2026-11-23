@@ -23,6 +23,10 @@ class KcError(Exception):
         self.status = status
 
 
+class KcForbidden(KcError):
+    """Keycloak refused the call because the service account lacks a role (as opposed to the thing not existing)."""
+
+
 def configured() -> bool:
     s = get_settings()
     return bool(s.kc_admin_url and s.kc_admin_client_secret)
@@ -191,12 +195,18 @@ def _path_of(client: httpx.Client, group_id: str) -> str:
     return str(r.json().get("path") or "")
 
 
-def sync_acl(client: httpx.Client, group_ids: dict[str, str]) -> dict[str, int]:
-    """Mirror SOC's RBAC into Keycloak: one client role per permission on the soc-platform client, mapped onto each role's
-    group. Needs the service account to hold manage-clients and view-clients. Returns counts of what changed."""
-    r = _call(client, "GET", "/clients", params={"clientId": keycloak_acl.CLIENT_ID})
-    if r.status_code != 200 or not r.json():
-        raise KcError(f"could not find the '{keycloak_acl.CLIENT_ID}' client in Keycloak; the soc-admin service account needs the view-clients role")
+def sync_acl(client: httpx.Client, group_ids: dict[str, str], client_id: str | None = None) -> dict[str, int]:
+    """Mirror SOC's RBAC into Keycloak: one client role per permission on the app's client, mapped onto each role's
+    group. Needs the service account to hold manage-clients and view-clients; raises KcForbidden without them.
+    Returns counts of what changed."""
+    cid = client_id or keycloak_acl.CLIENT_ID
+    r = _call(client, "GET", "/clients", params={"clientId": cid})
+    if r.status_code in (401, 403):
+        raise KcForbidden("the soc-admin service account is not allowed to read clients; it needs the view-clients and manage-clients roles")
+    if r.status_code != 200:
+        raise KcError(f"could not look up the '{cid}' client in Keycloak (HTTP {r.status_code})")
+    if not r.json():
+        raise KcError(f"the '{cid}' client does not exist in this realm (check SOC_OIDC_CLIENT_ID)")
     cu = quote(str(r.json()[0]["id"]), safe="")
     existing = {str(x["name"]): x for x in _paged(client, f"/clients/{cu}/roles", "client roles")}
     created = updated = 0
@@ -204,8 +214,10 @@ def sync_acl(client: httpx.Client, group_ids: dict[str, str]) -> dict[str, int]:
         desc = keycloak_acl.describe(cap)
         if cap not in existing:
             c = _call(client, "POST", f"/clients/{cu}/roles", json={"name": cap, "description": desc})
+            if c.status_code in (401, 403):
+                raise KcForbidden("the soc-admin service account is not allowed to create client roles; it needs the manage-clients role")
             if c.status_code not in (201, 409):
-                raise KcError(f"could not create permission '{cap}' in Keycloak (HTTP {c.status_code}); the soc-admin service account needs the manage-clients role")
+                raise KcError(f"could not create permission '{cap}' in Keycloak (HTTP {c.status_code})")
             created += 1
         elif existing[cap].get("description") != desc:
             u = _call(client, "PUT", f"/clients/{cu}/roles/{quote(cap, safe='')}", json={"name": cap, "description": desc})
@@ -236,6 +248,33 @@ def sync_acl(client: httpx.Client, group_ids: dict[str, str]) -> dict[str, int]:
                 raise KcError(f"could not remove permissions from group '{GROUP_NAMES[role]}'")
             removed += len(drop)
     return {"permissions_created": created, "permissions_updated": updated, "mappings_added": added, "mappings_removed": removed}
+
+
+def sync_acl_attributes(client: httpx.Client, group_ids: dict[str, str]) -> dict[str, int]:
+    """Fallback that needs only user management: list each role's SOC permissions on its group as the attributes
+    `soc_role` and `soc_permissions` (visible on the group's Attributes tab). Returns {"groups_updated": n}."""
+    perms = keycloak_acl.group_permissions()
+    updated = 0
+    for role, gid in group_ids.items():
+        path = f"/groups/{quote(gid, safe='')}"
+        cur = _call(client, "GET", path)
+        if cur.status_code != 200:
+            raise KcError(f"could not read group '{GROUP_NAMES[role]}'")
+        rep = dict(cur.json())
+        attrs = {k: list(v) for k, v in (rep.get("attributes") or {}).items()}
+        want = {"soc_role": [role], "soc_permissions": sorted(perms.get(role, []))}
+        if role in GROUP_PARENT:
+            want["soc_inherits"] = [GROUP_NAMES[GROUP_PARENT[role]]]  # a subgroup lists only what it adds
+        if all(attrs.get(k) == v for k, v in want.items()):
+            continue
+        rep.pop("subGroups", None)
+        put = _call(client, "PUT", path, json={**rep, "attributes": {**attrs, **want}})
+        if put.status_code in (401, 403):
+            raise KcForbidden("the soc-admin service account is not allowed to edit groups")
+        if put.status_code not in (200, 204):
+            raise KcError(f"could not update group '{GROUP_NAMES[role]}' (HTTP {put.status_code})")
+        updated += 1
+    return {"groups_updated": updated}
 
 
 def _put_in_group(client: httpx.Client, uid: str, role: str, group_ids: dict[str, str]) -> None:
