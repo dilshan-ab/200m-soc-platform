@@ -104,8 +104,7 @@ def _user(client: httpx.Client, email: str, expected_uid: str | None = None) -> 
 # what sets the user's SOC role at sign-in) and to client roles that list that role's permissions (see
 # services/keycloak_acl.py). `superadmin` has a group for completeness, but SOC never adds anyone to it: that stays
 # a deliberate assignment in Keycloak.
-GROUP_NAMES = keycloak_acl.GROUP_NAMES
-GROUP_PARENT = keycloak_acl.GROUP_PARENT
+GROUPS = keycloak_acl.GROUPS
 
 
 def _walk(groups: list[dict[str, Any]]) -> Iterator[dict[str, Any]]:
@@ -147,44 +146,33 @@ def _create_group(client: httpx.Client, name: str, parent_id: str | None) -> str
 
 
 def ensure_groups(client: httpx.Client) -> tuple[dict[str, str], list[str]]:
-    """Create or tidy the SOC role groups and make sure each maps to its realm role. Idempotent.
-    A group from the first version ("SOC L1 Analysts") is renamed in place and the L2 group is moved under it, so members keep their access.
-    Returns ({role: group_id}, [names of groups created])."""
+    """Create or tidy the SOC groups and make sure each maps to its realm role. Idempotent.
+    A group that already exists at the top level but belongs under a parent (the first version's "SOC L1 Analysts" and
+    "SOC L2 Analysts") is moved under it, so members keep their access.
+    Returns ({group key: group id}, [names of groups created])."""
     ids: dict[str, str] = {}
     created: list[str] = []
-    for role in keycloak_acl.GROUP_ORDER:
-        name = GROUP_NAMES[role]
-        parent_id = ids[GROUP_PARENT[role]] if role in GROUP_PARENT else None
-        g = _find_group(client, name)
-        legacy = keycloak_acl.LEGACY_GROUP_NAMES.get(role)
-        if g is None and legacy:
-            old = _find_group(client, legacy)
-            if old is not None:  # rename in place
-                cur = _call(client, "GET", f"/groups/{quote(str(old['id']), safe='')}")
-                if cur.status_code != 200:
-                    raise KcError(f"could not read group '{legacy}'")
-                put = _call(client, "PUT", f"/groups/{quote(str(old['id']), safe='')}", json={**cur.json(), "name": name})
-                if put.status_code not in (200, 204):
-                    raise KcError(f"could not rename group '{legacy}' to '{name}'")
-                g = old
+    for key, spec in GROUPS.items():
+        parent_id = ids[spec.parent] if spec.parent else None
+        g = _find_group(client, spec.name)
         if g is None:
-            gid = _create_group(client, name, parent_id)
-            created.append(name)
+            gid = _create_group(client, spec.name, parent_id)
+            created.append(spec.name)
         else:
             gid = str(g["id"])
-            if parent_id and g.get("path") != f"{_path_of(client, parent_id)}/{name}":  # exists but not under its parent yet
-                mv = _call(client, "POST", f"/groups/{quote(parent_id, safe='')}/children", json={"id": gid, "name": name})
+            if parent_id and g.get("path") != f"{_path_of(client, parent_id)}/{spec.name}":  # exists but not under its parent yet
+                mv = _call(client, "POST", f"/groups/{quote(parent_id, safe='')}/children", json={"id": gid, "name": spec.name})
                 if mv.status_code not in (200, 201, 204):
-                    raise KcError(f"could not move group '{name}' under its parent")
-        rep = _realm_role(client, role)
+                    raise KcError(f"could not move group '{spec.name}' under its parent")
+        rep = _realm_role(client, spec.role)
         cur_map = _call(client, "GET", f"/groups/{quote(gid, safe='')}/role-mappings/realm")
         if cur_map.status_code != 200:
-            raise KcError(f"could not read the roles of group '{name}'")
-        if not any(x.get("name") == role for x in cur_map.json()):
+            raise KcError(f"could not read the roles of group '{spec.name}'")
+        if not any(x.get("name") == spec.role for x in cur_map.json()):
             m = _call(client, "POST", f"/groups/{quote(gid, safe='')}/role-mappings/realm", json=[rep])
             if m.status_code not in (200, 204):
-                raise KcError(f"could not map group '{name}' to the {role} role")
-        ids[role] = gid
+                raise KcError(f"could not map group '{spec.name}' to the {spec.role} role")
+        ids[key] = gid
     return ids, created
 
 
@@ -229,24 +217,24 @@ def sync_acl(client: httpx.Client, group_ids: dict[str, str], client_id: str | N
         existing = {str(x["name"]): x for x in _paged(client, f"/clients/{cu}/roles", "client roles")}
     perms = keycloak_acl.group_permissions()
     added = removed = 0
-    for role, gid in group_ids.items():
-        want = set(perms.get(role, []))
+    for key, gid in group_ids.items():
+        want = set(perms.get(key, []))
         path = f"/groups/{quote(gid, safe='')}/role-mappings/clients/{cu}"
         cur = _call(client, "GET", path)
         if cur.status_code != 200:
-            raise KcError(f"could not read the permissions of group '{GROUP_NAMES[role]}'")
+            raise KcError(f"could not read the permissions of group '{GROUPS[key].name}'")
         have = {str(x["name"]): x for x in cur.json()}
         add = [existing[c] for c in sorted(want - set(have)) if c in existing]
         drop = [have[c] for c in sorted(set(have) - want)]  # a permission SOC no longer grants this role
         if add:
             a = _call(client, "POST", path, json=add)
             if a.status_code not in (200, 204):
-                raise KcError(f"could not map permissions onto group '{GROUP_NAMES[role]}'")
+                raise KcError(f"could not map permissions onto group '{GROUPS[key].name}'")
             added += len(add)
         if drop:
             d = _call(client, "DELETE", path, json=drop)
             if d.status_code not in (200, 204):
-                raise KcError(f"could not remove permissions from group '{GROUP_NAMES[role]}'")
+                raise KcError(f"could not remove permissions from group '{GROUPS[key].name}'")
             removed += len(drop)
     return {"permissions_created": created, "permissions_updated": updated, "mappings_added": added, "mappings_removed": removed}
 
@@ -256,16 +244,17 @@ def sync_acl_attributes(client: httpx.Client, group_ids: dict[str, str]) -> dict
     `soc_role` and `soc_permissions` (visible on the group's Attributes tab). Returns {"groups_updated": n}."""
     perms = keycloak_acl.group_permissions()
     updated = 0
-    for role, gid in group_ids.items():
+    for key, gid in group_ids.items():
         path = f"/groups/{quote(gid, safe='')}"
         cur = _call(client, "GET", path)
         if cur.status_code != 200:
-            raise KcError(f"could not read group '{GROUP_NAMES[role]}'")
+            raise KcError(f"could not read group '{GROUPS[key].name}'")
         rep = dict(cur.json())
         attrs = {k: list(v) for k, v in (rep.get("attributes") or {}).items()}
-        want = {"soc_role": [role], "soc_permissions": sorted(perms.get(role, []))}
-        if role in GROUP_PARENT:
-            want["soc_inherits"] = [GROUP_NAMES[GROUP_PARENT[role]]]  # a subgroup lists only what it adds
+        spec = GROUPS[key]
+        want = {"soc_role": [spec.role], "soc_permissions": sorted(perms.get(key, []))}
+        if spec.delta and spec.parent:
+            want["soc_inherits"] = [GROUPS[spec.parent].name]  # lists only what it adds over its parent
         if all(attrs.get(k) == v for k, v in want.items()):
             continue
         rep.pop("subGroups", None)
@@ -273,21 +262,21 @@ def sync_acl_attributes(client: httpx.Client, group_ids: dict[str, str]) -> dict
         if put.status_code in (401, 403):
             raise KcForbidden("the soc-admin service account is not allowed to edit groups")
         if put.status_code not in (200, 204):
-            raise KcError(f"could not update group '{GROUP_NAMES[role]}' (HTTP {put.status_code})")
+            raise KcError(f"could not update group '{GROUPS[key].name}' (HTTP {put.status_code})")
         updated += 1
     return {"groups_updated": updated}
 
 
 def _put_in_group(client: httpx.Client, uid: str, role: str, group_ids: dict[str, str]) -> None:
-    """Make the user a member of the group for `role` and of no other assignable SOC role group (never touches the super admin group)."""
+    """Make the user a member of the group for `role` (key == role) and of no other SOC group, including the SOC Analysts
+    parent. Never touches the super admin group."""
     mine = _call(client, "GET", f"/users/{quote(uid, safe='')}/groups")
     if mine.status_code != 200:
         raise KcError("could not read the user's Keycloak groups")
     member_of = {str(g["id"]) for g in mine.json()}
-    for other_role in ASSIGNABLE_ROLES:
-        gid = group_ids.get(other_role)
-        if other_role != role and gid in member_of:
-            d = _call(client, "DELETE", f"/users/{quote(uid, safe='')}/groups/{quote(str(gid), safe='')}")
+    for key, gid in group_ids.items():
+        if key not in (role, "superadmin") and gid in member_of:
+            d = _call(client, "DELETE", f"/users/{quote(uid, safe='')}/groups/{quote(gid, safe='')}")
             if d.status_code not in (200, 204):
                 raise KcError("could not remove the user from their previous group")
     if group_ids[role] not in member_of:
@@ -425,10 +414,11 @@ def list_users(client: httpx.Client) -> list[dict[str, Any]]:
     for role in ranks:  # ascending, so a later (higher) role overwrites an earlier one
         for u in _paged(client, f"/roles/{quote(role, safe='')}/users", f"users with role {role}"):
             role_of[str(u["id"])] = role
-        gid = _group_id(client, GROUP_NAMES[role]) if role in GROUP_NAMES else None
-        if gid:  # members of the role's group hold the role through the group
-            for u in _paged(client, f"/groups/{quote(gid, safe='')}/members", f"members of {GROUP_NAMES[role]}"):
-                role_of[str(u["id"])] = role
+        for key in keycloak_acl.keys_for_role(role):  # members of a group hold its role through the group
+            gid = _group_id(client, GROUPS[key].name)
+            if gid:
+                for u in _paged(client, f"/groups/{quote(gid, safe='')}/members", f"members of {GROUPS[key].name}"):
+                    role_of[str(u["id"])] = role
     out = []
     for u in _paged(client, "/users", "users"):
         uid = str(u["id"])
