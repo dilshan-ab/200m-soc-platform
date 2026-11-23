@@ -33,6 +33,10 @@ class GroupKeycloak:
         self.deny_groups = False  # no access to groups at all
         self.deny_group_writes = False  # read-only on groups
         self.deny_client_roles = False  # cannot create client roles (no manage-clients)
+        self.deny_client_list = False  # cannot even read clients (no view-clients)
+        self.client_id = "soc-platform"
+        self.client_exists = True
+        self.deny_group_put = False  # cannot edit groups (attributes)
         self.n = 0
 
     def _id(self, prefix):
@@ -50,7 +54,7 @@ class GroupKeycloak:
 
     def add_group(self, name, role=None, parent=None):
         gid = self._id("g")
-        self.groups[gid] = {"name": name, "parent": parent, "roles": {role} if role else set(), "client_roles": set(), "members": set()}
+        self.groups[gid] = {"name": name, "parent": parent, "roles": {role} if role else set(), "client_roles": set(), "members": set(), "attrs": {}}
         return gid
 
     def gid(self, name):
@@ -105,7 +109,9 @@ class GroupKeycloak:
 
     def _clients(self, m, parts, q, body, first, mx):
         if len(parts) == 1:
-            return httpx.Response(200, json=[{"id": "cu-1", "clientId": "soc-platform"}] if q.get("clientId") == "soc-platform" else [])
+            if self.deny_client_list:
+                return httpx.Response(403)
+            return httpx.Response(200, json=[{"id": "cu-1", "clientId": self.client_id}] if self.client_exists and q.get("clientId") == self.client_id else [])
         if parts[1] != "cu-1" or parts[2] != "roles":
             return httpx.Response(404)
         if len(parts) == 3 and m == "GET":
@@ -135,8 +141,11 @@ class GroupKeycloak:
         rest = parts[2:]
         if not rest:
             if m == "GET":
-                return httpx.Response(200, json={**self.rep(parts[1]), "attributes": {}})
+                return httpx.Response(200, json={**self.rep(parts[1]), "attributes": g["attrs"]})
+            if self.deny_group_put:
+                return httpx.Response(403)
             g["name"] = body["name"]  # PUT
+            g["attrs"] = body.get("attributes", g["attrs"])
             return httpx.Response(204)
         if rest == ["children"] and m == "POST":
             if "id" in body:  # move an existing group under this one
@@ -210,7 +219,7 @@ class GroupKeycloak:
 
 @pytest.fixture()
 def kcg(monkeypatch):
-    for k, v in {"SOC_AUTH_MODE": "oidc", "SOC_KC_ADMIN_URL": KC, "SOC_KC_ADMIN_CLIENT_SECRET": "svc", "SOC_OIDC_ISSUER": "http://kc/realms/soc", "SOC_OIDC_CLIENT_ID": "c", "SOC_OIDC_CLIENT_SECRET": "s", "SOC_OIDC_REDIRECT_URI": "http://x/cb"}.items():
+    for k, v in {"SOC_AUTH_MODE": "oidc", "SOC_KC_ADMIN_URL": KC, "SOC_KC_ADMIN_CLIENT_SECRET": "svc", "SOC_OIDC_ISSUER": "http://kc/realms/soc", "SOC_OIDC_CLIENT_ID": "soc-platform", "SOC_OIDC_CLIENT_SECRET": "s", "SOC_OIDC_REDIRECT_URI": "http://x/cb"}.items():
         monkeypatch.setenv(k, v)
     reset_settings_cache()
     fake = GroupKeycloak()
@@ -347,11 +356,49 @@ def test_sync_creates_groups_mirrors_permissions_and_reads_group_roles(superadmi
     assert again["groups_created"] == [] and again["acl"]["permissions_created"] == 0 and again["acl"]["mappings_added"] == 0
 
 
-def test_sync_still_runs_when_the_permission_mirror_is_not_allowed(superadmin, kcg):
+def test_sync_lists_permissions_as_group_attributes_when_client_roles_are_not_allowed(superadmin, kcg):
     kcg.add_user("plain@t.local", direct={"l1"})
-    kcg.deny_client_roles = True
+    kcg.deny_client_list = True  # the service account has no view-clients
     out = superadmin.post("/api/admin/users/sync", {}).json()
-    assert out["imported"] == ["plain@t.local"] and "manage-clients" in out["acl_error"] and out["groups_error"] == "" and len(out["groups_created"]) == len(G)
+    assert out["imported"] == ["plain@t.local"] and out["acl_mode"] == "attributes" and out["acl_error"] == "" and out["acl"]["groups_updated"] == len(G)
+    viewer = kcg.groups[kcg.gid("SOC Viewers")]["attrs"]
+    assert viewer["soc_role"] == ["viewer"] and viewer["soc_permissions"] == sorted(role_capabilities("viewer"))
+    l2 = kcg.groups[kcg.gid("SOC L2 Analysts")]["attrs"]
+    assert l2["soc_inherits"] == ["SOC Analysts"] and "alerts.triage" not in l2["soc_permissions"]  # a subgroup lists only what it adds
+    assert not kcg.client_roles
+    again = superadmin.post("/api/admin/users/sync", {}).json()
+    assert again["acl_mode"] == "attributes" and again["acl"]["groups_updated"] == 0  # idempotent
+
+
+def test_attributes_fallback_is_also_used_when_creating_client_roles_is_not_allowed(superadmin, kcg):
+    kcg.add_user("u@t.local", direct={"l1"})
+    kcg.deny_client_roles = True  # can read clients but not create roles (view-clients without manage-clients)
+    out = superadmin.post("/api/admin/users/sync", {}).json()
+    assert out["acl_mode"] == "attributes" and out["acl_error"] == ""
+
+
+def test_acl_error_when_neither_client_roles_nor_attributes_are_allowed(superadmin, kcg):
+    kcg.add_user("u@t.local", direct={"l1"})
+    kcg.deny_client_list = True
+    kcg.deny_group_put = True
+    out = superadmin.post("/api/admin/users/sync", {}).json()
+    assert out["acl_mode"] == "" and "not allowed to edit groups" in out["acl_error"] and out["groups_error"] == ""
+
+
+def test_a_missing_client_is_reported_not_papered_over_with_attributes(superadmin, kcg):
+    kcg.add_user("u@t.local", direct={"l1"})
+    kcg.client_exists = False
+    out = superadmin.post("/api/admin/users/sync", {}).json()
+    assert out["acl_mode"] == "" and "does not exist" in out["acl_error"] and "SOC_OIDC_CLIENT_ID" in out["acl_error"]
+
+
+def test_the_configured_client_id_is_the_one_that_gets_the_permissions(superadmin, kcg, monkeypatch):
+    kcg.add_user("u@t.local", direct={"l1"})
+    kcg.client_id = "custom-app"
+    monkeypatch.setenv("SOC_OIDC_CLIENT_ID", "custom-app")
+    reset_settings_cache()
+    out = superadmin.post("/api/admin/users/sync", {}).json()
+    assert out["acl_mode"] == "roles" and out["acl_error"] == "" and set(kcg.client_roles) == set(CAPABILITIES)
 
 
 def test_sync_still_runs_and_reports_when_groups_cannot_be_created(superadmin, kcg):
@@ -376,7 +423,7 @@ def test_saving_the_permission_matrix_updates_keycloak(superadmin, kcg):
     matrix = {r: sorted(role_capabilities(r)) for r in ("viewer", "l1", "l2", "admin")}
     matrix["viewer"] = [c for c in matrix["viewer"] if c != "alerts.read"]
     r = superadmin.put("/api/admin/permissions", {"matrix": matrix})
-    assert r.status_code == 200 and r.json()["keycloak_acl"] == "synced", r.text
+    assert r.status_code == 200 and r.json()["keycloak_acl"] == "synced (roles)", r.text
     assert "alerts.read" not in kcg.groups[kcg.gid("SOC Viewers")]["client_roles"]
     kcg.deny_groups = True
     matrix["viewer"].append("alerts.read")
