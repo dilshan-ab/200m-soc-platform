@@ -206,7 +206,8 @@ def sync_acl(client: httpx.Client, group_ids: dict[str, str], client_id: str | N
     if r.status_code != 200:
         raise KcError(f"could not look up the '{cid}' client in Keycloak (HTTP {r.status_code})")
     if not r.json():
-        raise KcError(f"the '{cid}' client does not exist in this realm (check SOC_OIDC_CLIENT_ID)")
+        # SOC signs users in through this client, so it exists; Keycloak returns an empty list (not a 403) when the account may not view it
+        raise KcForbidden(f"the soc-admin service account cannot see the '{cid}' client; it needs the view-clients role")
     cu = quote(str(r.json()[0]["id"]), safe="")
     existing = {str(x["name"]): x for x in _paged(client, f"/clients/{cu}/roles", "client roles")}
     created = updated = 0
