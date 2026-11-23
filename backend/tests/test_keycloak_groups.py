@@ -18,7 +18,7 @@ from app.services import keycloak_acl as acl
 KC = "http://keycloak:8080"
 PASSWORD = "Str0ng-Passw0rd!x"
 SOC_ROLES = ("viewer", "l1", "l2", "admin", "superadmin")
-G = acl.GROUP_NAMES
+G = {key: g.name for key, g in acl.GROUPS.items()}  # group key -> name
 
 
 class GroupKeycloak:
@@ -250,24 +250,39 @@ def _soc_user(email, subject, role="viewer"):
 def test_ensure_groups_builds_the_hierarchy_and_maps_realm_roles(kcg):
     ids, created = kc.ensure_groups(_client(kcg))
     assert sorted(created) == sorted(G.values()) and set(ids) == set(G)
-    assert kcg.path(ids["l2"]) == "/SOC Analysts/SOC L2 Analysts" and kcg.path(ids["admin"]) == "/SOC Admins"
-    assert {kcg.groups[ids[r]]["name"]: kcg.groups[ids[r]]["roles"] for r in G} == {name: {role} for role, name in G.items()}
+    assert kcg.path(ids["admin"]) == "/SOC Admins"
+    assert kcg.path(ids["l1"]) == "/SOC Analysts/SOC L1 Analysts" and kcg.path(ids["l2"]) == "/SOC Analysts/SOC L2 Analysts"
+    assert {kcg.groups[ids[k]]["name"]: kcg.groups[ids[k]]["roles"] for k in G} == {g.name: {g.role} for g in acl.GROUPS.values()}
     n = len(kcg.groups)
     assert kc.ensure_groups(_client(kcg))[1] == [] and len(kcg.groups) == n  # idempotent
 
 
-def test_first_version_groups_are_migrated_in_place_keeping_members(kcg):
+def test_existing_top_level_groups_are_moved_under_analysts_keeping_members(kcg):
+    """The first version had SOC L1 Analysts and SOC L2 Analysts at the top level; they move under the new SOC Analysts parent."""
     l1 = kcg.add_group("SOC L1 Analysts", "l1")
-    l2 = kcg.add_group("SOC L2 Analysts", "l2")  # top level in the first version
+    l2 = kcg.add_group("SOC L2 Analysts", "l2")
     u1, u2 = kcg.add_user("a@t.local"), kcg.add_user("b@t.local")
     kcg.groups[l1]["members"].add(u1)
     kcg.groups[l2]["members"].add(u2)
     ids, created = kc.ensure_groups(_client(kcg))
-    assert ids["l1"] == l1 and ids["l2"] == l2  # same groups, not copies
-    assert "SOC Analysts" not in created and "SOC L2 Analysts" not in created
-    assert kcg.groups[l1]["name"] == "SOC Analysts" and kcg.path(l2) == "/SOC Analysts/SOC L2 Analysts"
-    assert kcg.effective(u1) == {"l1"} and kcg.effective(u2) == {"l1", "l2"}  # the L2 member inherits Analysts' role
-    assert kcg.gid("SOC L1 Analysts") is None
+    assert ids["l1"] == l1 and ids["l2"] == l2  # the same groups, not copies
+    assert created == ["SOC Super Admins", "SOC Admins", "SOC Analysts", "SOC Viewers"]
+    assert kcg.path(l1) == "/SOC Analysts/SOC L1 Analysts" and kcg.path(l2) == "/SOC Analysts/SOC L2 Analysts"
+    assert kcg.effective(u1) == {"l1"} and kcg.effective(u2) == {"l1", "l2"}
+
+
+def test_a_new_l1_subgroup_is_created_under_an_existing_analysts_group(kcg):
+    """The state of a realm that already has SOC Analysts and SOC L2 Analysts: only the L1 subgroup is new."""
+    parent = kcg.add_group("SOC Analysts", "l1")
+    kcg.add_group("SOC L2 Analysts", "l2", parent=parent)
+    kcg.add_group("SOC Admins", "admin")
+    kcg.add_group("SOC Viewers", "viewer")
+    kcg.add_group("SOC Super Admins", "superadmin")
+    member = kcg.add_user("old-l1@t.local")
+    kcg.groups[parent]["members"].add(member)  # existing L1 users sit directly in the parent
+    ids, created = kc.ensure_groups(_client(kcg))
+    assert created == ["SOC L1 Analysts"] and kcg.path(ids["l1"]) == "/SOC Analysts/SOC L1 Analysts"
+    assert kcg.groups[ids["l1"]]["roles"] == {"l1"} and kcg.effective(member) == {"l1"}  # they keep their access
 
 
 # --------------------------------------------------------------------------- permission mirror
@@ -276,9 +291,10 @@ def test_permissions_are_mirrored_as_client_roles_on_each_group(kcg):
     out = kc.sync_acl(_client(kcg), ids)
     assert out["permissions_created"] == len(CAPABILITIES) and set(kcg.client_roles) == set(CAPABILITIES)
     assert kcg.client_roles["alerts.triage"]["description"] == "Alerts: triage (default minimum role: l1)"
-    mapped = {r: kcg.groups[ids[r]]["client_roles"] for r in G}
-    assert mapped["viewer"] == set(role_capabilities("viewer")) and mapped["l1"] == set(role_capabilities("l1"))
-    assert mapped["l2"] == set(role_capabilities("l2")) - set(role_capabilities("l1"))  # the child lists only what it adds
+    mapped = {k: kcg.groups[ids[k]]["client_roles"] for k in G}
+    assert mapped["viewer"] == set(role_capabilities("viewer"))
+    assert mapped["analysts"] == mapped["l1"] == set(role_capabilities("l1"))  # the L1 subgroup lists the full L1 set too
+    assert mapped["l2"] == set(role_capabilities("l2")) - set(role_capabilities("l1"))  # L2 lists only what it adds over Analysts
     assert mapped["admin"] == set(CAPABILITIES) == mapped["superadmin"]
     assert "alerts.delete" not in mapped["l2"] and "alerts.delete" in mapped["admin"]
     again = kc.sync_acl(_client(kcg), ids)
@@ -304,7 +320,7 @@ def test_mirror_reports_missing_service_account_permission(kcg):
 
 
 # --------------------------------------------------------------------------- membership through SOC
-@pytest.mark.parametrize("role,group", [("l1", "SOC Analysts"), ("l2", "SOC L2 Analysts"), ("admin", "SOC Admins"), ("viewer", "SOC Viewers")])
+@pytest.mark.parametrize("role,group", [("l1", "SOC L1 Analysts"), ("l2", "SOC L2 Analysts"), ("admin", "SOC Admins"), ("viewer", "SOC Viewers")])
 def test_new_user_joins_the_role_group_without_a_direct_role(superadmin, kcg, role, group):
     r = superadmin.post("/api/admin/users", {"email": f"{role}@t.local", "name": "Ana A", "role": role, "password": PASSWORD})
     assert r.status_code == 201, r.text
@@ -326,7 +342,7 @@ def test_role_change_moves_between_groups_and_removes_direct_roles(superadmin, k
     assert superadmin.patch(f"/api/admin/users/{soc_id}", {"role": "l2"}).status_code == 200
     assert kcg.member_groups(uid) == {"SOC L2 Analysts"} and kcg.direct[uid] == set() and kcg.effective(uid) == {"l1", "l2"}
     assert superadmin.patch(f"/api/admin/users/{soc_id}", {"role": "l1"}).status_code == 200
-    assert kcg.member_groups(uid) == {"SOC Analysts"} and kcg.effective(uid) == {"l1"}
+    assert kcg.member_groups(uid) == {"SOC L1 Analysts"} and kcg.effective(uid) == {"l1"}
 
 
 def test_role_change_without_group_access_keeps_the_direct_role_behaviour(superadmin, kcg):
@@ -497,3 +513,26 @@ def test_sync_lists_soc_accounts_that_were_never_created_in_keycloak(superadmin,
     # (the test's own sign-in account is a local dev: account too, so it is listed as well)
     assert {"never@t.local", "old@t.local"} <= set(out["unlinked"]) and out["linked"] == ["placeholder@t.local"]
     assert not {"off@t.local", "placeholder@t.local", "deleted-x@deleted.invalid", "linked@t.local"} & set(out["unlinked"])  # disabled, just linked, deleted and linked ones are not listed
+
+
+# --------------------------------------------------------------------------- L1 subgroup behaviour
+def test_role_change_removes_a_user_from_the_analysts_parent_too(superadmin, kcg):
+    """Existing L1 users sit directly in SOC Analysts; moving them elsewhere must not leave them with its l1 role."""
+    ids, _ = kc.ensure_groups(_client(kcg))
+    uid = kcg.add_user("legacy-l1@t.local")
+    kcg.groups[ids["analysts"]]["members"].add(uid)
+    soc_id = _soc_user("legacy-l1@t.local", uid, "l1")
+    assert superadmin.patch(f"/api/admin/users/{soc_id}", {"role": "viewer"}).status_code == 200
+    assert kcg.member_groups(uid) == {"SOC Viewers"} and kcg.effective(uid) == {"viewer"}
+    assert superadmin.patch(f"/api/admin/users/{soc_id}", {"role": "l1"}).status_code == 200
+    assert kcg.member_groups(uid) == {"SOC L1 Analysts"}  # a user set to L1 goes into the subgroup
+
+
+def test_sync_reads_l1_subgroup_and_parent_members_as_l1(superadmin, kcg):
+    kcg.add_user("child@t.local", groups=["SOC L1 Analysts"])
+    kcg.add_user("parent@t.local", groups=["SOC Analysts"])
+    out = superadmin.post("/api/admin/users/sync", {}).json()
+    assert sorted(out["imported"]) == ["child@t.local", "parent@t.local"]
+    with dbmod.session_scope() as db:
+        roles = {u.email: u.role for u in db.execute(select(User)).scalars()}
+    assert roles["child@t.local"] == "l1" and roles["parent@t.local"] == "l1"
