@@ -220,20 +220,31 @@ function DeleteAllAlertsModal({ total, onClose, onDeleted }: { total: number; on
   const qc = useQueryClient();
   const toast = useToast();
   const [confirmText, setConfirmText] = useState('');
-  const remove = useAct(() => post<{ deleted: number }>('/api/alerts/delete-all'), [], undefined, (r) => {
+  const [progress, setProgress] = useState(0);
+  // The server deletes one batch per call (a single call for thousands of alerts hits the proxy timeout), so repeat until none remain.
+  const deleteAll = async () => {
+    let deleted = 0;
+    for (;;) {
+      const r = await post<{ deleted: number; remaining: number }>('/api/alerts/delete-all');
+      deleted += r.deleted;
+      setProgress(deleted);
+      if (r.remaining === 0 || r.deleted === 0) return { deleted };
+    }
+  };
+  const remove = useAct(deleteAll, [], undefined, (r) => {
     toast(`${r.deleted} alert${r.deleted === 1 ? '' : 's'} deleted`);
     onDeleted();
     void qc.invalidateQueries();
   });
   return <Modal title={`Delete all ${total} alerts`} onClose={() => { if (!remove.isPending) onClose(); }}>
-    <p>Permanently delete every alert in your scope (not just this page or filter) — {total} alert{total === 1 ? '' : 's'} in total. This action cannot be undone.</p>
     <Field label="Type DELETE to confirm" id="confirm-delete-all">
       <input id="confirm-delete-all" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="DELETE" autoFocus />
     </Field>
     {remove.error && <ErrorBox error={remove.error} />}
+    {remove.error && progress > 0 && <p className="notice">{progress} alert{progress === 1 ? ' was' : 's were'} deleted before the error. Run Delete all again to continue.</p>}
     <div className="row">
       <button className="btn" disabled={remove.isPending} onClick={onClose}>Cancel</button>
-      <button className="btn danger" disabled={remove.isPending || confirmText !== 'DELETE'} onClick={() => remove.mutate(undefined)}>{remove.isPending ? 'Deleting…' : 'Delete all alerts'}</button>
+      <button className="btn danger" disabled={remove.isPending || confirmText !== 'DELETE'} onClick={() => remove.mutate(undefined)}>{remove.isPending ? `Deleting… ${progress} of ${total}` : 'Delete all alerts'}</button>
     </div>
   </Modal>;
 }
