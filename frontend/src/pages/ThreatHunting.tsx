@@ -8,6 +8,7 @@ import { get, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ago, SEVERITIES, titleCase } from '../lib/format';
 import { useAct } from '../lib/mut';
+import { REFRESH_MS } from '../lib/refresh';
 
 type Technique = { id: string; name: string };
 type HuntQuery = { q?: string; host?: string; severities?: string[]; days?: number; technique_ids?: string[] };
@@ -26,7 +27,7 @@ function queryLabel(q: HuntQuery): string {
 
 export default function ThreatHunting() {
   const { can } = useAuth();
-  const hunts = useQuery({ queryKey: ['hunts'], queryFn: () => get<HuntRow[]>('/api/hunts'), refetchInterval: 15000 });
+  const hunts = useQuery({ queryKey: ['hunts'], queryFn: () => get<HuntRow[]>('/api/hunts'), refetchInterval: REFRESH_MS });
   const [newSearch, setNewSearch] = useState(false);
   const [newCollect, setNewCollect] = useState(false);
   const [sel, setSel] = useState<string | null>(null);

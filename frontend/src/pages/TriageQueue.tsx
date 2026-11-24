@@ -7,6 +7,7 @@ import { useAuth } from '../lib/auth';
 import { ago } from '../lib/format';
 import { useLive } from '../lib/live';
 import { useAct } from '../lib/mut';
+import { REFRESH_MS } from '../lib/refresh';
 
 type QueueAlert = {
   id: string; title: string; severity: string; status: string; time: string; host: string; src_ip: string; dst_ip: string; username: string;
@@ -46,7 +47,7 @@ export default function TriageQueue() {
   const q = useQuery({
     queryKey: ['triage-queue', severityFilter, unassignedOnly],
     queryFn: () => get<Queue>('/api/alerts/queue', { unassigned_only: unassignedOnly, severity: severityFilter, limit: 50 }),
-    refetchInterval: 10000,
+    refetchInterval: REFRESH_MS,
   });
 
   const claim = useAct((a: QueueAlert) => patch(`/api/alerts/${a.id}`, { version: a.version, assignee_id: me?.id, status: 'acknowledged' }), ['triage-queue', 'alerts', 'alert-stats'], 'Alert claimed');

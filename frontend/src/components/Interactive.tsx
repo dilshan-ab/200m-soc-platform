@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { get } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Modal, Sev } from './ui';
+import { REFRESH_MS } from '../lib/refresh';
 
 /* ── LiveTimer ─────────────────────────────────────────────────────── */
 function fmt(ms: number): string {
@@ -60,13 +61,13 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
   const alerts = useQuery({
     queryKey: ['notif-alerts'],
     queryFn: () => get<{ items: any[] }>('/api/alerts', { severity: ['critical'], status: ['new'], limit: 5 }),
-    refetchInterval: 30_000,
+    refetchInterval: REFRESH_MS,
   });
   const approvals = useQuery({
     queryKey: ['notif-approvals'],
     enabled: can('response.approve'),
     queryFn: () => get<{ actions: any[]; changes: any[] }>('/api/approvals'),
-    refetchInterval: 30_000,
+    refetchInterval: REFRESH_MS,
   });
   const items = alerts.data?.items ?? [];
   const pendingActions = approvals.data?.actions ?? [];

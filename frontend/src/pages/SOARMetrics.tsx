@@ -4,6 +4,7 @@ import { Summary } from '../components/manage';
 import { ErrorBox, Loading, PageHead } from '../components/ui';
 import { get } from '../lib/api';
 import { minutes, titleCase } from '../lib/format';
+import { REFRESH_MS } from '../lib/refresh';
 
 type SOARData = {
   since: string; days: number;
@@ -18,7 +19,7 @@ const pct = (v: number | null | undefined) => v != null ? `${v}%` : '—';
 
 export default function SOARMetrics() {
   const [days, setDays] = useState(30);
-  const q = useQuery({ queryKey: ['soar-metrics', days], queryFn: () => get<SOARData>('/api/soar/metrics', { days }), refetchInterval: 15000 });
+  const q = useQuery({ queryKey: ['soar-metrics', days], queryFn: () => get<SOARData>('/api/soar/metrics', { days }), refetchInterval: REFRESH_MS });
   const d = q.data;
   return (
     <>

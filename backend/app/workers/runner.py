@@ -15,7 +15,7 @@ from sqlalchemy.engine import CursorResult
 from ..config import get_settings
 from ..db import session_factory, session_scope
 from ..models import Alert, EnrichmentJob, OidcState, ReportJob, RetentionPolicy, SessionRecord, WebhookReplay, utcnow
-from ..services import events, notifications, playbooks_engine, polling, reports, response
+from ..services import events, keycloak_sync, notifications, playbooks_engine, polling, reports, response
 from ..sla import check_breaches
 
 _last_low_clear_date: str | None = None
@@ -114,6 +114,8 @@ def start_workers(app: FastAPI) -> None:
         Worker("poll", s.poll_tick_seconds, lambda: polling.poll_due(sf), stop),
         Worker("maintenance", 30, tick_maintenance, stop),
     ]
+    if s.keycloak_sync_minutes > 0:
+        ws.append(Worker("keycloak-sync", s.keycloak_sync_minutes * 60, lambda: keycloak_sync.run_scheduled(sf), stop))
     for w in ws:
         w.start()
     app.state.worker_stop, app.state.workers = stop, ws

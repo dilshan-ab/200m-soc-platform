@@ -7,6 +7,7 @@ import { useOutletContext } from 'react-router-dom';
 import type { GeometryCollection, Topology } from 'topojson-specification';
 import { ErrorBox, Loading, PageHead, Sev } from '../components/ui';
 import { get } from '../lib/api';
+import { REFRESH_MS } from '../lib/refresh';
 
 echarts.use([GeoComponent, TooltipComponent, CanvasRenderer]);
 
@@ -163,7 +164,7 @@ export default function ThreatMap() {
   const q = useQuery({
     queryKey: ['threat-map', days],
     queryFn: () => get<MapData>('/api/threat-map', { days }),
-    placeholderData: keepPreviousData, refetchInterval: 15000,
+    placeholderData: keepPreviousData, refetchInterval: REFRESH_MS,
   });
   const data = q.data;
 

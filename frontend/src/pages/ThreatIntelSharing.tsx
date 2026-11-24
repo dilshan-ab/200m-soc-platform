@@ -6,6 +6,7 @@ import { del, get, post, type Page } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ago, titleCase } from '../lib/format';
 import { useAct } from '../lib/mut';
+import { REFRESH_MS } from '../lib/refresh';
 
 type Indicator = { id: string; type: string; value: string; pattern: string; labels: string[]; confidence: number; tlp: string; verdict: string; source: string; sightings: number; revoked: boolean; last_seen: string };
 type Stats = { total: number; active: number; revoked: number; by_type: Record<string, number>; by_verdict: Record<string, number> };
@@ -24,7 +25,7 @@ const VERDICT_STYLE: Record<string, { background: string; color: string }> = {
 export default function ThreatIntelSharing() {
   const { can } = useAuth();
   const [tab, setTab] = useState<'indicators' | 'share' | 'feeds'>('indicators');
-  const stats = useQuery({ queryKey: ['intel-share-stats'], queryFn: () => get<Stats>('/api/threat-intel/stats'), refetchInterval: 20000 });
+  const stats = useQuery({ queryKey: ['intel-share-stats'], queryFn: () => get<Stats>('/api/threat-intel/stats'), refetchInterval: REFRESH_MS });
 
   return (
     <>

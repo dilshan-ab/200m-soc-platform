@@ -14,6 +14,7 @@ import { ago, firstName } from '../lib/format';
 import { useAct } from '../lib/mut';
 import type { Point } from '../Trend';
 import type { MapData } from './ThreatMap';
+import { REFRESH_MS } from '../lib/refresh';
 
 const OverviewMap = lazy(() => import('./ThreatMap').then(({ WorldMap }) => ({ default: WorldMap })));
 const Trend = lazy(() => import('../Trend'));
@@ -43,16 +44,16 @@ export default function Dashboard() {
     queryKey: ['dashboard', days],
     queryFn: () => get<DashboardData>('/api/dashboard', { days }),
     enabled: allowed,
-    refetchInterval: 15_000,
+    refetchInterval: REFRESH_MS,
   });
   const map = useQuery({
     queryKey: ['threat-map', days], queryFn: () => get<MapData>('/api/threat-map', { days }),
-    enabled: allowed, refetchInterval: 30_000,
+    enabled: allowed, refetchInterval: REFRESH_MS,
   });
   const cases = useQuery({
     queryKey: ['overview-active-cases'],
     queryFn: () => get<Page<ActiveCase>>('/api/cases', { status: ['open', 'in_progress'], limit: 5 }),
-    enabled: can('cases.read'), refetchInterval: 15_000,
+    enabled: can('cases.read'), refetchInterval: REFRESH_MS,
   });
   const data = query.data;
 

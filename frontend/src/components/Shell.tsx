@@ -12,6 +12,7 @@ import { useLive } from '../lib/live';
 import { Button } from './Button';
 import { CommandPalette } from './CommandPalette';
 import { CircuitLogo } from './CircuitLogo';
+import { REFRESH_MS } from '../lib/refresh';
 
 type Item = { to: string; label: string; icon: LucideIcon; cap?: string };
 const SECURITY_TOOLS: Item[] = [
@@ -93,9 +94,9 @@ export function Shell() {
   const [kbdHelp, setKbdHelp] = useState(false);
   const [dark, setDark] = useState(() => document.documentElement.dataset.theme === 'dark');
   const authConfig = useQuery({ queryKey: ['auth-config'], queryFn: () => get<{ auth_mode: string; account_url: string | null }>('/api/auth/config') });
-  const approvals = useQuery({ queryKey: ['approvals'], queryFn: () => get('/api/approvals'), enabled: can('response.approve'), refetchInterval: 15000 });
+  const approvals = useQuery({ queryKey: ['approvals'], queryFn: () => get('/api/approvals'), enabled: can('response.approve'), refetchInterval: REFRESH_MS });
   const pending = (approvals.data?.actions?.length ?? 0) + (approvals.data?.changes?.length ?? 0);
-  const alertStats = useQuery({ queryKey: ['alert-stats'], queryFn: () => get('/api/alerts/stats'), enabled: can('alerts.read'), refetchInterval: 15000 });
+  const alertStats = useQuery({ queryKey: ['alert-stats'], queryFn: () => get('/api/alerts/stats'), enabled: can('alerts.read'), refetchInterval: REFRESH_MS });
   const newAlerts = Object.values((alertStats.data ?? {}) as Record<string, Record<string, number>>).reduce((n, st) => n + (st.new ?? 0), 0);
 
   useEffect(() => {
