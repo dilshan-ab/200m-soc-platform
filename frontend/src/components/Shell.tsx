@@ -9,6 +9,7 @@ import { get } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { firstName } from '../lib/format';
 import { useLive } from '../lib/live';
+import { AlertPopups } from './AlertPopups';
 import { Button } from './Button';
 import { CommandPalette } from './CommandPalette';
 import { CircuitLogo } from './CircuitLogo';
@@ -97,7 +98,9 @@ export function Shell() {
   const approvals = useQuery({ queryKey: ['approvals'], queryFn: () => get('/api/approvals'), enabled: can('response.approve'), refetchInterval: REFRESH_MS });
   const pending = (approvals.data?.actions?.length ?? 0) + (approvals.data?.changes?.length ?? 0);
   const alertStats = useQuery({ queryKey: ['alert-stats'], queryFn: () => get('/api/alerts/stats'), enabled: can('alerts.read'), refetchInterval: REFRESH_MS });
-  const newAlerts = Object.values((alertStats.data ?? {}) as Record<string, Record<string, number>>).reduce((n, st) => n + (st.new ?? 0), 0);
+  const stats = (alertStats.data ?? {}) as Record<string, Record<string, number>>;
+  const newAlerts = Object.values(stats).reduce((n, st) => n + (st.new ?? 0), 0);
+  const urgentAlerts = (stats.critical?.new ?? 0) + (stats.high?.new ?? 0); // new critical/high alerts make the bell blink
 
   useEffect(() => {
     setMobile(false);
@@ -232,10 +235,11 @@ export function Shell() {
             {!home && <Button variant="ghost" className="workspace-search" aria-label="Search workspace (Ctrl+K)" aria-haspopup="dialog" aria-expanded={palette} onClick={() => setPalette(true)}><i className="workspace-search-symbol" aria-hidden="true"><Search size={17} /></i><span className="workspace-search-copy"><strong>Search workspace</strong><small>Pages · Alerts · Cases · Assets</small></span><kbd>Ctrl K</kbd></Button>}
             <span className={'demo-pill' + (live ? '' : ' off')}><Activity size={11} style={{ verticalAlign: -1, marginRight: 5 }} />{live ? 'Live' : 'Offline'}</span>
             <Button variant="ghost" aria-label={dark ? 'Use light theme' : 'Use dark theme'} onClick={toggleTheme}>{dark ? <Sun size={18} /> : <Moon size={18} />}</Button>
-            {can('alerts.read') && <span style={{ position: "relative", display: "inline-flex" }}><Button variant="ghost" aria-label={`Notifications${(pending + newAlerts) ? ` (${pending + newAlerts})` : ""}`} onClick={() => setNotifOpen((v) => !v)} className="bell"><Bell size={18} /><Pulse active={newAlerts > 0 || pending > 0} /></Button>{notifOpen && <NotificationPanel onClose={() => setNotifOpen(false)} />}</span>}
+            {can('alerts.read') && <span style={{ position: "relative", display: "inline-flex" }}><Button variant="ghost" aria-label={`Notifications${urgentAlerts ? ` (${urgentAlerts} new critical or high alert${urgentAlerts === 1 ? "" : "s"})` : ""}${pending ? ` (${pending} pending approval${pending === 1 ? "" : "s"})` : ""}`} onClick={() => setNotifOpen((v) => !v)} className="bell"><Bell size={18} /><Pulse active={urgentAlerts > 0 || pending > 0} blink={urgentAlerts > 0} /></Button>{notifOpen && <NotificationPanel onClose={() => setNotifOpen(false)} />}</span>}
             <button type="button" className="avatar workspace-account" aria-label="Open account menu" onClick={() => { setMobile(false); setAccount(true); }}>{initials(name)}</button>
           </div>
         </header>
+        {can('alerts.read') && <AlertPopups live={live} />}
         <main onKeyDown={tableKeyboard} id="workspace-main" tabIndex={-1} className="content" key={loc.pathname}><Outlet context={{ dark, live }} /></main>
         {backToTop && <button type="button" className="back-to-top" onClick={() => { document.getElementById('workspace-main')?.focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }); }}><ArrowUp size={15} aria-hidden="true" />Back to top</button>}
       </div>
