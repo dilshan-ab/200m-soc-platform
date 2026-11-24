@@ -32,7 +32,7 @@ def list_notebooks(p: Principal = Depends(require("notebooks.read")), db: Sessio
     if case_id:
         qy = qy.where(Notebook.case_id == case_id)
     if q:
-        qy = qy.where(Notebook.title.contains(q, autoescape=True))
+        qy = qy.where(Notebook.title.icontains(q, autoescape=True))
     return [_notebook_out(nb) for nb in db.execute(qy).scalars()]
 
 

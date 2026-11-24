@@ -103,7 +103,7 @@ def list_indicators(
     if revoked is not None:
         qy = qy.where(ThreatIndicator.revoked.is_(revoked))
     if q:
-        qy = qy.where(ThreatIndicator.value.contains(q, autoescape=True))
+        qy = qy.where(ThreatIndicator.value.icontains(q, autoescape=True))
     rows, total = paginate(db, qy, page, limit)
     return page_out([_ind_out(i) for i in rows], total, page, limit)
 

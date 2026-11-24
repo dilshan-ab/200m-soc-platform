@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import os
 
+# Set SOC_TEST_DATABASE_URL (e.g. postgresql+psycopg://user@host/db) to run the suite on PostgreSQL instead of in-memory SQLite.
+# The database is wiped between tests, so point it at a throwaway database.
+TEST_DATABASE_URL = os.environ.get("SOC_TEST_DATABASE_URL", "")
+
 os.environ.update({
-    "SOC_ENVIRONMENT": "test", "SOC_AUTH_MODE": "dev", "SOC_COOKIE_SECURE": "false", "SOC_DATABASE_URL": "sqlite://", "SOC_WORKERS_ENABLED": "false",
+    "SOC_ENVIRONMENT": "test", "SOC_AUTH_MODE": "dev", "SOC_COOKIE_SECURE": "false", "SOC_DATABASE_URL": TEST_DATABASE_URL or "sqlite://", "SOC_WORKERS_ENABLED": "false",
     "SOC_METRICS_TOKEN": "metrics-secret", "SOC_BOOTSTRAP_TOKEN": "bootstrap-secret-value", "SOC_REPORT_DIR": "/tmp/soc-test-reports",
 })
 
@@ -26,13 +30,37 @@ from app.vault import LocalSecretStore, set_secret_store  # noqa: E402
 PASSWORD = "Str0ng-Passw0rd!x"
 
 
+_postgres_ready = False
+
+
+def _reset_database() -> None:
+    """A clean schema for every test: a new in-memory SQLite database, or on PostgreSQL a one-time build then TRUNCATE."""
+    global _postgres_ready
+    if not TEST_DATABASE_URL:
+        dbmod.init_engine("sqlite://")
+        dbmod.create_all()
+        return
+    from sqlalchemy import text
+
+    from app.db import Base
+
+    if not _postgres_ready:
+        dbmod.init_engine(TEST_DATABASE_URL)
+        Base.metadata.drop_all(dbmod.get_engine())
+        dbmod.create_all()
+        _postgres_ready = True
+    names = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
+    with dbmod.get_engine().begin() as conn:
+        conn.execute(text("SET LOCAL lock_timeout = '10s'"))  # fail fast if a test left a transaction open, instead of hanging
+        conn.execute(text(f"TRUNCATE {names} RESTART IDENTITY CASCADE"))
+
+
 @pytest.fixture(autouse=True)
 def fresh(monkeypatch):
     from app.policy import set_role_overrides
 
     reset_settings_cache()
-    dbmod.init_engine("sqlite://")
-    dbmod.create_all()
+    _reset_database()
     with dbmod.session_scope() as db:
         seed_defaults(db)
     set_secret_store(LocalSecretStore(Fernet.generate_key().decode()))

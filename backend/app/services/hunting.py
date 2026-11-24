@@ -39,15 +39,15 @@ def matching_alerts(db: Session, p: Principal, query: dict[str, Any]) -> list[Al
     if severities:
         conditions.append(Alert.severity.in_(severities))
     if query.get("host"):
-        conditions.append(Alert.host.contains(str(query["host"]), autoescape=True))
+        conditions.append(Alert.host.icontains(str(query["host"]), autoescape=True))
     if query.get("rule_id"):
-        conditions.append(Alert.rule_id.contains(str(query["rule_id"]), autoescape=True))
+        conditions.append(Alert.rule_id.icontains(str(query["rule_id"]), autoescape=True))
     q = query.get("q")
     if q:
         like = str(q)
         conditions.append(
-            Alert.title.contains(like, autoescape=True) | Alert.description.contains(like, autoescape=True)
-            | Alert.host.contains(like, autoescape=True) | Alert.src_ip.contains(like, autoescape=True)
+            Alert.title.icontains(like, autoescape=True) | Alert.description.icontains(like, autoescape=True)
+            | Alert.host.icontains(like, autoescape=True) | Alert.src_ip.icontains(like, autoescape=True)
         )
     rows = db.execute(select(Alert).where(*conditions).order_by(Alert.time.desc()).limit(MAX_QUERY_ROWS)).scalars().all()
     technique_ids = set(query.get("technique_ids") or [])

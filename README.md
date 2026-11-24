@@ -29,6 +29,8 @@ Demo logins: `admin@demo.local`, `l2@demo.local`, `l1@demo.local`, `viewer@demo.
 
 ```bash
 cd backend  && pytest -q && ruff check app tests && mypy app
+# same suite on PostgreSQL (wiped between tests), plus the migration checks (needs an empty database):
+SOC_TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost/soc_test SOC_TEST_MIGRATIONS_URL=postgresql+psycopg://user:pass@localhost/soc_migrate pytest -q
 cd frontend && npm run typecheck && npm run lint && npm test && npm run build
 ```
 
@@ -101,6 +103,6 @@ connector call, signed/bearer webhooks with replay protection, rate limits, CSP 
 
 - Not exercised against real tools: tests use mocked HTTP for connectors, `fakeredis`, and a locally generated OIDC key. Validate each integration with **Test connection** against your real instances.
 - Velociraptor (gRPC) and OpenVAS (GMP) connectors are implemented against `pyvelociraptor` / `python-gvm` (the `connectors` extra, included in the Docker image) and tested with fakes, but not yet against a live Velociraptor or GVM 22.4+ server. Velociraptor `kill_process` is not supported. Remediation artifact names are Velociraptor's stock `*.Remediation.Quarantine` artifacts.
-- Migrations and the app were tested on SQLite; run the suite against PostgreSQL (and review `alembic upgrade head`) before production.
+- CI runs the full suite and the migrations on PostgreSQL 16 (as in production) as well as SQLite; the migration test fails if the models and migrations ever differ. Migrations target PostgreSQL only: SQLite development databases are built from the models by `init-db`.
 - Slack/Telegram notifiers call those SaaS APIs directly (outside the egress allow-list). Scheduled reports are generated but not emailed. Workers run in-process (not arq). OpenSearch is not used yet (alert search uses the database).
 - There is no first-run setup screen and no per-user TOTP enrolment page (OIDC mode delegates MFA to Keycloak).
