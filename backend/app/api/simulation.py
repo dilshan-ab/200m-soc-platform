@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -12,10 +12,15 @@ from ..connectors.base import REGISTRY
 from ..db import get_db
 from ..deps import Principal, require
 from ..models import Tool
-from ..services import tools_svc
+from ..policy import ACTIONS
+from ..services import response, tools_svc
 
 router = APIRouter(prefix="/api/simulation", tags=["simulation"])
 SIM_TYPES = ("caldera", "atomic_red_team", "attack_simulator")
+# Starting a simulation runs real attack techniques on hosts, so it goes through the response approval workflow
+# (these actions need two approvals in policy.ACTIONS). Stopping or cleaning up runs at once: it must never wait.
+APPROVAL_ACTIONS = {"run_adversary", "run_atomic", "run_simulation"}
+DIRECT_ACTIONS = {"caldera": {"stop_operation"}, "atomic_red_team": {"cleanup_atomic"}, "attack_simulator": {"stop_simulation"}}
 
 
 @router.get("/platforms")
@@ -45,6 +50,7 @@ class RunSimIn(BaseModel):
     action_key: str
     targets: list[str] = []
     params: dict[str, Any] = {}
+    reason: str = Field(default="", max_length=1000)
 
 
 def _get_sim_tool(db: Session, tool_id: str) -> Tool:
@@ -56,8 +62,21 @@ def _get_sim_tool(db: Session, tool_id: str) -> Tool:
 
 @router.post("/run")
 def run_simulation(body: RunSimIn, p: Principal = Depends(require("simulation.write")), db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Execute an attack simulation action."""
+    """Start a simulation (sent for approval) or stop/clean one up (runs at once)."""
     tool = _get_sim_tool(db, body.tool_id)
+    if body.action_key in APPROVAL_ACTIONS:
+        if ACTIONS[body.action_key].system != tool.type:
+            raise HTTPException(400, f"{body.action_key} is not an action of {tool.type}")
+        try:
+            req = response.create_request(db, requester=p.user, action_key=body.action_key, targets=body.targets, params=body.params,
+                                          reason=body.reason, scope=p)
+        except response.ResponseError as e:
+            raise HTTPException(e.status, str(e)) from e
+        audit.record(db, "simulation.request", actor=p.label, actor_id=p.user.id, resource_type="action_request", resource_id=req.id, ip=p.ip,
+                     meta={"action": body.action_key, "targets": body.targets, "tool_id": tool.id})
+        return {"status": req.status, "request_id": req.id, "approvals_required": req.approvals_required}
+    if body.action_key not in DIRECT_ACTIONS.get(tool.type, set()):
+        raise HTTPException(400, f"unsupported action for {tool.type}: {body.action_key}")
     try:
         conn = tools_svc.build_connector(db, tool)
         try:
