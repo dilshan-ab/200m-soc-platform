@@ -6,6 +6,7 @@ import { del, get, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ago, when } from '../lib/format';
 import { useAct } from '../lib/mut';
+import { REFRESH_MS } from '../lib/refresh';
 
 type Message = { id: string; author_id: string | null; author_label: string; kind: string; content: string; pinned: boolean; created_at: string };
 type WarRoomSummary = { id: string; created_by: string; title: string; status: 'active' | 'stood_down'; severity: string; participants: { user_id: string; label: string; role: string }[]; message_count: number; created_at: string; closed_at: string | null; summary: string };
@@ -15,7 +16,7 @@ const initials = (name: string) => name.split(/[\s@.]+/).filter(Boolean).slice(0
 
 export default function WarRoom() {
   const { can } = useAuth();
-  const rooms = useQuery({ queryKey: ['warrooms'], queryFn: () => get<WarRoomSummary[]>('/api/warrooms'), refetchInterval: 10000 });
+  const rooms = useQuery({ queryKey: ['warrooms'], queryFn: () => get<WarRoomSummary[]>('/api/warrooms'), refetchInterval: REFRESH_MS });
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -76,7 +77,7 @@ function CreateWarRoom({ onClose, onCreated }: { onClose: () => void; onCreated:
 function ChatPanel({ id, onDeleted }: { id: string; onDeleted: () => void }) {
   const { me, can } = useAuth();
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: ['warroom', id], queryFn: () => get<WarRoomDetail>(`/api/warrooms/${id}`), refetchInterval: 4000 });
+  const q = useQuery({ queryKey: ['warroom', id], queryFn: () => get<WarRoomDetail>(`/api/warrooms/${id}`), refetchInterval: REFRESH_MS });
   const [draft, setDraft] = useState('');
   const [standingDown, setStandingDown] = useState(false);
   const [deleting, setDeleting] = useState(false);

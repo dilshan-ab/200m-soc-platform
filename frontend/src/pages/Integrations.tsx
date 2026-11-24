@@ -7,6 +7,7 @@ import { del, get, post, put } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ago, titleCase, when } from '../lib/format';
 import { useAct } from '../lib/mut';
+import { REFRESH_MS } from '../lib/refresh';
 
 type FieldSpec = { name: string; label: string; type: string; required: boolean; secret: boolean; help: string; default: unknown };
 type Manifest = { type: string; label: string; category: string; link_method: string; direction: string; auth: string; capabilities: string[]; test_checks: string[]; webhook: boolean; setup_hint: string; fields: FieldSpec[] };
@@ -30,7 +31,7 @@ function StepIndicator({ current }: { current: number }) {
 }
 
 export default function Integrations() {
-  const tools = useQuery({ queryKey: ['tools'], queryFn: () => get<any[]>('/api/integrations/tools'), refetchInterval: 15000 });
+  const tools = useQuery({ queryKey: ['tools'], queryFn: () => get<any[]>('/api/integrations/tools'), refetchInterval: REFRESH_MS });
   const { can } = useAuth();
   const [sel, setSel] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);

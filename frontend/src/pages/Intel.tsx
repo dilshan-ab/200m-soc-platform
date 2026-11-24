@@ -5,6 +5,7 @@ import { get, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ago } from '../lib/format';
 import { useAct } from '../lib/mut';
+import { REFRESH_MS } from '../lib/refresh';
 
 export default function Intel() {
   return (
@@ -19,7 +20,7 @@ function Enrich() {
   const { can } = useAuth();
   const [ind, setInd] = useState('');
   const sources = useQuery({ queryKey: ['intel-sources'], queryFn: () => get<any[]>('/api/intel/sources') });
-  const jobs = useQuery({ queryKey: ['intel-jobs'], queryFn: () => get<any[]>('/api/intel/jobs'), refetchInterval: 15000 });
+  const jobs = useQuery({ queryKey: ['intel-jobs'], queryFn: () => get<any[]>('/api/intel/jobs'), refetchInterval: REFRESH_MS });
   const run = useAct(() => post('/api/intel/enrich', { indicator: ind.trim() }), ['intel-jobs'], 'Enrichment queued', () => setInd(''));
   const [view, setView] = useState<any>(null);
   return (

@@ -6,6 +6,7 @@ import { get, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ago } from '../lib/format';
 import { useAct } from '../lib/mut';
+import { REFRESH_MS } from '../lib/refresh';
 
 type Profile = { id: string; entity_type: string; entity_value: string; risk_score: number; alert_count: number; baseline: any; anomalies: any[]; first_seen: string; last_seen: string; updated_at: string; client_id?: string };
 type Summary = { total_entities: number; by_type: Record<string, number>; risk_distribution: Record<string, number>; top_risk: Profile[]; total_anomalies: number };
@@ -36,7 +37,7 @@ export default function UEBA() {
 
 function OverviewPanel() {
   const { can } = useAuth();
-  const summary = useQuery({ queryKey: ['ueba-summary'], queryFn: () => get<Summary>('/api/ueba/summary'), refetchInterval: 30000 });
+  const summary = useQuery({ queryKey: ['ueba-summary'], queryFn: () => get<Summary>('/api/ueba/summary'), refetchInterval: REFRESH_MS });
   const compute = useAct(() => post('/api/ueba/compute?days=30'), ['ueba-summary', 'ueba-profiles'], 'Profile computation started');
   const [detail, setDetail] = useState<Profile | null>(null);
 

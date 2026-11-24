@@ -69,6 +69,8 @@ New installs get all of this from the realm import. For an existing realm, **Syn
 To manage users from Keycloak instead, use **Sync with Keycloak**: it imports users created there (role from their realm role), links local placeholders, and takes name, role and enabled state from Keycloak. Accounts deleted in Keycloak are listed and only removed from SOC after you confirm. Imported users have no client access until you assign it.
 Development mode creates local SOC users only; it does not synchronize users to Keycloak. The owner's own password is changed on the Keycloak account page.
 
+**Sync also runs on its own** every 15 minutes (`SOC_KEYCLOAK_SYNC_MINUTES`, `0` turns it off). The scheduled run imports new users and applies role, name and enabled changes made in Keycloak, signing affected users out. A user deleted in Keycloak is signed out, their API tokens are revoked and their SOC account is **disabled, not deleted** (delete it from Administration if you want it gone). If most accounts vanish from Keycloak at once, it changes nothing and reports it, since that is more likely a Keycloak problem than real deletions. The Users tab shows when it last ran and what it did. Groups and permissions are refreshed by the button and whenever permissions are saved, not by the scheduled run.
+
 
 Roles come from the `soc_role` claim. Sign-in uses MFA through Keycloak. Sensitive admin actions do not ask for a second MFA by default; set `SOC_STEP_UP_REQUIRED=true` to require a fresh re-verification first (fresh TOTP, `acr=mfa-webauthn`, `auth_time` within 2 minutes). API tokens can never perform these actions either way.
 The app talks to Keycloak's Admin API through the `soc-admin` service account (it only has user-management rights in the `soc` realm).

@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { Empty, ErrorBox, Loading, PageHead, Sev } from '../components/ui';
 import { get } from '../lib/api';
 import { SEVERITIES, ago } from '../lib/format';
+import { REFRESH_MS } from '../lib/refresh';
 
 type Correlation = { client_id: string | null; host: string; sources: number; alerts: number; last_seen: string };
 type VulnerabilitySummary = { by_severity: Record<string, Record<string, number>>; overdue: number };
@@ -15,7 +16,7 @@ export function Xdr() {
   const q = useQuery({
     queryKey: ['alert-correlations', days],
     queryFn: () => get<{ since: string; items: Correlation[] }>('/api/alerts/correlations', { days }),
-    refetchInterval: 30_000,
+    refetchInterval: REFRESH_MS,
   });
   return (
     <>
@@ -53,7 +54,7 @@ export function RiskAnalytics() {
   const q = useQuery({
     queryKey: ['vuln-summary'],
     queryFn: () => get<VulnerabilitySummary>('/api/vulnerabilities/summary'),
-    refetchInterval: 30_000,
+    refetchInterval: REFRESH_MS,
   });
   const summary = q.data;
   const rows = SEVERITIES.map((severity) => ({

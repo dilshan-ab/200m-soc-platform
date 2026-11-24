@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Clock, Code2, Filter, List, RefreshCw, Termi
 import { Fragment, useCallback, useState } from 'react';
 import { Empty, ErrorBox, Loading, PageHead, SearchBox } from '../components/ui';
 import { get } from '../lib/api';
+import { REFRESH_MS } from '../lib/refresh';
 
 type LogEntry = {
   id: string; index: string; timestamp: string; rule_id: string; rule_level: number;
@@ -52,7 +53,7 @@ export default function LogSearch() {
   const results = useQuery({
     queryKey: ['log-search', submitted, page, size, sort, filters],
     queryFn: () => get<SearchResult>(`/api/logs/search?${params.toString()}`),
-    refetchInterval: submitted ? false : 10000,
+    refetchInterval: submitted ? false : REFRESH_MS,
   });
 
   const toggle = useCallback((id: string) => {

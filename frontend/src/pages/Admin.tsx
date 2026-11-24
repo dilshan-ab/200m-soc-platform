@@ -6,6 +6,7 @@ import { del, get, patch, post, put, type Page } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { SEVERITIES, ago, titleCase, when } from '../lib/format';
 import { useAct } from '../lib/mut';
+import { REFRESH_MS } from '../lib/refresh';
 
 const TABS = [
   ['users', 'Users', 'admin.users'], ['permissions', 'Permissions', 'admin.users'], ['audit', 'Audit log', 'admin.audit'], ['sla', 'SLA', 'admin.settings'],
@@ -40,6 +41,8 @@ function Users() {
   const canProvision = can('users.provision') && provisioning;
   const clients = useQuery({ queryKey: ['clients'], queryFn: () => get<any[]>('/api/clients') });
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => get<any[]>('/api/admin/sessions') });
+  type SyncLast = { at: string; source: string; ok: boolean; error: string; disabled_accounts: string[] } | null;
+  const syncStatus = useQuery({ queryKey: ['keycloak-sync'], queryFn: () => get<{ enabled: boolean; interval_minutes: number; last: SyncLast }>('/api/admin/users/sync'), enabled: authConfig.data?.auth_mode === 'oidc' && provisioning, refetchInterval: REFRESH_MS });
   const [add, setAdd] = useState(false);
   const [edit, setEdit] = useState<any>(null);
   const [passwordUser, setPasswordUser] = useState<any>(null);
@@ -58,6 +61,11 @@ function Users() {
         {oidc && <span style={{ color: 'var(--muted)' }}>{provisioning ? 'Account profiles, roles and passwords are synced with Keycloak.' : 'Accounts and roles are managed in your identity provider; users appear here after their first sign-in.'}</span>}
         {canProvision && oidc && <button className="btn small" onClick={() => setSyncing(true)}>Sync with Keycloak</button>}
         {canProvision && <button className="btn small" onClick={() => setAdd(true)}>Add user</button>}</div>
+      {syncStatus.data && <p className="hint" style={{ margin: '0 0 10px' }}>
+        {syncStatus.data.enabled ? `Keycloak sync runs automatically every ${syncStatus.data.interval_minutes} min.` : 'Automatic Keycloak sync is off.'}
+        {syncStatus.data.last && <> Last {syncStatus.data.last.source} sync {ago(syncStatus.data.last.at)}{syncStatus.data.last.ok ? '.' : `: ${syncStatus.data.last.error}`}</>}
+        {!!syncStatus.data.last?.disabled_accounts.length && <> Disabled because they were removed from Keycloak: {syncStatus.data.last.disabled_accounts.join(', ')}.</>}
+      </p>}
       {users.data && (
         <>
           <Summary items={[
@@ -138,7 +146,7 @@ type SyncResult = { imported: string[]; linked: string[]; updated: string[]; ski
 
 function SyncKeycloak({ onClose }: { onClose: () => void }) {
   const [result, setResult] = useState<SyncResult | null>(null);
-  const run = useAct((prune: boolean) => post<SyncResult>('/api/admin/users/sync', { prune }), ['users', 'sessions'], undefined, (r: SyncResult) => setResult(r));
+  const run = useAct((prune: boolean) => post<SyncResult>('/api/admin/users/sync', { prune }), ['users', 'sessions', 'keycloak-sync'], undefined, (r: SyncResult) => setResult(r));
   const list = (label: string, items: string[]) => items.length > 0 && <p><b>{label} ({items.length}):</b> {items.join(', ')}</p>;
   return <Modal title="Sync with Keycloak" onClose={() => { if (!run.isPending) onClose(); }}>
     <p>Brings users, roles and groups in line with Keycloak.</p>
@@ -421,7 +429,7 @@ function RetRow({ r, onSave }: { r: any; onSave: (days: number, hold: boolean) =
 }
 
 function Health() {
-  const h = useQuery({ queryKey: ['health'], queryFn: () => get<any>('/api/admin/health'), refetchInterval: 15000 });
+  const h = useQuery({ queryKey: ['health'], queryFn: () => get<any>('/api/admin/health'), refetchInterval: REFRESH_MS });
   const bk = useQuery({ queryKey: ['backups'], queryFn: () => get<any[]>('/api/admin/backups') });
   const [add, setAdd] = useState(false);
   const verified = useAct((id: string) => post(`/api/admin/backups/${id}/report`, { status: 'success', verified: true }), ['backups'], 'Restore test recorded');
