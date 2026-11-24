@@ -94,3 +94,15 @@ def test_only_the_bundled_caldera_address_may_use_plain_http():
     lookalike = get_connector_cls("caldera")({"url": "http://caldera:8888.evil.example"}, {"api_key": "k"})
     with pytest.raises(ConnectorError, match="egress policy"):
         lookalike.test()
+
+
+def test_the_integrations_form_accepts_the_bundled_caldera_address_only(admin):
+    """Saving the tool checks the URL too (that is where the live site failed): only the exact bundled address may be http."""
+    base = {"type": "caldera", "name": "Caldera", "values": {"api_key": "k", "group": "red"}}
+    ok = admin.post("/api/integrations/tools", {**base, "values": {**base["values"], "url": "http://caldera:8888"}})
+    assert ok.status_code == 201, ok.text
+    for bad in ("http://10.0.0.9:8888", "http://caldera:8889", "http://caldera:8888.evil.example"):
+        r = admin.post("/api/integrations/tools", {**base, "name": f"C {bad[-6:]}", "values": {**base["values"], "url": bad}})
+        assert r.status_code == 400 and "http" in r.text, (bad, r.text)
+    other = admin.post("/api/integrations/tools", {"type": "misp", "name": "MISP plain", "values": {"url": "http://caldera:8888", "auth_key": "k"}})
+    assert other.status_code == 400  # the exception is for the Caldera tool type only

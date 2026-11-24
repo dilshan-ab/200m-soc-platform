@@ -162,6 +162,13 @@ def is_private_ip(addr: str) -> bool:
     return ip.is_private or ip.is_loopback
 
 
+def is_bundled_caldera_url(url: str) -> bool:
+    """The Caldera bundled with the platform (compose profile `caldera`) is reached over plain HTTP on the private
+    Docker network, like Keycloak's admin API. Only this exact address is exempt from the HTTPS-only connector rule."""
+    internal = get_settings().caldera_internal_url.rstrip("/")
+    return bool(internal) and str(url).rstrip("/") == internal
+
+
 def validate_external_egress_url(url: str, *, resolver: Resolver | None = None) -> str:
     """Raise SecurityError unless `url` is https (or http when explicitly allowed), has no
     credentials, and resolves only to public addresses. Unlike `validate_egress_url` (which
