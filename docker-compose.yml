@@ -89,6 +89,21 @@ services:
     networks: [internal, edge]
     <<: *hardening
 
+  caldera:
+    # MITRE Caldera for attack simulation. Optional: add `caldera` to COMPOSE_PROFILES in .env to run it.
+    # The SOC reaches it at http://caldera:8888 on the private network; the UI/API port is published only to the host
+    # (put your HTTPS reverse proxy in front of it for the web UI). See README "Attack simulation (Caldera)".
+    image: ${CALDERA_IMAGE:-ghcr.io/mitre/caldera:5.2.0}
+    profiles: [caldera]
+    restart: unless-stopped
+    stop_signal: SIGINT                 # Caldera shuts down cleanly on SIGINT
+    volumes:
+      - calderaconf:/usr/src/app/conf   # conf/local.yml with the generated API keys and logins is written here on first start
+      - calderadata:/usr/src/app/data
+    ports: ["${CALDERA_BIND:-127.0.0.1}:${CALDERA_PORT:-8888}:8888"]   # UI, REST API and HTTP agent beacons
+    networks: [internal, edge]
+    security_opt: ["no-new-privileges:true"]
+
   backend:
     image: ${BACKEND_IMAGE:-soc-backend:local}
     build: ./backend
@@ -139,7 +154,7 @@ services:
     tmpfs: [/tmp]
     <<: *hardening
 
-volumes: { pgdata: {}, kcdata: {}, redisdata: {}, reports: {} }
+volumes: { pgdata: {}, kcdata: {}, redisdata: {}, reports: {}, calderaconf: {}, calderadata: {} }
 networks:
   internal: { internal: true }   # no outside access: databases, Redis, service-to-service
   edge: {}                       # only used to publish ports on the host

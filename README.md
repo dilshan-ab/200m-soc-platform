@@ -92,6 +92,18 @@ Limits: `KC_SUPERADMIN_PASSWORD` in `.env` is only the initial password; it stop
 5. First run: use the one-time `SOC_BOOTSTRAP_TOKEN` with `/api/setup/*` (API only; there is no setup screen yet), then add Wazuh and TheHive under **Integrations**.
 
 
+## Attack simulation (Caldera)
+
+The **Attack Simulation** page drives [MITRE Caldera](https://github.com/mitre/caldera). Caldera runs real attack techniques on the hosts where its agents are installed, so use test or lab hosts, and agree the scope with the people who will approve it.
+
+1. **Run it.** In `.env` set `COMPOSE_PROFILES=keycloak,caldera`, then deploy (or `docker compose up -d caldera`). The image is pinned (`ghcr.io/mitre/caldera:5.2.0`; override with `CALDERA_IMAGE`). On first start Caldera writes `conf/local.yml` with generated API keys and logins, kept in the `calderaconf` volume.
+2. **Get the API key.** `docker compose exec caldera grep api_key_red conf/local.yml`. The web logins are under `users:` in the same file.
+3. **Connect the SOC.** Go to **Integrations > Add > MITRE Caldera**, URL `http://caldera:8888`, API key = `api_key_red`, default agent group (for example `red`), then **Test connection** and enable it. `http://caldera:8888` is the one plain-HTTP address the SOC allows, because it never leaves the private Docker network; any other Caldera URL must be HTTPS on an approved internal network.
+4. **Web UI (optional).** Caldera's UI listens on `127.0.0.1:8888` on the server. Put your HTTPS reverse proxy in front of it (as for Keycloak) if you want to use it from a browser.
+5. **Agents.** Install Caldera's agent on the test hosts from the Caldera UI. Agents must reach Caldera on port 8888: set `CALDERA_BIND` to the server's lab-network address and allow only that network in the firewall.
+
+**Running a simulation.** On **Attack Simulation > Run Simulation**, choose MITRE Caldera, *Run adversary emulation*, the agent group, the `adversary_id` and an operation name, and a reason. It goes to **Approvals** and starts only after **two other people approve it** (the super admin's own requests are the exception, as for every response action). **Stop operation** runs immediately. Results appear on the **Results** tab.
+
 ## Security model (summary)
 
 HttpOnly SameSite=Strict server-side sessions (idle 15 min, absolute 8 h), CSRF token + Origin check, OIDC auth code + PKCE with pinned algorithms,

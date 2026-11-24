@@ -68,12 +68,14 @@ function RunPanel() {
   const [actionKey, setActionKey] = useState('');
   const [targets, setTargets] = useState('');
   const [params, setParams] = useState('{}');
+  const [reason, setReason] = useState('');
   const qc = useQueryClient();
 
   const run = useMutation({
     mutationFn: () => post('/api/simulation/run', {
       tool_id: selectedTool, action_key: actionKey, targets: targets.split(',').map((t) => t.trim()).filter(Boolean),
       params: (() => { try { return JSON.parse(params); } catch { return {}; } })(),
+      reason,
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['sim-results'] }); },
   });
@@ -92,6 +94,19 @@ function RunPanel() {
 
   const selected = configured.find((p) => p.tool_id === selectedTool);
   const actions = selected ? ACTION_OPTIONS[selected.system_type] ?? [] : [];
+  // Starting a simulation runs real attack techniques, so it needs two approvals; stopping or cleaning up runs at once.
+  const NEEDS_APPROVAL = ['run_adversary', 'run_atomic', 'run_simulation'];
+  const PARAM_TEMPLATES: Record<string, object> = {
+    run_adversary: { adversary_id: '', operation_name: `sim-${new Date().toISOString().slice(0, 10)}` },
+    stop_operation: { operation_id: '' },
+    run_atomic: { technique_id: 'T1059.001', test_numbers: [1] },
+    cleanup_atomic: { execution_id: '' },
+    run_simulation: { scenario_id: '' },
+    stop_simulation: { simulation_id: '' },
+  };
+  const approval = NEEDS_APPROVAL.includes(actionKey);
+  const targetLabel = selected?.system_type === 'caldera' ? 'Agent group (e.g. red)' : 'Targets (comma-separated hosts)';
+  const pickAction = (k: string) => { setActionKey(k); setParams(JSON.stringify(PARAM_TEMPLATES[k] ?? {}, null, 2)); };
 
   return (
     <div className="card" style={{ padding: 20, maxWidth: 600 }}>
@@ -107,31 +122,46 @@ function RunPanel() {
         {selected && (
           <label>
             <small>Action</small>
-            <select value={actionKey} onChange={(e) => setActionKey(e.target.value)}>
+            <select value={actionKey} onChange={(e) => pickAction(e.target.value)}>
               <option value="">Select action…</option>
               {actions.map((a) => <option key={a.key} value={a.key}>{a.label}</option>)}
             </select>
           </label>
         )}
         <label>
-          <small>Targets (comma-separated)</small>
-          <input type="text" placeholder="e.g. 10.0.0.5, workstation-01" value={targets} onChange={(e) => setTargets(e.target.value)} />
+          <small>{targetLabel}</small>
+          <input type="text" placeholder={selected?.system_type === 'caldera' ? 'red' : 'e.g. workstation-01'} value={targets} onChange={(e) => setTargets(e.target.value)} />
         </label>
         <label>
           <small>Parameters (JSON)</small>
           <textarea rows={4} value={params} onChange={(e) => setParams(e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
         </label>
+        {approval && (
+          <label>
+            <small>Reason (shown to approvers)</small>
+            <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why this simulation, which hosts, and the agreed time window" />
+          </label>
+        )}
         <div className="row" style={{ gap: 8 }}>
-          <button className="btn primary" onClick={() => run.mutate()} disabled={run.isPending || !selectedTool || !actionKey}>
-            {run.isPending ? 'Running…' : 'Execute'}
+          <button className="btn primary" onClick={() => run.mutate()} disabled={run.isPending || !selectedTool || !actionKey || (approval && reason.trim().length < 5)}>
+            {run.isPending ? 'Sending…' : approval ? 'Request approval' : 'Run now'}
           </button>
           <AlertTriangle size={14} style={{ color: 'var(--warn)' }} />
-          <small style={{ color: 'var(--muted)' }}>Requires approval for high-risk actions</small>
+          <small style={{ color: 'var(--muted)' }}>{actionKey ? (approval ? 'Runs real attack techniques: needs two approvals before it starts.' : 'Runs immediately.') : 'Starting a simulation needs two approvals; stopping one runs immediately.'}</small>
         </div>
         {run.error && <ErrorBox error={run.error} />}
-        {run.data && (
+        {run.data && (run.data as any).request_id && (
+          <div className="card" style={{ padding: 12, background: 'var(--surface)', borderLeft: '3px solid var(--warn)' }}>
+            <strong>{(run.data as any).status === 'pending_approval' ? 'Sent for approval' : 'Approved and queued'}</strong>
+            <p style={{ margin: '6px 0 0', fontSize: 13 }}>
+              {(run.data as any).status === 'pending_approval' ? `It starts once ${(run.data as any).approvals_required} other people approve it. ` : ''}
+              <a href="/app/approvals">Open Approvals</a>
+            </p>
+          </div>
+        )}
+        {run.data && !(run.data as any).request_id && (
           <div className="card" style={{ padding: 12, background: 'var(--surface)', borderLeft: '3px solid var(--ok)' }}>
-            <strong>Simulation started</strong>
+            <strong>Done</strong>
             <pre style={{ margin: '8px 0 0', fontSize: 12, whiteSpace: 'pre-wrap' }}>{JSON.stringify((run.data as any).result, null, 2)}</pre>
           </div>
         )}
