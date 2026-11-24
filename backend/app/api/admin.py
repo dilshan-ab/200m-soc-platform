@@ -417,7 +417,7 @@ def list_audit(p: Principal = Depends(require("admin.audit")), db: Session = Dep
     if action:
         q = q.where(AuditEvent.action.startswith(action, autoescape=True))
     if actor:
-        q = q.where(AuditEvent.actor.contains(actor, autoescape=True))
+        q = q.where(AuditEvent.actor.icontains(actor, autoescape=True))
     if outcome:
         q = q.where(AuditEvent.outcome == outcome)
     if since:

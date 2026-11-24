@@ -694,8 +694,8 @@ class NotificationDelivery(Base):
     id: Mapped[str] = _pk()
     rule_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     destination_id: Mapped[str] = mapped_column(String(36))
-    event_ref: Mapped[str] = mapped_column(String(80))
-    dedupe_key: Mapped[str] = mapped_column(String(120), unique=True)
+    event_ref: Mapped[str] = mapped_column(String(255))
+    dedupe_key: Mapped[str] = mapped_column(String(255), unique=True)
     subject: Mapped[str] = mapped_column(String(300), default="")
     body: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(16), default="queued")  # queued|sent|failed|dead

@@ -36,7 +36,7 @@ def list_findings(p: Principal = Depends(require("vulns.read")), db: Session = D
     if client_id:
         qy = qy.where(Finding.client_id == client_id)
     if q:
-        qy = qy.where(Finding.vuln_id.contains(q, autoescape=True) | Finding.title.contains(q, autoescape=True))
+        qy = qy.where(Finding.vuln_id.icontains(q, autoescape=True) | Finding.title.icontains(q, autoescape=True))
     rows, total = paginate(db, qy.order_by(Finding.cvss.desc().nulls_last(), Finding.id), page, limit)
     return page_out([finding_out(f) for f in rows], total, page, limit)
 

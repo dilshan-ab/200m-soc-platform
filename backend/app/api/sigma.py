@@ -73,7 +73,7 @@ def list_rules(
     if enabled is not None:
         qy = qy.where(SigmaRule.enabled.is_(enabled))
     if q:
-        qy = qy.where(SigmaRule.title.contains(q, autoescape=True) | SigmaRule.description.contains(q, autoescape=True))
+        qy = qy.where(SigmaRule.title.icontains(q, autoescape=True) | SigmaRule.description.icontains(q, autoescape=True))
     qy = qy.order_by(SigmaRule.created_at.desc())
     rows, total = paginate(db, qy, page, limit)
     if technique_id:

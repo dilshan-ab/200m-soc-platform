@@ -35,7 +35,7 @@ def list_assets(p: Principal = Depends(require("assets.read")), db: Session = De
         if v:
             qy = qy.where(col == v)
     if q:
-        qy = qy.where(Asset.name.contains(q, autoescape=True) | Asset.hostname.contains(q, autoescape=True))
+        qy = qy.where(Asset.name.icontains(q, autoescape=True) | Asset.hostname.icontains(q, autoescape=True))
     rows, total = paginate(db, qy.order_by(Asset.name), page, limit)
     return page_out([asset_out(a) for a in rows], total, page, limit)
 
