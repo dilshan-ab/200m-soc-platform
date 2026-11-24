@@ -1,8 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { get } from '../lib/api';
+import { Link, useNavigate } from 'react-router-dom';
+import { get, post } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { REFRESH_MS } from '../lib/refresh';
 import { Sev } from './ui';
 
@@ -21,6 +22,11 @@ export function AlertPopups({ live }: { live: boolean }) {
   const list = useRef<Popup[]>([]); // the visible pop-ups; state below only mirrors it for rendering
   const [popups, setPopups] = useState<Popup[]>([]);
   const [overflow, setOverflow] = useState(0);
+  const [outcome, setOutcome] = useState<Record<string, string>>({}); // id -> "Acknowledged" / "Investigating" / error text
+  const { can } = useAuth();
+  const canTriage = can('alerts.triage');
+  const navigate = useNavigate();
+  const qc = useQueryClient();
 
   const dismiss = useCallback((id: string) => {
     list.current = list.current.filter((p) => p.id !== id);
@@ -39,6 +45,23 @@ export function AlertPopups({ live }: { live: boolean }) {
     const life = a.severity in LIFETIME ? LIFETIME[a.severity] : 8_000; // null means stay until dismissed (`??` would turn it into 8 s)
     if (life) window.setTimeout(() => dismiss(a.id), life);
   }, [dismiss]);
+
+  const open = useCallback((id: string) => {
+    dismiss(id);
+    navigate(`/app/alerts?open=${id}`);
+  }, [dismiss, navigate]);
+
+  const act = useCallback(async (id: string, status: 'acknowledged' | 'investigating') => {
+    setOutcome((o) => ({ ...o, [id]: '…' }));
+    try {
+      await post('/api/alerts/bulk', { ids: [id], status });
+      setOutcome((o) => ({ ...o, [id]: status === 'acknowledged' ? 'Acknowledged' : 'Investigating' }));
+      ['alerts', 'alert', 'alert-stats', 'notif-alerts', 'dashboard', 'triage-queue'].forEach((k) => void qc.invalidateQueries({ queryKey: [k] }));
+      window.setTimeout(() => dismiss(id), 2500);
+    } catch (e) {
+      setOutcome((o) => ({ ...o, [id]: e instanceof Error ? e.message : 'Could not update the alert' }));
+    }
+  }, [dismiss, qc]);
 
   // Live stream: the event carries the id and severity; the details come through the authorised API.
   useEffect(() => {
@@ -73,17 +96,30 @@ export function AlertPopups({ live }: { live: boolean }) {
   if (popups.length === 0 && overflow === 0) return null;
   return (
     <div className="alert-popups" aria-label="New alerts">
-      {popups.map((p) => (
-        <div key={p.id} className={`alert-popup sev-${p.severity}`} role={p.severity === 'critical' || p.severity === 'high' ? 'alert' : 'status'}>
-          <div className="alert-popup-head">
-            <Sev v={p.severity} /><span className="alert-popup-kind">New alert</span>
-            <button type="button" className="alert-popup-close" aria-label="Dismiss" onClick={() => dismiss(p.id)}><X size={14} /></button>
+      {popups.map((p) => {
+        const result = outcome[p.id];
+        const done = result === 'Acknowledged' || result === 'Investigating';
+        return (
+          <div key={p.id} className={`alert-popup sev-${p.severity} clickable`} role={p.severity === 'critical' || p.severity === 'high' ? 'alert' : 'status'}
+            tabIndex={0} aria-label={`${p.severity} alert: ${p.title}. Press Enter to open.`}
+            onClick={() => open(p.id)} onKeyDown={(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) open(p.id); }}>
+            <div className="alert-popup-head">
+              <Sev v={p.severity} /><span className="alert-popup-kind">New alert</span>
+              <button type="button" className="alert-popup-close" aria-label="Dismiss" onClick={(e) => { e.stopPropagation(); dismiss(p.id); }}><X size={14} /></button>
+            </div>
+            <div className="alert-popup-title">{p.title}</div>
+            {(p.host || p.source) && <div className="alert-popup-meta">{[p.host, p.source].filter(Boolean).join(' · ')}</div>}
+            <div className="alert-popup-actions" onClick={(e) => e.stopPropagation()}>
+              {done ? <span className="alert-popup-done">{result}</span> : <>
+                {canTriage && <button type="button" disabled={result === '…'} onClick={() => void act(p.id, 'acknowledged')}>Acknowledge</button>}
+                {canTriage && <button type="button" disabled={result === '…'} onClick={() => void act(p.id, 'investigating')}>Investigate</button>}
+                <Link className="alert-popup-open" to={`/app/alerts?open=${p.id}`} onClick={() => dismiss(p.id)}>Open alert</Link>
+              </>}
+            </div>
+            {result && !done && result !== '…' && <div className="alert-popup-error" role="status">{result}</div>}
           </div>
-          <div className="alert-popup-title">{p.title}</div>
-          {(p.host || p.source) && <div className="alert-popup-meta">{[p.host, p.source].filter(Boolean).join(' · ')}</div>}
-          <Link className="alert-popup-open" to={`/app/alerts?open=${p.id}`} onClick={() => dismiss(p.id)}>Open alert</Link>
-        </div>
-      ))}
+        );
+      })}
       {overflow > 0 && (
         <div className="alert-popup more" role="status">
           <span>+{overflow} more critical or high alert{overflow === 1 ? '' : 's'}</span>
