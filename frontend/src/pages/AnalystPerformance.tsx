@@ -4,6 +4,7 @@ import { Summary } from '../components/manage';
 import { Empty, ErrorBox, Loading, PageHead } from '../components/ui';
 import { get } from '../lib/api';
 import { minutes, titleCase } from '../lib/format';
+import { REFRESH_MS } from '../lib/refresh';
 
 type AnalystRow = {
   id: string; name: string; email: string | null; role: string | null; active: boolean;
@@ -20,7 +21,7 @@ const number = new Intl.NumberFormat();
 
 export default function AnalystPerformance() {
   const [days, setDays] = useState(30);
-  const q = useQuery({ queryKey: ['analyst-performance', days], queryFn: () => get<Performance>('/api/analysts/performance', { days }), refetchInterval: 15000 });
+  const q = useQuery({ queryKey: ['analyst-performance', days], queryFn: () => get<Performance>('/api/analysts/performance', { days }), refetchInterval: REFRESH_MS });
   const data = q.data;
   return (
     <>

@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     bootstrap_token: str = ""  # one-time deployment-issued capability for /setup
     metrics_token: str = ""  # bearer token for /metrics
     workers_enabled: bool = True
+    keycloak_sync_minutes: int = 15  # scheduled Sync with Keycloak; 0 turns it off
     poll_tick_seconds: int = 5
     outbox_tick_seconds: int = 2
     webhook_max_body_bytes: int = 1_048_576

@@ -5,12 +5,13 @@ import { del, get, post, type Page } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ago, titleCase, when } from '../lib/format';
 import { useAct } from '../lib/mut';
+import { REFRESH_MS } from '../lib/refresh';
 
 type Template = { id: string; name: string; description: string; kind: string; fmt: string; params: Record<string, any>; client_id: string | null };
 
 export default function Reports() {
   const { can } = useAuth();
-  const jobs = useQuery({ queryKey: ['reports'], queryFn: () => get<Page<any>>('/api/reports', { limit: 50 }), refetchInterval: 15000 });
+  const jobs = useQuery({ queryKey: ['reports'], queryFn: () => get<Page<any>>('/api/reports', { limit: 50 }), refetchInterval: REFRESH_MS });
   const sch = useQuery({ queryKey: ['schedules'], queryFn: () => get<any[]>('/api/reports/schedules') });
   const templates = useQuery({ queryKey: ['report-templates'], queryFn: () => get<Template[]>('/api/report-templates') });
   const [gen, setGen] = useState<Template | null | 'new'>(null);

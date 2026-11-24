@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { Empty, ErrorBox, Loading, PageHead } from '../components/ui';
 import { get } from '../lib/api';
 import { ago } from '../lib/format';
+import { REFRESH_MS } from '../lib/refresh';
 
 type ToolHealth = {
   id: string; name: string; label: string; type: string; enabled: boolean; status: string; health_status: 'healthy' | 'degraded' | 'down' | 'paused' | 'disabled';
@@ -22,7 +23,7 @@ const STATUS_META: Record<string, { color: string; icon: typeof CheckCircle2; la
 
 export default function IntegrationHealth() {
   const [filter, setFilter] = useState<string>('');
-  const q = useQuery({ queryKey: ['integration-health'], queryFn: () => get<HealthData>('/api/integrations/health'), refetchInterval: 15000 });
+  const q = useQuery({ queryKey: ['integration-health'], queryFn: () => get<HealthData>('/api/integrations/health'), refetchInterval: REFRESH_MS });
 
   if (q.isLoading) return <><PageHead title="Integration Health" sub="Live status of every connected tool." /><Loading /></>;
   if (q.error) return <><PageHead title="Integration Health" sub="Live status of every connected tool." /><ErrorBox error={q.error} /></>;

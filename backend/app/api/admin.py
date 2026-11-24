@@ -19,7 +19,7 @@ from ..deps import Principal, require, require_admin_step_up
 from ..models import ApiToken, AuditEvent, BackupJob, Client, ClientMembership, RetentionPolicy, SessionRecord, SlaPolicy, User, utcnow
 from ..policy import CAPABILITIES, ROLES, SEVERITIES, role_capabilities, set_role_overrides
 from ..security import hash_password, new_token, new_totp_secret, password_policy_ok, sha256_hex
-from ..services import user_admin
+from ..services import keycloak_sync, user_admin
 from ..services.settings_svc import get_setting, set_setting
 from ..sessions import revoke_all
 from ..sla import active_policy
@@ -339,67 +339,17 @@ def sync_users(body: SyncIn, p: Principal = Depends(require_admin_step_up("users
     remote = _kc(kc.list_users)
     if not remote:
         raise HTTPException(409, "Keycloak returned no users; refusing to change anything")
-    by_id = {r["id"]: r for r in remote}
-    local = {u.subject: u for u in db.execute(select(User).where(User.subject != "system:automation")).scalars() if not user_admin.is_tombstone(u)}
-    by_email = {u.email: u for u in local.values()}
-    imported: list[str] = []
-    linked: list[str] = []
-    updated: list[str] = []
-    skipped: list[dict[str, str]] = []
-    for r in remote:
-        if r["role"] == "superadmin" or r["role"] == "" or not r["email"]:
-            if r["role"] != "superadmin":
-                skipped.append({"email": r["email"] or r["id"], "reason": "no SOC role in Keycloak" if r["email"] else "no email"})
-            continue
-        u = local.get(r["id"])
-        if u is None:
-            existing = by_email.get(r["email"])
-            if existing is not None and not existing.subject.startswith(("dev:", "pending:")):
-                skipped.append({"email": r["email"], "reason": "email belongs to a different Keycloak identity"})
-                continue
-            if existing is not None:  # a local placeholder: link it to its Keycloak account, which now owns its credentials
-                existing.subject, existing.password_hash, existing.totp_secret = r["id"], None, None
-                u = existing
-                linked.append(r["email"])
-            else:
-                u = User(subject=r["id"], email=r["email"], name=r["name"], role=r["role"], active=r["enabled"], all_clients=False)
-                db.add(u)
-                db.flush()
-                imported.append(r["email"])
-                audit.record(db, "user.sync_import", actor=p.label, actor_id=p.user.id, resource_type="user", resource_id=u.id, ip=p.ip, meta={"email": r["email"], "role": r["role"]})
-                continue
-        if u.role == "superadmin" or u.id == p.user.id:
-            continue
-        changes: dict[str, Any] = {}
-        if u.role != r["role"]:
-            changes["role"] = r["role"]
-        if u.active != r["enabled"]:
-            changes["active"] = r["enabled"]
-        if r["name"] and u.name != r["name"]:
-            changes["name"] = r["name"]
-        if u.email != r["email"] and not db.execute(select(User.id).where(User.email == r["email"], User.id != u.id)).first():
-            changes["email"] = r["email"]
-        if changes:
-            for k, v in changes.items():
-                setattr(u, k, v)
-            if "role" in changes or "active" in changes or "email" in changes:
-                revoke_all(db, u.id)
-            if r["email"] not in linked:
-                updated.append(r["email"])
-            audit.record(db, "user.sync_update", actor=p.label, actor_id=p.user.id, resource_type="user", resource_id=u.id, ip=p.ip, meta={"email": r["email"], "changes": list(changes)})
-    unlinked = sorted(u.email for u in local.values() if u.subject.startswith(("dev:", "pending:")) and u.active)  # in SOC but never created in Keycloak
-    orphans = [u for sub, u in local.items() if not sub.startswith(("dev:", "pending:")) and sub not in by_id and u.role != "superadmin" and u.id != p.user.id]
-    removed: list[str] = []
-    if body.prune:
-        for u in orphans:
-            email = u.email
-            revoke_all(db, u.id)
-            anonymised = user_admin.remove_user(db, u)
-            removed.append(email)
-            audit.record(db, "user.sync_remove", actor=p.label, actor_id=p.user.id, resource_type="user", resource_id=u.id, ip=p.ip, meta={"email": email, "kept_as_deleted_user": anonymised})
-    return {"imported": imported, "linked": linked, "updated": updated, "skipped": skipped, "removed": removed, "orphans": [] if body.prune else [u.email for u in orphans], "groups_created": groups_created, "groups_error": groups_error,
+    result = keycloak_sync.reconcile(db, remote, actor=p.label, actor_id=p.user.id, ip=p.ip, self_id=p.user.id, prune=body.prune)
+    keycloak_sync.record_status(db, "manual", True, result=result, keycloak_users=len(remote))
+    return {**result, "groups_created": groups_created, "groups_error": groups_error,
             "acl": acl, "acl_mode": acl_mode, "acl_error": acl_error, "realm": get_settings().kc_realm, "keycloak_users": len(remote),
-            "unlinked": unlinked, "access": _service_account_access() if acl_mode != "roles" else None}
+            "access": _service_account_access() if acl_mode != "roles" else None}
+
+
+@router.get("/admin/users/sync")
+def sync_status(p: Principal = Depends(require("admin.users")), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Whether the scheduled Keycloak sync is on, how often it runs, and what its last run (or the last manual sync) did."""
+    return keycloak_sync.status(db)
 
 
 @router.post("/admin/users/{uid}/revoke-sessions")

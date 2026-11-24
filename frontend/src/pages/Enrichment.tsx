@@ -6,6 +6,7 @@ import { del, get, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ago } from '../lib/format';
 import { useAct } from '../lib/mut';
+import { REFRESH_MS } from '../lib/refresh';
 
 type Job = { id: string; indicator: string; type: string; status: string; verdict: string; results: Record<string, any>; tlp: string; created_at: string; alert_id?: string; case_id?: string };
 type Rule = { id: string; name: string; description: string; rule_type: string; indicator_type: string; pattern: string; verdict: string; confidence: number; tags: string[]; enabled: boolean; hit_count: number; last_hit_at: string | null; created_at: string };
@@ -30,7 +31,7 @@ export default function Enrichment() {
 }
 
 function EngineOverview() {
-  const stats = useQuery({ queryKey: ['enrichment-stats'], queryFn: () => get<EngineStats>('/api/enrichment/stats'), refetchInterval: 30000 });
+  const stats = useQuery({ queryKey: ['enrichment-stats'], queryFn: () => get<EngineStats>('/api/enrichment/stats'), refetchInterval: REFRESH_MS });
   if (!stats.data) return null;
   const s = stats.data;
   return (
@@ -48,7 +49,7 @@ function JobsPanel() {
   const { can } = useAuth();
   const [ind, setInd] = useState('');
   const [alertId, setAlertId] = useState('');
-  const jobs = useQuery({ queryKey: ['intel-jobs'], queryFn: () => get<Job[]>('/api/intel/jobs'), refetchInterval: 10000 });
+  const jobs = useQuery({ queryKey: ['intel-jobs'], queryFn: () => get<Job[]>('/api/intel/jobs'), refetchInterval: REFRESH_MS });
   const run = useAct(() => post('/api/intel/enrich', { indicator: ind.trim(), alert_id: alertId || undefined }), ['intel-jobs'], 'Enrichment queued', () => { setInd(''); setAlertId(''); });
   const [detail, setDetail] = useState<Job | null>(null);
 
@@ -295,7 +296,7 @@ function SourceResult({ name, data }: { name: string; data: Record<string, any> 
 
 function RulesPanel() {
   const { can } = useAuth();
-  const rules = useQuery({ queryKey: ['enrichment-rules'], queryFn: () => get<Rule[]>('/api/enrichment/rules'), refetchInterval: 15000 });
+  const rules = useQuery({ queryKey: ['enrichment-rules'], queryFn: () => get<Rule[]>('/api/enrichment/rules'), refetchInterval: REFRESH_MS });
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', rule_type: 'cidr', indicator_type: 'ip', pattern: '', verdict: 'suspicious', confidence: 70, tags: '' });
   const create = useAct(() => post('/api/enrichment/rules', { ...form, confidence: Number(form.confidence), tags: form.tags ? form.tags.split(',').map((t) => t.trim()) : [] }), ['enrichment-rules', 'enrichment-stats'], 'Rule created', () => { setShowAdd(false); setForm({ name: '', description: '', rule_type: 'cidr', indicator_type: 'ip', pattern: '', verdict: 'suspicious', confidence: 70, tags: '' }); });

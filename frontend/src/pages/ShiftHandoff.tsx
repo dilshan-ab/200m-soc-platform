@@ -6,6 +6,7 @@ import { get, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ago, when } from '../lib/format';
 import { useAct } from '../lib/mut';
+import { REFRESH_MS } from '../lib/refresh';
 
 type Item = { title: string; priority?: 'high' | 'medium' | 'low'; note?: string };
 type Handoff = {
@@ -16,7 +17,7 @@ type Handoff = {
 
 export default function ShiftHandoff() {
   const { can } = useAuth();
-  const pending = useQuery({ queryKey: ['handoffs-pending'], queryFn: () => get<Handoff[]>('/api/handoffs/pending'), refetchInterval: 20000 });
+  const pending = useQuery({ queryKey: ['handoffs-pending'], queryFn: () => get<Handoff[]>('/api/handoffs/pending'), refetchInterval: REFRESH_MS });
   const recent = useQuery({ queryKey: ['handoffs'], queryFn: () => get<Handoff[]>('/api/handoffs') });
   const [creating, setCreating] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);

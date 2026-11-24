@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { Drawer, ErrorBox, Loading, PageHead, Pager, SearchBox, Sev, Status } from '../components/ui';
 import { get, type Page } from '../lib/api';
 import { ago, SEVERITIES, titleCase } from '../lib/format';
+import { REFRESH_MS } from '../lib/refresh';
 
 type Technique = { id: string; name: string; count: number; max_severity: string; rule_count: number };
 type MatrixData = {
@@ -96,7 +97,7 @@ export default function MitreAttack() {
   const q = useQuery({
     queryKey: ['mitre-matrix', days],
     queryFn: () => get<MatrixData>('/api/mitre/matrix', { days }),
-    refetchInterval: 15000,
+    refetchInterval: REFRESH_MS,
   });
   const data = q.data;
 

@@ -6,6 +6,7 @@ import { del, get, patch, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ago, titleCase } from '../lib/format';
 import { useAct } from '../lib/mut';
+import { REFRESH_MS } from '../lib/refresh';
 
 type ClientRow = { id: string; name: string; code: string; kind: string; owner: string };
 type ClientDetail = ClientRow & { logo_url: string; brand_color: string; timezone: string; contact_email: string; tier: string; active: boolean; report_recipients: string[]; created_at: string };
@@ -16,7 +17,7 @@ const HEALTH_META = { healthy: { icon: CheckCircle2, color: 'var(--ok)', label: 
 
 export default function Clients() {
   const { me, can } = useAuth();
-  const mssp = useQuery({ queryKey: ['mssp-dashboard'], queryFn: () => get<Dashboard>('/api/clients/mssp/dashboard'), enabled: can('mssp.view') && !!me?.all_clients, refetchInterval: 30000 });
+  const mssp = useQuery({ queryKey: ['mssp-dashboard'], queryFn: () => get<Dashboard>('/api/clients/mssp/dashboard'), enabled: can('mssp.view') && !!me?.all_clients, refetchInterval: REFRESH_MS });
   const [tab, setTab] = useState<'overview' | 'manage'>(can('mssp.view') && me?.all_clients ? 'overview' : 'manage');
   const [selected, setSelected] = useState<string | null>(null);
 
