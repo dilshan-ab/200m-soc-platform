@@ -53,35 +53,50 @@ it('shows each alert once and can be dismissed', async () => {
   await waitFor(() => expect(screen.queryByText('Brute force')).toBeNull());
 });
 
-it('respects the per-severity switches', async () => {
+it('pops up only critical and high alerts, never medium, low or info', async () => {
   alert('m1', 'medium', 'Medium one');
-  alert('l1', 'info', 'Info one');
-  alert('c1', 'critical', 'Critical one');
-  setPopupPrefs({ critical: true, high: true, medium: false, low: false });
+  alert('l1', 'low', 'Low one');
+  alert('i1', 'info', 'Info one');
+  alert('h1', 'high', 'High one');
   mount();
   live('m1');
   live('l1');
-  live('c1');
-  await screen.findByText('Critical one');
-  expect(screen.queryByText('Medium one')).toBeNull();
-  expect(screen.queryByText('Info one')).toBeNull();
-  expect(vi.mocked(get)).toHaveBeenCalledTimes(1); // switched-off severities are not even fetched
+  live('i1');
+  live('h1');
+  await screen.findByText('High one');
+  for (const t of ['Medium one', 'Low one', 'Info one']) expect(screen.queryByText(t)).toBeNull();
+  expect(vi.mocked(get)).toHaveBeenCalledTimes(1); // the others are not even fetched
+});
+
+it('respects the critical and high switches, ignoring older medium/low settings', async () => {
+  localStorage.setItem('200m-alert-popups', JSON.stringify({ critical: true, high: false, medium: true, low: true }));
+  resetPopupPrefsCache();
+  alert('h2', 'high', 'High off');
+  alert('m3', 'medium', 'Medium still off');
+  alert('c3', 'critical', 'Critical on');
+  mount();
+  live('h2');
+  live('m3');
+  live('c3');
+  await screen.findByText('Critical on');
+  expect(screen.queryByText('High off')).toBeNull();
+  expect(screen.queryByText('Medium still off')).toBeNull();
 });
 
 it('groups a burst beyond the visible limit into one summary', async () => {
   for (let i = 0; i < MAX_VISIBLE + 3; i++) alert(`b${i}`, 'high');
   mount();
   for (let i = 0; i < MAX_VISIBLE + 3; i++) live(`b${i}`);
-  expect(await screen.findByText('+3 more new alerts')).toBeTruthy();
+  expect(await screen.findByText('+3 more critical or high alerts')).toBeTruthy();
   expect(screen.getAllByRole('alert')).toHaveLength(MAX_VISIBLE);
 });
 
-it('closes medium pop-ups by itself but keeps critical ones until dismissed', async () => {
-  alert('m2', 'medium', 'Short lived');
+it('closes high pop-ups by itself but keeps critical ones until dismissed', async () => {
+  alert('h4', 'high', 'Short lived');
   alert('c2', 'critical', 'Stays put');
   vi.useFakeTimers({ shouldAdvanceTime: true });
   mount();
-  live('m2');
+  live('h4');
   live('c2');
   await screen.findByText('Short lived');
   await screen.findByText('Stays put');

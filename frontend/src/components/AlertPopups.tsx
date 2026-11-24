@@ -12,9 +12,9 @@ type AlertRow = { id: string; severity: string; title: string; host?: string; so
 
 export const MAX_VISIBLE = 4;
 // How long a pop-up stays before it closes itself; critical stays until dismissed.
-const LIFETIME: Record<string, number | null> = { critical: null, high: 30_000, medium: 8_000, low: 8_000, info: 8_000 };
+const LIFETIME: Record<string, number | null> = { critical: null, high: 30_000 };
 
-/** Pop-up messages for new alerts. Driven by the live event stream; checks every 30 seconds instead when the stream is down. */
+/** Pop-up messages for new critical and high alerts. Driven by the live event stream; checks every 30 seconds instead when the stream is down. */
 export function AlertPopups({ live }: { live: boolean }) {
   const prefs = usePopupPrefs();
   const prefsRef = useRef(prefs);
@@ -57,7 +57,7 @@ export function AlertPopups({ live }: { live: boolean }) {
   const baseline = useRef<Set<string> | null>(null);
   const recent = useQuery({
     queryKey: ['alert-popups-recent'],
-    queryFn: () => get<{ items: AlertRow[] }>('/api/alerts', { sort: '-time', limit: 20 }),
+    queryFn: () => get<{ items: AlertRow[] }>('/api/alerts', { severity: ['critical', 'high'], sort: '-time', limit: 20 }),
     enabled: !live,
     refetchInterval: live ? false : REFRESH_MS,
   });
@@ -88,7 +88,7 @@ export function AlertPopups({ live }: { live: boolean }) {
       ))}
       {overflow > 0 && (
         <div className="alert-popup more" role="status">
-          <span>+{overflow} more new alert{overflow === 1 ? '' : 's'}</span>
+          <span>+{overflow} more critical or high alert{overflow === 1 ? '' : 's'}</span>
           <Link className="alert-popup-open" to="/app/alerts?status=new" onClick={() => setOverflow(0)}>View alerts</Link>
           <button type="button" className="alert-popup-close" aria-label="Dismiss" onClick={() => setOverflow(0)}><X size={14} /></button>
         </div>
