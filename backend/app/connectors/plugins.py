@@ -18,8 +18,7 @@ from typing import Any
 import httpx
 import yaml
 
-from ..config import get_settings
-from ..security import validate_egress_url
+from ..security import is_bundled_caldera_url, validate_egress_url
 from .base import (
     CheckResult,
     Connector,
@@ -982,9 +981,9 @@ class Caldera(Connector):
     def request(self, method: str, path: str = "", *, url: str | None = None, **kw: Any) -> httpx.Response:
         """The bundled Caldera is reached over plain HTTP on the private Docker network, like Keycloak's admin API.
         Only that exact address is exempt from the HTTPS-only egress policy; any other URL goes through it."""
-        internal = get_settings().caldera_internal_url.rstrip("/")
-        target = url or f"{self.base_url()}{path}"
-        if internal and self.base_url() == internal and (target == internal or target.startswith(internal + "/")):
+        internal = self.base_url()
+        target = url or f"{internal}{path}"
+        if is_bundled_caldera_url(internal) and (target == internal or target.startswith(internal + "/")):
             try:
                 return self.client().request(method, target, **kw)
             except httpx.HTTPError as e:
