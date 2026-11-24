@@ -6,7 +6,6 @@ import { get } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Modal, Sev } from './ui';
 import { REFRESH_MS } from '../lib/refresh';
-import { setPopupPrefs, usePopupPrefs, type PopupPrefs } from '../lib/popupPrefs';
 
 /* ── LiveTimer ─────────────────────────────────────────────────────── */
 function fmt(ms: number): string {
@@ -112,22 +111,6 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
           <Link className="notif-viewall" to="/app/approvals" onClick={onClose}>Review approvals</Link>
         </div>
       )}
-      <PopupSettings />
-    </div>
-  );
-}
-
-function PopupSettings() {
-  const prefs = usePopupPrefs();
-  const items: [keyof PopupPrefs, string][] = [['critical', 'Critical'], ['high', 'High']];
-  return (
-    <div className="notif-section notif-popup-settings">
-      <div className="notif-section-label">Pop-ups for new critical and high alerts</div>
-      <div className="notif-popup-options">
-        {items.map(([k, label]) => (
-          <label key={k}><input type="checkbox" checked={prefs[k]} onChange={(e) => setPopupPrefs({ ...prefs, [k]: e.target.checked })} /> {label}</label>
-        ))}
-      </div>
     </div>
   );
 }

@@ -961,9 +961,15 @@ tr:has(.hover-actions) { position: relative; }
 /* ── Pop-ups for new alerts (components/AlertPopups.tsx) ───────────── */
 .alert-popups { position: fixed; bottom: 20px; right: 16px; z-index: 95; display: grid; gap: 10px; width: min(360px, calc(100vw - 32px)); }
 .alert-popup { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-left: 4px solid var(--muted); border-radius: 10px; padding: 12px 14px; box-shadow: 0 10px 30px #0000002e; animation: pop-in .2s ease-out; }
-.alert-popup.sev-critical { border-left-color: var(--bad); }
-.alert-popup.sev-high { border-left-color: var(--warn); }
-.alert-popup.sev-medium { border-left-color: var(--info, var(--accent)); }
+/* solid colours so they stand out in both themes; white text passes contrast on both */
+.alert-popup.sev-critical, .alert-popup.sev-high { color: #fff; border-color: transparent; }
+.alert-popup.sev-critical { background: #b91c1c; border-left-color: #7f1d1d; }   /* red */
+.alert-popup.sev-high { background: #b45309; border-left-color: #78350f; }       /* amber, the app's "high" hue */
+:is(.alert-popup.sev-critical, .alert-popup.sev-high) :is(.alert-popup-kind, .alert-popup-meta) { color: #ffffffd9; }
+:is(.alert-popup.sev-critical, .alert-popup.sev-high) .alert-popup-open { color: #fff; text-decoration: underline; }
+:is(.alert-popup.sev-critical, .alert-popup.sev-high) .alert-popup-close { color: #fff; }
+:is(.alert-popup.sev-critical, .alert-popup.sev-high) .alert-popup-close:hover { background: #ffffff26; color: #fff; }
+:is(.alert-popup.sev-critical, .alert-popup.sev-high) .badge { background: #ffffff2e; color: #fff; }
 .alert-popup-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .alert-popup-kind { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 .alert-popup-close { margin-left: auto; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); }
@@ -973,6 +979,4 @@ tr:has(.hover-actions) { position: relative; }
 .alert-popup-open { display: inline-block; margin-top: 8px; font-size: 13px; color: var(--accent); }
 .alert-popup.more { display: flex; align-items: center; gap: 10px; border-left-color: var(--accent); }
 .alert-popup.more .alert-popup-open { margin-top: 0; }
-.notif-popup-options { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 4px 0 2px; font-size: 13px; }
-.notif-popup-options label { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .pulse.blink, .alert-popup { animation: none; } }

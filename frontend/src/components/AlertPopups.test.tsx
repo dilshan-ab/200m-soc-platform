@@ -3,7 +3,6 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { get } from '../lib/api';
-import { DEFAULT_POPUP_PREFS, resetPopupPrefsCache, setPopupPrefs } from '../lib/popupPrefs';
 import { AlertPopups, MAX_VISIBLE } from './AlertPopups';
 import { Pulse } from './Interactive';
 
@@ -23,8 +22,6 @@ function mount() {
 
 beforeEach(() => {
   localStorage.clear();
-  resetPopupPrefsCache();
-  setPopupPrefs(DEFAULT_POPUP_PREFS);
   vi.mocked(get).mockClear();
   vi.mocked(get).mockImplementation((path: string) => {
     const id = path.split('/').pop()!;
@@ -68,19 +65,12 @@ it('pops up only critical and high alerts, never medium, low or info', async () 
   expect(vi.mocked(get)).toHaveBeenCalledTimes(1); // the others are not even fetched
 });
 
-it('respects the critical and high switches, ignoring older medium/low settings', async () => {
-  localStorage.setItem('200m-alert-popups', JSON.stringify({ critical: true, high: false, medium: true, low: true }));
-  resetPopupPrefsCache();
-  alert('h2', 'high', 'High off');
-  alert('m3', 'medium', 'Medium still off');
-  alert('c3', 'critical', 'Critical on');
+it('ignores pop-up settings saved by an earlier version', async () => {
+  localStorage.setItem('200m-alert-popups', JSON.stringify({ critical: false, high: false }));
+  alert('h5', 'high', 'High still pops');
   mount();
-  live('h2');
-  live('m3');
-  live('c3');
-  await screen.findByText('Critical on');
-  expect(screen.queryByText('High off')).toBeNull();
-  expect(screen.queryByText('Medium still off')).toBeNull();
+  live('h5');
+  expect(await screen.findByText('High still pops')).toBeTruthy();
 });
 
 it('groups a burst beyond the visible limit into one summary', async () => {

@@ -3,7 +3,6 @@ import { X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { get } from '../lib/api';
-import { popupWanted, usePopupPrefs } from '../lib/popupPrefs';
 import { REFRESH_MS } from '../lib/refresh';
 import { Sev } from './ui';
 
@@ -11,14 +10,13 @@ type Popup = { id: string; severity: string; title: string; host: string; source
 type AlertRow = { id: string; severity: string; title: string; host?: string; source?: string };
 
 export const MAX_VISIBLE = 4;
+/** Only critical and high alerts pop up. */
+export const popsUp = (severity: string | undefined) => severity === 'critical' || severity === 'high';
 // How long a pop-up stays before it closes itself; critical stays until dismissed.
 const LIFETIME: Record<string, number | null> = { critical: null, high: 30_000 };
 
 /** Pop-up messages for new critical and high alerts. Driven by the live event stream; checks every 30 seconds instead when the stream is down. */
 export function AlertPopups({ live }: { live: boolean }) {
-  const prefs = usePopupPrefs();
-  const prefsRef = useRef(prefs);
-  prefsRef.current = prefs;
   const seen = useRef(new Set<string>());
   const list = useRef<Popup[]>([]); // the visible pop-ups; state below only mirrors it for rendering
   const [popups, setPopups] = useState<Popup[]>([]);
@@ -30,7 +28,7 @@ export function AlertPopups({ live }: { live: boolean }) {
   }, []);
 
   const show = useCallback((a: AlertRow) => {
-    if (seen.current.has(a.id) || !popupWanted(prefsRef.current, a.severity)) return;
+    if (seen.current.has(a.id) || !popsUp(a.severity)) return;
     seen.current.add(a.id);
     if (list.current.length >= MAX_VISIBLE) {
       setOverflow((n) => n + 1);
@@ -46,7 +44,7 @@ export function AlertPopups({ live }: { live: boolean }) {
   useEffect(() => {
     const onLive = (e: Event) => {
       const ev = (e as CustomEvent<{ type: string; id?: string; severity?: string }>).detail;
-      if (ev?.type !== 'alert.created' || !ev.id || seen.current.has(ev.id) || !popupWanted(prefsRef.current, ev.severity ?? '')) return;
+      if (ev?.type !== 'alert.created' || !ev.id || seen.current.has(ev.id) || !popsUp(ev.severity)) return;
       get<AlertRow>(`/api/alerts/${ev.id}`).then(show).catch(() => { /* deleted or out of scope */ });
     };
     window.addEventListener('soc:live', onLive);
