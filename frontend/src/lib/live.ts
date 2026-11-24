@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
 const MAP: Record<string, string[]> = {
-  'alert.created': ['alerts', 'dashboard', 'alert-stats', 'triage-queue', 'mitre-matrix'], 'alert.updated': ['alerts', 'dashboard', 'alert', 'triage-queue', 'mitre-matrix'], 'case.created': ['cases'], 'case.updated': ['cases', 'case'],
+  'alert.created': ['alerts', 'dashboard', 'alert-stats', 'triage-queue', 'mitre-matrix', 'notif-alerts'], 'alert.updated': ['alerts', 'dashboard', 'alert', 'alert-stats', 'triage-queue', 'mitre-matrix', 'notif-alerts'], 'case.created': ['cases'], 'case.updated': ['cases', 'case'],
   'action.updated': ['requests', 'approvals', 'request'], 'approval.pending': ['approvals'], 'server.down': ['servers', 'dashboard'],
   'alert.deleted': ['alerts', 'alert', 'alert-stats', 'dashboard', 'triage-queue', 'mitre-matrix', 'threat-map', 'overview-recent-alerts', 'overview-active-cases', 'cases', 'case', 'incidents', 'incident', 'assets', 'asset', 'notif-alerts'],
   'warroom.deleted': ['warrooms'],
@@ -22,6 +22,7 @@ export function useLive(enabled: boolean): boolean {
       try {
         const ev = JSON.parse(m.data) as { type: string };
         (MAP[ev.type] ?? []).forEach((k) => void qc.invalidateQueries({ queryKey: [k] }));
+        window.dispatchEvent(new CustomEvent('soc:live', { detail: ev })); // e.g. pop-ups for new alerts
       } catch { /* ignore malformed */ }
     };
     return () => es.close();

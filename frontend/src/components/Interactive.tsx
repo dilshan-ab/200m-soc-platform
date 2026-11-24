@@ -6,6 +6,7 @@ import { get } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Modal, Sev } from './ui';
 import { REFRESH_MS } from '../lib/refresh';
+import { setPopupPrefs, usePopupPrefs, type PopupPrefs } from '../lib/popupPrefs';
 
 /* ── LiveTimer ─────────────────────────────────────────────────────── */
 function fmt(ms: number): string {
@@ -50,9 +51,10 @@ export function Skeleton({ lines = 5, width = 'full' }: { lines?: number; width?
 }
 
 /* ── Pulse ─────────────────────────────────────────────────────────── */
-export function Pulse({ active, color }: { active: boolean; color?: string }) {
+/** A dot on an icon. `blink` animates it (urgent); otherwise it is a steady marker. */
+export function Pulse({ active, color, blink = true }: { active: boolean; color?: string; blink?: boolean }) {
   if (!active) return null;
-  return <span className="pulse" style={color ? { background: color } : undefined} />;
+  return <span className={`pulse ${blink ? 'blink' : 'steady'}`} data-testid="pulse" style={color ? { background: color } : undefined} />;
 }
 
 /* ── NotificationPanel ─────────────────────────────────────────────── */
@@ -60,7 +62,7 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
   const { can } = useAuth();
   const alerts = useQuery({
     queryKey: ['notif-alerts'],
-    queryFn: () => get<{ items: any[] }>('/api/alerts', { severity: ['critical'], status: ['new'], limit: 5 }),
+    queryFn: () => get<{ items: any[] }>('/api/alerts', { severity: ['critical', 'high'], status: ['new'], sort: 'severity', limit: 6 }),
     refetchInterval: REFRESH_MS,
   });
   const approvals = useQuery({
@@ -89,11 +91,11 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
         <button className="notif-close" onClick={onClose} aria-label="Close"><X size={16} /></button>
       </div>
       {items.length === 0 && total === 0 && (
-        <div className="notif-empty">No critical alerts or pending approvals.</div>
+        <div className="notif-empty">No new critical or high alerts, and no pending approvals.</div>
       )}
       {items.length > 0 && (
         <div className="notif-section">
-          <div className="notif-section-label"><AlertTriangle size={13} /> Critical alerts</div>
+          <div className="notif-section-label"><AlertTriangle size={13} /> New critical and high alerts</div>
           {items.map((a) => (
             <Link key={a.id} className="notif-item" to={`/app/alerts?open=${a.id}`} onClick={onClose}>
               <Sev v={a.severity} />
@@ -101,7 +103,7 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
               <span className="notif-meta">{a.source}</span>
             </Link>
           ))}
-          <Link className="notif-viewall" to="/app/alerts?severity=critical&status=new" onClick={onClose}>View all critical alerts</Link>
+          <Link className="notif-viewall" to="/app/alerts?status=new" onClick={onClose}>View all new alerts</Link>
         </div>
       )}
       {total > 0 && (
@@ -110,6 +112,22 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
           <Link className="notif-viewall" to="/app/approvals" onClick={onClose}>Review approvals</Link>
         </div>
       )}
+      <PopupSettings />
+    </div>
+  );
+}
+
+function PopupSettings() {
+  const prefs = usePopupPrefs();
+  const items: [keyof PopupPrefs, string][] = [['critical', 'Critical'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low and info']];
+  return (
+    <div className="notif-section notif-popup-settings">
+      <div className="notif-section-label">Pop-ups for new alerts</div>
+      <div className="notif-popup-options">
+        {items.map(([k, label]) => (
+          <label key={k}><input type="checkbox" checked={prefs[k]} onChange={(e) => setPopupPrefs({ ...prefs, [k]: e.target.checked })} /> {label}</label>
+        ))}
+      </div>
     </div>
   );
 }
