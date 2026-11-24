@@ -43,7 +43,7 @@ def list_cases(p: Principal = Depends(require("cases.read")), db: Session = Depe
     if mine:
         qy = qy.where(Case.owner_id == p.user.id)
     if q:
-        qy = qy.where(Case.title.contains(q, autoescape=True))
+        qy = qy.where(Case.title.icontains(q, autoescape=True))
     rows, total = paginate(db, qy.order_by(Case.created_at.desc(), Case.id), page, limit)
     return page_out([case_out(c) for c in rows], total, page, limit)
 

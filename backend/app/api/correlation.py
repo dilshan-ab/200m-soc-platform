@@ -173,7 +173,7 @@ def list_incidents(
     if severity:
         qy = qy.where(Incident.severity == severity)
     if q:
-        qy = qy.where(Incident.name.contains(q, autoescape=True))
+        qy = qy.where(Incident.name.icontains(q, autoescape=True))
     rows, total = paginate(db, qy.order_by(Incident.created_at.desc(), Incident.id), page, limit)
     return page_out([incident_out(i) for i in rows], total, page, limit)
 

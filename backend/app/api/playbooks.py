@@ -68,7 +68,7 @@ def list_playbooks(
     if status:
         qy = qy.where(Playbook.status == status)
     if q:
-        qy = qy.where(Playbook.name.contains(q, autoescape=True))
+        qy = qy.where(Playbook.name.icontains(q, autoescape=True))
     rows, total = paginate(db, qy.order_by(Playbook.updated_at.desc(), Playbook.id), page, limit)
     return page_out([playbook_out(pb) for pb in rows], total, page, limit)
 

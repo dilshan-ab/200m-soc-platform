@@ -262,16 +262,16 @@ def global_search(q: str = Query(max_length=200), p: Principal = Depends(get_pri
     if p.can("alerts.read"):
         alerts = db.execute(select(Alert).where(
             p.scope(Alert.client_id),
-            Alert.title.contains(term, autoescape=True) | Alert.host.contains(term, autoescape=True)
-            | Alert.src_ip.contains(term, autoescape=True) | Alert.username.contains(term, autoescape=True)
-            | Alert.rule_id.contains(term, autoescape=True),
+            Alert.title.icontains(term, autoescape=True) | Alert.host.icontains(term, autoescape=True)
+            | Alert.src_ip.icontains(term, autoescape=True) | Alert.username.icontains(term, autoescape=True)
+            | Alert.rule_id.icontains(term, autoescape=True),
         ).order_by(Alert.time.desc(), Alert.id).limit(8)).scalars()
         results["alerts"] = [{"id": alert.id, "title": alert.title, "severity": alert.severity} for alert in alerts]
     if p.can("cases.read"):
-        cases = db.execute(select(Case).where(p.scope(Case.client_id), Case.title.contains(term, autoescape=True)).order_by(Case.created_at.desc(), Case.id).limit(8)).scalars()
+        cases = db.execute(select(Case).where(p.scope(Case.client_id), Case.title.icontains(term, autoescape=True)).order_by(Case.created_at.desc(), Case.id).limit(8)).scalars()
         results["cases"] = [{"id": case.id, "number": case.number, "title": case.title} for case in cases]
     if p.can("assets.read"):
-        assets = db.execute(select(Asset).where(p.scope(Asset.client_id), Asset.name.contains(term, autoescape=True) | Asset.hostname.contains(term, autoescape=True)).order_by(Asset.name, Asset.id).limit(8)).scalars()
+        assets = db.execute(select(Asset).where(p.scope(Asset.client_id), Asset.name.icontains(term, autoescape=True) | Asset.hostname.icontains(term, autoescape=True)).order_by(Asset.name, Asset.id).limit(8)).scalars()
         results["assets"] = [{"id": asset.id, "name": asset.name} for asset in assets]
     return results
 

@@ -66,7 +66,7 @@ def list_alerts(
     if unassigned:
         qy = qy.where(Alert.assignee_id.is_(None))
     if q:
-        qy = qy.where(Alert.title.contains(q, autoescape=True) | Alert.host.contains(q, autoescape=True) | Alert.src_ip.contains(q, autoescape=True) | Alert.rule_id.contains(q, autoescape=True) | Alert.username.contains(q, autoescape=True) | Alert.dst_ip.contains(q, autoescape=True))
+        qy = qy.where(Alert.title.icontains(q, autoescape=True) | Alert.host.icontains(q, autoescape=True) | Alert.src_ip.icontains(q, autoescape=True) | Alert.rule_id.icontains(q, autoescape=True) | Alert.username.icontains(q, autoescape=True) | Alert.dst_ip.icontains(q, autoescape=True))
     col = {"time": Alert.time, "severity": Alert.severity}[sort.lstrip("-")]
     qy = qy.order_by(col.desc() if sort.startswith("-") else col.asc(), Alert.id)
     rows, total = paginate(db, qy, page, limit)
