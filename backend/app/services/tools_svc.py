@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..connectors.base import Connector, ConnectorError, Manifest, get_connector_cls
 from ..models import ConnectorState, Tool
-from ..security import SecurityError, validate_egress_url
+from ..security import SecurityError, is_bundled_caldera_url, validate_egress_url
 from ..vault import get_secret_store
 
 _LIST_SPLIT = re.compile(r"[,\n]")
@@ -39,7 +39,7 @@ def split_config(manifest: Manifest, values: dict[str, Any]) -> tuple[dict[str, 
             v = [x.strip() for x in _LIST_SPLIT.split(v) if x.strip()]
         if f.type == "number":
             v = int(str(v))
-        if f.type == "url" and not f.secret:
+        if f.type == "url" and not f.secret and not (manifest.type == "caldera" and f.name == "url" and is_bundled_caldera_url(str(v))):
             try:
                 validate_egress_url(str(v)) if f.name == "url" and manifest.type not in ("clickup",) else None
             except SecurityError as e:
