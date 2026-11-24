@@ -15,8 +15,10 @@ from datetime import UTC, datetime
 from email.message import EmailMessage
 from typing import Any
 
+import httpx
 import yaml
 
+from ..config import get_settings
 from ..security import validate_egress_url
 from .base import (
     CheckResult,
@@ -970,10 +972,24 @@ class CustomTool(Connector):
 class Caldera(Connector):
     manifest = Manifest(
         "caldera", "MITRE Caldera", "response", "REST API v2", ["pull", "action"], "API key",
-        [URL, F("api_key", "API key", "password", secret=True), F("group", "Default agent group", default="red")],
+        [F("url", "Base URL", "url", help="http://caldera:8888 for the Caldera bundled with the platform (docker compose profile `caldera`); otherwise https:// on an approved internal network"),
+         F("api_key", "API key", "password", secret=True, help="api_key_red from Caldera's conf/local.yml"), F("group", "Default agent group", default="red")],
         ["action", "poll_findings"], ["API reachable"],
-        setup_hint="API key from Caldera conf/local.yml (api_key_red for red team ops). Default port 8888.",
+        setup_hint="Bundled Caldera: start it with the `caldera` compose profile, then use http://caldera:8888 and the api_key_red from its conf/local.yml. "
+                   "Starting an adversary needs two approvals; stopping an operation runs at once.",
     )
+
+    def request(self, method: str, path: str = "", *, url: str | None = None, **kw: Any) -> httpx.Response:
+        """The bundled Caldera is reached over plain HTTP on the private Docker network, like Keycloak's admin API.
+        Only that exact address is exempt from the HTTPS-only egress policy; any other URL goes through it."""
+        internal = get_settings().caldera_internal_url.rstrip("/")
+        target = url or f"{self.base_url()}{path}"
+        if internal and self.base_url() == internal and (target == internal or target.startswith(internal + "/")):
+            try:
+                return self.client().request(method, target, **kw)
+            except httpx.HTTPError as e:
+                raise ConnectorError(f"request failed: {type(e).__name__}") from e
+        return super().request(method, path, url=url, **kw)
 
     def _h(self) -> dict[str, str]:
         return {"KEY": self.secrets.get("api_key", ""), "Content-Type": "application/json"}
@@ -987,7 +1003,7 @@ class Caldera(Connector):
             body = {
                 "name": params.get("operation_name", f"sim-{uuid.uuid4().hex[:8]}"),
                 "adversary": {"adversary_id": params["adversary_id"]},
-                "group": params.get("group", self.cfg.get("group", "red")),
+                "group": (targets[0] if targets else "") or params.get("group") or self.cfg.get("group", "red"),  # the target is the agent group
                 "auto_close": True, "jitter": "2/8",
             }
             d = self.json("POST", "/api/v2/operations", headers=self._h(), json=body)
