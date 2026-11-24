@@ -119,10 +119,10 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
 
 function PopupSettings() {
   const prefs = usePopupPrefs();
-  const items: [keyof PopupPrefs, string][] = [['critical', 'Critical'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low and info']];
+  const items: [keyof PopupPrefs, string][] = [['critical', 'Critical'], ['high', 'High']];
   return (
     <div className="notif-section notif-popup-settings">
-      <div className="notif-section-label">Pop-ups for new alerts</div>
+      <div className="notif-section-label">Pop-ups for new critical and high alerts</div>
       <div className="notif-popup-options">
         {items.map(([k, label]) => (
           <label key={k}><input type="checkbox" checked={prefs[k]} onChange={(e) => setPopupPrefs({ ...prefs, [k]: e.target.checked })} /> {label}</label>
