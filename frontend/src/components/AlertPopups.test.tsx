@@ -1,13 +1,16 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { get } from '../lib/api';
-import { DEFAULT_POPUP_PREFS, resetPopupPrefsCache, setPopupPrefs } from '../lib/popupPrefs';
+import { get, post } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { AlertPopups, MAX_VISIBLE } from './AlertPopups';
 import { Pulse } from './Interactive';
 
-vi.mock('../lib/api', () => ({ get: vi.fn() }));
+vi.mock('../lib/api', () => ({ get: vi.fn(), post: vi.fn() }));
+vi.mock('../lib/auth', () => ({ useAuth: vi.fn() }));
+
+function Where() { const l = useLocation(); return <output data-testid="where">{l.pathname + l.search}</output>; }
 
 const ALERTS: Record<string, { id: string; severity: string; title: string; host: string; source: string }> = {};
 function alert(id: string, severity: string, title = `Alert ${id}`) {
@@ -18,14 +21,14 @@ function live(id: string) {
 }
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={qc}><MemoryRouter><AlertPopups live /></MemoryRouter></QueryClientProvider>);
+  return render(<QueryClientProvider client={qc}><MemoryRouter><AlertPopups live /><Where /></MemoryRouter></QueryClientProvider>);
 }
 
 beforeEach(() => {
   localStorage.clear();
-  resetPopupPrefsCache();
-  setPopupPrefs(DEFAULT_POPUP_PREFS);
   vi.mocked(get).mockClear();
+  vi.mocked(post).mockReset();
+  vi.mocked(useAuth).mockReturnValue({ can: () => true } as unknown as ReturnType<typeof useAuth>);
   vi.mocked(get).mockImplementation((path: string) => {
     const id = path.split('/').pop()!;
     return ALERTS[id] ? Promise.resolve(ALERTS[id]) : Promise.reject(new Error('not found'));
@@ -68,19 +71,12 @@ it('pops up only critical and high alerts, never medium, low or info', async () 
   expect(vi.mocked(get)).toHaveBeenCalledTimes(1); // the others are not even fetched
 });
 
-it('respects the critical and high switches, ignoring older medium/low settings', async () => {
-  localStorage.setItem('200m-alert-popups', JSON.stringify({ critical: true, high: false, medium: true, low: true }));
-  resetPopupPrefsCache();
-  alert('h2', 'high', 'High off');
-  alert('m3', 'medium', 'Medium still off');
-  alert('c3', 'critical', 'Critical on');
+it('ignores pop-up settings saved by an earlier version', async () => {
+  localStorage.setItem('200m-alert-popups', JSON.stringify({ critical: false, high: false }));
+  alert('h5', 'high', 'High still pops');
   mount();
-  live('h2');
-  live('m3');
-  live('c3');
-  await screen.findByText('Critical on');
-  expect(screen.queryByText('High off')).toBeNull();
-  expect(screen.queryByText('Medium still off')).toBeNull();
+  live('h5');
+  expect(await screen.findByText('High still pops')).toBeTruthy();
 });
 
 it('groups a burst beyond the visible limit into one summary', async () => {
@@ -112,4 +108,47 @@ it('the bell dot blinks only when told to', () => {
   expect(screen.getByTestId('pulse').className).toBe('pulse steady');
   rerender(<Pulse active={false} />);
   expect(screen.queryByTestId('pulse')).toBeNull();
+});
+
+
+it('acknowledges an alert straight from the pop-up', async () => {
+  alert('k1', 'critical', 'Act on me');
+  vi.mocked(post).mockResolvedValue({ updated: 1, skipped: [] });
+  mount();
+  live('k1');
+  await screen.findByText('Act on me');
+  fireEvent.click(screen.getByRole('button', { name: 'Acknowledge' }));
+  expect(await screen.findByText('Acknowledged')).toBeTruthy();
+  expect(vi.mocked(post)).toHaveBeenCalledWith('/api/alerts/bulk', { ids: ['k1'], status: 'acknowledged' });
+  expect(screen.getByTestId('where').textContent).toBe('/');  // acting does not navigate away
+});
+
+it('can start an investigation, and shows the error if the update fails', async () => {
+  alert('k2', 'high', 'Investigate me');
+  vi.mocked(post).mockRejectedValueOnce(new Error('alert changed; reload'));
+  mount();
+  live('k2');
+  await screen.findByText('Investigate me');
+  fireEvent.click(screen.getByRole('button', { name: 'Investigate' }));
+  expect(await screen.findByText('alert changed; reload')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Investigate' })).toBeTruthy();  // can try again
+});
+
+it('clicking the pop-up opens the alert', async () => {
+  alert('k3', 'critical', 'Click anywhere');
+  mount();
+  live('k3');
+  fireEvent.click(await screen.findByText('Click anywhere'));
+  expect(screen.getByTestId('where').textContent).toBe('/app/alerts?open=k3');
+  expect(screen.queryByText('Click anywhere')).toBeNull();
+});
+
+it('hides the triage buttons from users who cannot triage', async () => {
+  vi.mocked(useAuth).mockReturnValue({ can: () => false } as unknown as ReturnType<typeof useAuth>);
+  alert('k4', 'high', 'Read only');
+  mount();
+  live('k4');
+  await screen.findByText('Read only');
+  expect(screen.queryByRole('button', { name: 'Acknowledge' })).toBeNull();
+  expect(screen.getByRole('link', { name: 'Open alert' })).toBeTruthy();
 });
