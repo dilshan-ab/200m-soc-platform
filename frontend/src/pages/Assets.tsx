@@ -29,7 +29,7 @@ export default function Assets({ endpoint = false }: { endpoint?: boolean }) {
       <PageHead title={endpoint ? 'EDR' : 'Assets'} sub={endpoint ? 'Inspect endpoint agent health, patch state, and host inventory reported by Wazuh.' : 'Servers and workstations discovered from Wazuh agents, grouped by department or client.'}>
         {endpoint && <button className="btn" onClick={() => upd('agent_status', 'disconnected')}>Disconnected agents</button>}
       </PageHead>
-      <SavedViews area="assets" onApply={() => setPage(1)} />
+      <div className="toolbar"><SavedViews area="assets" onApply={() => setPage(1)} /></div>
       <div className="filters">
         <SearchBox value={f.q} onChange={(v) => upd('q', v)} placeholder="Search name or hostname…" label="Search assets" />
         <select aria-label="Kind" value={f.kind} onChange={(e) => upd('kind', e.target.value)}><option value="">Any kind</option><option value="server">Server</option><option value="workstation">Workstation</option></select>

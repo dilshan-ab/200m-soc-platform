@@ -38,7 +38,7 @@ export default function ThreatHunting() {
 
   return (
     <>
-      <PageHead title="Threat hunting" sub="Hypothesis-driven hunts over the alerts you already have, mapped to MITRE ATT&CK." eyebrow="OPERATIONS">
+      <PageHead title="Threat hunting" sub="Hypothesis-driven hunts over the alerts you already have, mapped to MITRE ATT&CK." eyebrow="INVESTIGATE">
         {can('hunts.request') && <>
           <button className="btn" onClick={() => setNewCollect(true)}>Request artifact collection</button>
           <button className="btn primary" onClick={() => setNewSearch(true)}>New hunt</button>

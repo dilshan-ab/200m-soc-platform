@@ -24,7 +24,7 @@ export default function ShiftHandoff() {
 
   return (
     <>
-      <PageHead title="Shift Handoff" sub="Hand off open items, watch items, and context to the next analyst — cleanly." eyebrow="OPERATIONS">
+      <PageHead title="Shift Handoff" sub="Hand off open items, watch items, and context to the next analyst — cleanly." eyebrow="RESPOND">
         {can('handoff.write') && <button className="btn primary" onClick={() => setCreating(true)}><Plus size={16} /> New handoff</button>}
       </PageHead>
 
