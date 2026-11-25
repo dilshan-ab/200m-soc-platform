@@ -57,8 +57,11 @@ def _bearer(c: Connector, field: str = "api_key") -> dict[str, str]:
 
 
 # ----------------------------------------------------------------------------- Wazuh
-# Suricata/Emerging Threats rules that fire only because the peer is on a reputation or block list.
-REPUTATION_SIGNATURE = re.compile(r"\bET (CINS|DROP|COMPROMISED|DSHIELD|TOR|3CORESEC)\b|Poor Reputation IP", re.I)
+# Rules that fire only because the peer is on a reputation or block list: Suricata/Emerging Threats list signatures and
+# Wazuh OSINT CDB list matches on single events. The CDB "repeated ... (brute force)" escalation is deliberately not matched.
+REPUTATION_SIGNATURE = re.compile(
+    r"\bET (CINS|DROP|COMPROMISED|DSHIELD|TOR|3CORESEC)\b|Poor Reputation IP"
+    r"|^OSINT CDB: (Suricata alert|authentication failure) from a known malicious IP", re.I)
 REPUTATION_NOISE = re.compile(r"\s*group \d+|\s*Signature ID: \d+\.?", re.I)
 
 

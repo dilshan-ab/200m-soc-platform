@@ -203,3 +203,22 @@ def test_reputation_list_hits_fold_into_one_low_alert_per_host():
         # Other hosts get their own rolling alert, and real exploit signatures are untouched.
         assert created_other and other_host.id != first.id
         assert created_exploit and exploit.severity == "high" and exploit.src_ip == "198.51.100.1"
+
+
+def test_osint_cdb_list_matches_fold_but_brute_force_escalation_does_not():
+    from app.connectors.plugins import WazuhIndexer
+
+    def cdb(i, rid, desc, ip, level):
+        return {"id": f"c-{i}", "timestamp": "2026-11-25T10:20:00.000+0000", "rule": {"id": rid, "level": level, "description": desc, "groups": ["osint"]},
+                "agent": {"id": "003", "name": "PM-Tool"}, "data": {"src_ip": ip, "dest_ip": "10.0.0.6"}}
+    with dbmod.session_scope() as db:
+        t = Tool(type="wazuh_indexer", name="wi", config={})
+        db.add(t)
+        db.flush()
+        sur = [ingest.ingest_alert(db, t, WazuhIndexer.normalize(f"a{i}", cdb(i, "100661", "OSINT CDB: Suricata alert from a known malicious IP address", f"198.51.100.{i}", 8))) for i in range(1, 4)]
+        auth = [ingest.ingest_alert(db, t, WazuhIndexer.normalize(f"b{i}", cdb(10 + i, "100660", "OSINT CDB: authentication failure from a known malicious IP address", f"192.0.2.{i}", 6))) for i in range(1, 3)]
+        brute = [ingest.ingest_alert(db, t, WazuhIndexer.normalize(f"x{i}", cdb(20 + i, "100662", "OSINT CDB: repeated authentication failures (brute force) from a known malicious IP", f"203.0.113.{i}", 12))) for i in range(1, 3)]
+        assert [c for _, c in sur] == [True, False, False] and sur[0][0].severity == "low" and sur[0][0].count == 3
+        assert sur[0][0].raw["src_ips"] == ["198.51.100.1", "198.51.100.2", "198.51.100.3"]
+        assert [c for _, c in auth] == [True, False]
+        assert [c for _, c in brute] == [True, True] and brute[0][0].severity == "high"
