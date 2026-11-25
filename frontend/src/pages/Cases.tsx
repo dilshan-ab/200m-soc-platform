@@ -27,7 +27,7 @@ export default function Cases() {
       <PageHead title="Cases" sub="Investigations with tasks, observables and a full timeline.">
         {can('cases.write') && <button className="btn primary" onClick={() => setCreating(true)}>New case</button>}
       </PageHead>
-      <SavedViews area="cases" onApply={() => { setPage(1); }} />
+      <div className="toolbar">
       <Chips items={[
         { label: 'All', active: !f.status && !f.severity && !f.mine && !f.q, onClick: () => { setSp(new URLSearchParams(), { replace: true }); setPage(1); } },
         { label: 'Open', active: f.status === 'open' && !f.mine, onClick: () => { setSp(new URLSearchParams({ status: 'open' }), { replace: true }); setPage(1); } },
@@ -35,7 +35,9 @@ export default function Cases() {
         { label: 'Critical', active: f.severity === 'critical', onClick: () => { setSp(new URLSearchParams({ severity: 'critical' }), { replace: true }); setPage(1); } },
         { label: 'Mine', active: f.mine, onClick: () => { setSp(new URLSearchParams({ mine: '1' }), { replace: true }); setPage(1); } },
       ]} />
-      <div className="filters">
+      <SavedViews area="cases" onApply={() => { setPage(1); }} />
+      </div>
+      <div className="filters compact">
         <SearchBox value={f.q} onChange={(v) => setF('q', v)} placeholder="Search title…" label="Search cases" />
         <select aria-label="Status" value={f.status} onChange={(e) => setF('status', e.target.value)}><option value="">Any status</option>{['open', 'in_progress', 'resolved', 'closed'].map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}</select>
         <select aria-label="Severity" value={f.severity} onChange={(e) => setF('severity', e.target.value)}><option value="">Any severity</option>{SEVERITIES.filter((s) => s !== 'info').map((s) => <option key={s}>{s}</option>)}</select>

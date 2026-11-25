@@ -95,7 +95,7 @@ html[data-theme] .content > .heading .subtitle { margin-top: 2px; font-size: 13p
 html[data-theme] :is(.panel, .card) { border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); box-shadow: none; }
 
 /* ---------------------------------------------------------------- badges: tinted, with a shape cue */
-html[data-theme] .main-shell .badge { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 10px; font-size: 11px; font-weight: 600; letter-spacing: .01em; text-transform: capitalize; white-space: nowrap; }
+html[data-theme] :is(.main-shell, .drawer, .modal) .badge { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 10px; font-size: 11px; font-weight: 600; letter-spacing: .01em; text-transform: capitalize; white-space: nowrap; }
 html[data-theme] .badge:hover { transform: none; }
 html[data-theme] .badge[class*=sev-]::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
 html[data-theme] .badge.sev-critical::before { border-radius: 1px; transform: rotate(45deg); }
@@ -153,3 +153,51 @@ html[data-theme] .ops-overview .ops-kpi { min-height: 0; padding: 14px 16px 12px
 html[data-theme] .ops-overview .ops-kpi strong { font-size: 28px; line-height: 1.15; font-weight: 600; letter-spacing: -.01em; }
 html[data-theme] .ops-overview .ops-kpi .ops-kpi-label { font-size: 12.5px; font-weight: 500; color: var(--muted); }
 html[data-theme] .ops-overview .ops-kpi .ops-kpi-index { display: none; }
+
+/* ================================================================ phase 2: shared detail surfaces */
+/* Buttons: one height scale (32 / 28), one radius. */
+html[data-theme] :is(.main-shell, .drawer, .modal) .btn { min-height: 32px; padding: 0 12px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; gap: 6px; transition: background .15s, border-color .15s, color .15s; }
+html[data-theme] :is(.main-shell, .drawer, .modal) .btn.small { min-height: 28px; padding: 0 10px; font-size: 12.5px; }
+html[data-theme] :is(.main-shell, .drawer, .modal) .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+html[data-theme] :is(.main-shell, .drawer, .modal) .btn.danger { background: transparent; border-color: color-mix(in srgb, var(--bad) 55%, transparent); color: var(--bad); }
+html[data-theme] :is(.main-shell, .drawer, .modal) .btn.danger:hover { background: var(--bad-bg); }
+
+/* Details drawer: readable width, clear header, two-column facts, sections as quiet cards. */
+html[data-theme] .drawer { width: min(600px, 100vw); padding: 18px 22px 28px; background: var(--surface); border-left: 1px solid var(--border); box-shadow: -12px 0 32px rgb(0 0 0 / 28%); }
+html[data-theme] .drawer > .eyebrow { margin-bottom: 6px; font-size: 11px; letter-spacing: .08em; color: var(--muted); }
+html[data-theme] .drawer > h2 { display: flex; align-items: center; gap: 10px; margin: 0 36px 14px 0; font-size: 18px; font-weight: 600; line-height: 1.35; }
+html[data-theme] .drawer > .close { top: 12px; right: 12px; width: 32px; height: 32px; border-radius: var(--radius-sm); }
+html[data-theme] .drawer > .close:hover { background: var(--hover-surface); }
+html[data-theme] .drawer > .row:first-of-type { flex-wrap: wrap; gap: 8px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+html[data-theme] :is(.drawer, .main-shell) dl.kv { display: grid; grid-template-columns: minmax(110px, 34%) 1fr; gap: 0; margin: 0 0 16px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+html[data-theme] :is(.drawer, .main-shell) dl.kv > :is(dt, dd) { margin: 0; padding: 7px 12px; border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent); font-size: 13px; min-width: 0; overflow-wrap: anywhere; }
+html[data-theme] :is(.drawer, .main-shell) dl.kv > dt { background: var(--surface-2); color: var(--muted); font-weight: 500; }
+html[data-theme] :is(.drawer, .main-shell) dl.kv > :is(dt, dd):nth-last-child(-n+2) { border-bottom: 0; }
+html[data-theme] .drawer :is(section, .panel, .card) { margin: 0 0 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
+html[data-theme] .drawer :is(section, .panel, .card) h3, html[data-theme] .drawer h4 { margin: 0 0 6px; font-size: 13.5px; font-weight: 600; }
+html[data-theme] .drawer .investigation-pivots :is(.row, div) { flex-wrap: wrap; gap: 6px; }
+html[data-theme] .drawer textarea { min-height: 72px; font-size: 13px; }
+html[data-theme] .drawer details > summary { padding: 8px 0; font-size: 13px; font-weight: 600; color: var(--muted); }
+html[data-theme] .drawer :is(pre, .log-raw) { max-height: 320px; overflow: auto; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--bg); border: 1px solid var(--border); font-family: var(--font-mono); font-size: 12px; line-height: 1.55; }
+
+/* Filter rows on every page: one bordered row, small labels above controls. */
+html[data-theme] .main-shell .filters:not(.compact) { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+html[data-theme] .main-shell .filters:not(.compact) .field { margin: 0; min-width: 150px; flex: 0 1 auto; }
+html[data-theme] .main-shell .filters:not(.compact) .field:first-child { flex: 1 1 240px; }
+html[data-theme] .main-shell .filters:not(.compact) .field > label { display: block; margin-bottom: 4px; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+html[data-theme] .main-shell .filters :is(input:not([type=checkbox]), select) { height: 34px; font-size: 13px; }
+
+/* KPI strips used by Triage, Correlation and others. */
+html[data-theme] .main-shell .kpi { padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+html[data-theme] .main-shell .kpi :is(b, strong, .value) { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Raw log lines and code blocks on pages. */
+html[data-theme] .main-shell :is(pre, .log-raw) { font-family: var(--font-mono); font-size: 12px; line-height: 1.55; border-radius: var(--radius-sm); }
+
+@media (max-width: 650px) {
+  html[data-theme] .drawer { padding: 16px; }
+  html[data-theme] :is(.drawer, .main-shell) dl.kv { grid-template-columns: 1fr; }
+  html[data-theme] :is(.drawer, .main-shell) dl.kv > dt { border-bottom: 0; padding-bottom: 2px; }
+  html[data-theme] .main-shell .filters:not(.compact) .field { flex: 1 1 100%; }
+}
+html[data-theme] .filters.compact > :first-child { flex: 1 1 280px; }
