@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle2, Clock, Database, Plus, Search, Shield, Trash2, XCircle, Zap } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, Database, MinusCircle, Plus, Search, Shield, Trash2, XCircle, Zap } from 'lucide-react';
 import { Fragment, useState } from 'react';
 import { Drawer, Empty, ErrorBox, Loading, PageHead, Status } from '../components/ui';
 import { del, get, post } from '../lib/api';
@@ -124,7 +124,7 @@ function ReputationBadge({ results }: { results: Record<string, any> }) {
 }
 
 function JobDrawer({ job, onClose }: { job: Job; onClose: () => void }) {
-  const sources = Object.entries(job.results || {}).filter(([k]) => k !== '_reputation');
+  const sources = Object.entries(job.results || {}).filter(([k]) => !k.startsWith('_'));
   const Icon = VERDICT_ICONS[job.verdict] || Search;
   return (
     <Drawer title={job.indicator} onClose={onClose}>
@@ -145,7 +145,7 @@ function JobDrawer({ job, onClose }: { job: Job; onClose: () => void }) {
       {sources.length === 0 ? <Empty>No sources returned data.</Empty> : sources.map(([name, data]) => (
         <details key={name} open style={{ marginBottom: 8, border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px' }}>
           <summary style={{ cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-            {data.error ? <XCircle size={14} style={{ color: 'var(--bad)' }} /> : <CheckCircle2 size={14} style={{ color: 'var(--ok)' }} />}
+            {data.error ? <XCircle size={14} style={{ color: 'var(--bad)' }} /> : data.skipped ? <MinusCircle size={14} style={{ color: 'var(--muted)' }} /> : <CheckCircle2 size={14} style={{ color: 'var(--ok)' }} />}
             {name}
             {data.verdict && <span style={{ marginLeft: 'auto', fontSize: 12, color: VERDICT_COLORS[data.verdict] }}>{data.verdict}</span>}
           </summary>
@@ -205,6 +205,7 @@ function KvFallback({ data }: { data: Record<string, any> }) {
 
 function SourceResult({ name, data }: { name: string; data: Record<string, any> }) {
   if (data.error) return <p style={{ color: 'var(--bad)', fontSize: 13, marginTop: 8 }}>{String(data.error)}</p>;
+  if (data.skipped) return <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 8 }}>Not asked: {String(data.skipped)}</p>;
 
   if (name === 'Local Intel' && data.matched) {
     return (
