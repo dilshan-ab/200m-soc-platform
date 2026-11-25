@@ -57,6 +57,11 @@ def _bearer(c: Connector, field: str = "api_key") -> dict[str, str]:
 
 
 # ----------------------------------------------------------------------------- Wazuh
+# Suricata/Emerging Threats rules that fire only because the peer is on a reputation or block list.
+REPUTATION_SIGNATURE = re.compile(r"\bET (CINS|DROP|COMPROMISED|DSHIELD|TOR|3CORESEC)\b|Poor Reputation IP", re.I)
+REPUTATION_NOISE = re.compile(r"\s*group \d+|\s*Signature ID: \d+\.?", re.I)
+
+
 @register
 class WazuhIndexer(Connector):
     manifest = Manifest(
@@ -98,12 +103,24 @@ class WazuhIndexer(Connector):
     def normalize(_id: str, s: dict[str, Any]) -> NormAlert:
         rule, agent, data = s.get("rule", {}), s.get("agent", {}), s.get("data", {})
         comp = {k: rule[k] for k in ("pci_dss", "gdpr", "hipaa", "nist_800_53", "tsc") if k in rule}
+        title = str(rule.get("description", "Wazuh alert"))[:500]
+        severity = str(rule.get("level", 3))
+        raw: dict[str, Any] = {"level": rule.get("level"), "groups": rule.get("groups", []), "location": s.get("location", "")}
+        # Wazuh decoders name addresses srcip/dstip; Suricata's eve.json uses src_ip/dest_ip.
+        src_ip = str(data.get("srcip") or data.get("src_ip") or "")
+        dst_ip = str(data.get("dstip") or data.get("dest_ip") or "")
+        if REPUTATION_SIGNATURE.search(title):
+            # A reputation-list hit only says a listed address touched a public port. The list's group number changes with
+            # every address, so drop it: hits then fold into one rolling alert per host (see ingest), kept at low severity.
+            title = REPUTATION_NOISE.sub("", title).strip()
+            severity = "low"
+            raw["reputation"] = True
         return NormAlert(
-            source_id=str(_id), title=str(rule.get("description", "Wazuh alert"))[:500], severity=str(rule.get("level", 3)),
+            source_id=str(_id), title=title, severity=severity,
             time=_parse_ts(s.get("timestamp")), rule_id=str(rule.get("id", "")), mitre=list((rule.get("mitre") or {}).get("id", [])),
-            compliance=comp, host=str(agent.get("name", "")), agent_id=str(agent.get("id", "")), src_ip=str(data.get("srcip", "")),
+            compliance=comp, host=str(agent.get("name", "")), agent_id=str(agent.get("id", "")), src_ip=src_ip, dst_ip=dst_ip,
             username=str(data.get("dstuser", data.get("srcuser", ""))), file_hash=str((s.get("syscheck") or {}).get("sha256_after", "")),
-            raw={"level": rule.get("level"), "groups": rule.get("groups", []), "location": s.get("location", "")},
+            raw=raw,
         )
 
 

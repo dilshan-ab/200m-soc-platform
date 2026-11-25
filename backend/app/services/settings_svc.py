@@ -12,6 +12,7 @@ DEFAULTS: dict[str, Any] = {
     "protected_targets": [],
     "response_max_per_hour": 20,
     "alert_dedup_minutes": 10,
+    "reputation_dedup_minutes": 60,
     "approval_window_minutes": 240,
     "severity_labels": {"info": "Info", "low": "Low", "medium": "Medium", "high": "High", "critical": "Critical"},
 }
