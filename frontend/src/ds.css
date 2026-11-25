@@ -1,0 +1,155 @@
+/*
+ * SOC console design system (phase 1). Loaded last so it settles the older layered sheets.
+ * Direction from UI/UX Pro Max: "Data-Dense Dashboard" style, slate dark palette, Fira Sans + Fira Code,
+ * 36px table rows, 240px sidebar, 56px header, visible focus, reduced motion, severity never by colour alone.
+ */
+
+/* ---------------------------------------------------------------- tokens */
+:root, html[data-theme=light] {
+  --font-sans: 'Fira Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --soft: #e2e8f0;
+  --text: #0f172a;
+  --muted: #475569;
+  --border: #d5dde7;
+  --control-border: #94a3b8;
+  --accent: #0369a1;
+  --accent-ink: #ffffff;
+  --hover-surface: #eef4fa;
+  --hover-border: #7aa7c7;
+  --hover-ink: #075985;
+  --focus: #0369a1;
+  --sev-critical: #b91c1c; --sev-critical-bg: #fde8e8;
+  --sev-high: #b45309;     --sev-high-bg: #fdf0dc;
+  --sev-medium: #6d28d9;   --sev-medium-bg: #efe9fd;
+  --sev-low: #0e7490;      --sev-low-bg: #e1f3f7;
+  --sev-info: #475569;     --sev-info-bg: #eef2f6;
+  --ok: #15803d; --ok-bg: #e3f5e9; --warn: #a16207; --warn-bg: #fdf3d8; --bad: #b91c1c; --bad-bg: #fde8e8;
+  --radius: 8px; --radius-sm: 6px;
+  --row-h: 36px; --sidebar-w: 240px; --header-h: 56px;
+  --ease: cubic-bezier(.2, .7, .2, 1);
+}
+html[data-theme=dark] {
+  --bg: #0b1220;
+  --surface: #111a2b;
+  --surface-2: #0f172a;
+  --soft: #1b2539;
+  --text: #f1f5f9;
+  --muted: #a3b1c6;
+  --border: #253149;
+  --control-border: #475569;
+  --accent: #38bdf8;
+  --accent-ink: #04121f;
+  --hover-surface: #18233a;
+  --hover-border: #3b5a80;
+  --hover-ink: #bae6fd;
+  --focus: #7dd3fc;
+  --sev-critical: #fca5a5; --sev-critical-bg: #3b1219;
+  --sev-high: #fdba74;     --sev-high-bg: #3a2212;
+  --sev-medium: #c4b5fd;   --sev-medium-bg: #2a2147;
+  --sev-low: #67e8f9;      --sev-low-bg: #0f2e38;
+  --sev-info: #cbd5e1;     --sev-info-bg: #222c3f;
+  --ok: #4ade80; --ok-bg: #11301f; --warn: #fbbf24; --warn-bg: #33270b; --bad: #fca5a5; --bad-bg: #3b1219;
+}
+
+/* ---------------------------------------------------------------- base */
+html[data-theme] body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+html[data-theme] :is(.mono, code, kbd, td.mono) { font-family: var(--font-mono); font-size: 12.5px; }
+html[data-theme] :is(td, .kpi-value, .nav-count, .ops-kpi strong) { font-variant-numeric: tabular-nums; }
+html[data-theme] :is(button, a, input, select, textarea, [tabindex]):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-sm); }
+html[data-theme] :is(button, [role=button], a, summary, tr.clickable, .chip) { cursor: pointer; }
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme] *, html[data-theme] *::before, html[data-theme] *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+
+/* ---------------------------------------------------------------- shell */
+html[data-theme] .sidebar { width: var(--sidebar-w); padding: 16px 12px 12px; background: var(--surface-2); border-right: 1px solid var(--border); }
+html[data-theme] .sidebar.collapsed { width: 72px; }
+html[data-theme] .main-shell { margin-left: var(--sidebar-w); }
+html[data-theme] .main-shell.nav-closed { margin-left: 72px; }
+html[data-theme] .main-shell > header { height: var(--header-h); padding-inline: 24px; background: color-mix(in srgb, var(--bg) 92%, transparent); }
+html[data-theme] .sidebar .brand { padding: 2px 8px 10px; }
+html[data-theme] .sidebar .workspace { margin: 0 0 8px; padding: 8px 10px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); }
+html[data-theme] .sidebar nav { gap: 2px; padding-right: 2px; }
+html[data-theme] .sidebar .nav-group { margin-top: 6px; }
+html[data-theme] .sidebar .nav-group-toggle { height: 28px; padding: 0 10px; font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; border-radius: var(--radius-sm); }
+html[data-theme] .sidebar .nav-group-toggle:hover { color: var(--text); background: var(--hover-surface); }
+html[data-theme] .sidebar .nav-group-toggle[aria-expanded=false] svg { transform: rotate(-90deg); }
+html[data-theme] .sidebar .nav-group-toggle svg { transition: transform .18s var(--ease); }
+html[data-theme] .sidebar nav a, html[data-theme] .sidebar .sidebar-tools-toggle { min-height: 34px; padding: 6px 10px; gap: 10px; font-size: 13.5px; font-weight: 450; color: var(--muted); border-radius: var(--radius-sm); border: 0; transition: background .15s, color .15s; }
+html[data-theme] .sidebar nav a:hover, html[data-theme] .sidebar .sidebar-tools-toggle:hover { background: var(--hover-surface); color: var(--text); }
+html[data-theme] .sidebar nav a.active { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--text); font-weight: 550; box-shadow: none; }
+html[data-theme] .sidebar nav a.active svg { color: var(--accent); }
+html[data-theme] .sidebar .nav-count { min-width: 20px; height: 18px; padding: 0 6px; border-radius: 9px; font-size: 11px; font-weight: 600; background: var(--soft); color: var(--text); }
+html[data-theme] .sidebar .nav-count.hot { background: var(--sev-high-bg); color: var(--sev-high); }
+html[data-theme] .sidebar .user { border-radius: var(--radius); }
+
+/* ---------------------------------------------------------------- page structure */
+html[data-theme] .content { padding: 20px 24px 40px; }
+html[data-theme] .content > .heading { margin-bottom: 14px; align-items: flex-end; }
+html[data-theme] .content > .heading h1, html[data-theme] .content .overview-heading > .heading h1 { font-size: 22px; font-weight: 600; letter-spacing: -.01em; line-height: 1.25; }
+html[data-theme] .content > .heading .subtitle { margin-top: 2px; font-size: 13px; line-height: 1.5; }
+html[data-theme] :is(.panel, .card) { border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); box-shadow: none; }
+
+/* ---------------------------------------------------------------- badges: tinted, with a shape cue */
+html[data-theme] .main-shell .badge { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 10px; font-size: 11px; font-weight: 600; letter-spacing: .01em; text-transform: capitalize; white-space: nowrap; }
+html[data-theme] .badge:hover { transform: none; }
+html[data-theme] .badge[class*=sev-]::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+html[data-theme] .badge.sev-critical::before { border-radius: 1px; transform: rotate(45deg); }
+html[data-theme] .badge.sev-critical { background: var(--sev-critical-bg); color: var(--sev-critical); }
+html[data-theme] .badge.sev-high { background: var(--sev-high-bg); color: var(--sev-high); }
+html[data-theme] .badge.sev-medium { background: var(--sev-medium-bg); color: var(--sev-medium); }
+html[data-theme] .badge.sev-low { background: var(--sev-low-bg); color: var(--sev-low); }
+html[data-theme] .badge.sev-info { background: var(--sev-info-bg); color: var(--sev-info); }
+
+/* ---------------------------------------------------------------- dense tables */
+html[data-theme] .main-shell .table-wrap { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: auto; max-height: calc(100vh - 260px); }
+html[data-theme] .main-shell .table-wrap table { border-collapse: separate; border-spacing: 0; width: 100%; }
+html[data-theme] .main-shell .table-wrap thead th { position: sticky; top: 0; z-index: 1; height: 34px; padding: 0 12px; background: var(--surface-2); border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); text-align: left; white-space: nowrap; }
+html[data-theme] .main-shell .table-wrap tbody td { height: var(--row-h); padding: 4px 12px; border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent); font-size: 13px; vertical-align: middle; }
+html[data-theme] .main-shell .table-wrap tbody tr:last-child td { border-bottom: 0; }
+html[data-theme] .main-shell .table-wrap tbody tr { transition: background .12s; }
+html[data-theme] .main-shell .table-wrap tbody tr:hover td { background: var(--hover-surface); }
+html[data-theme] .main-shell .table-wrap tbody tr.kbd-focus td { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+/* Severity rail on the first cell: position + colour, alongside the text badge. */
+html[data-theme] .main-shell tr[data-sev] td:first-child { box-shadow: inset 3px 0 0 var(--rail, transparent); }
+html[data-theme] .main-shell tr[data-sev=critical] { --rail: var(--sev-critical); }
+html[data-theme] .main-shell tr[data-sev=high] { --rail: var(--sev-high); }
+html[data-theme] .main-shell tr[data-sev=medium] { --rail: var(--sev-medium); }
+html[data-theme] .main-shell td.truncate { max-width: 0; width: 40%; }
+html[data-theme] .main-shell td.truncate > .cell-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------------------------------------------------------------- one-row toolbar */
+html[data-theme] .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 12px; }
+html[data-theme] .toolbar > .chips { margin: 0; }
+html[data-theme] .toolbar .chips button, html[data-theme] .chips button { height: 30px; padding: 0 12px; border-radius: 15px; font-size: 12.5px; font-weight: 500; }
+html[data-theme] .filters.compact { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+html[data-theme] .filters.compact .field { margin: 0; min-width: 0; }
+html[data-theme] .filters.compact .field > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+html[data-theme] .filters.compact .field:first-child { flex: 1 1 280px; }
+html[data-theme] .filters.compact :is(input, select) { height: 34px; font-size: 13px; }
+html[data-theme] .filters.compact select { min-width: 140px; }
+
+@media (max-width: 650px) {
+  html[data-theme] .main-shell, html[data-theme] .main-shell.nav-closed { margin-left: 0; }
+  html[data-theme] .content { padding: 16px 16px 32px; }
+  html[data-theme] .main-shell .table-wrap { max-height: none; }
+  html[data-theme] .filters.compact .field { flex: 1 1 100%; }
+  html[data-theme] .main-shell td.truncate { min-width: 220px; }
+}
+
+/* Saved views sit at the end of the toolbar row instead of taking a panel of their own. */
+html[data-theme] .toolbar .saved-views { margin: 0 0 0 auto; padding: 0; border: 0; background: none; box-shadow: none; gap: 8px; flex: 0 1 auto; }
+html[data-theme] .toolbar .saved-views-label { font-size: 12.5px; font-weight: 500; color: var(--muted); }
+html[data-theme] .toolbar .saved-views-hint { display: none; }
+html[data-theme] .toolbar .saved-views-items { flex: 0 1 auto; }
+html[data-theme] .toolbar .saved-views :is(button, .btn) { height: 30px; font-size: 12.5px; }
+
+/* Dashboard: compact KPI tiles so the trend chart starts above the fold. */
+html[data-theme] .ops-overview .ops-kpi { min-height: 0; padding: 14px 16px 12px; gap: 6px; border-radius: var(--radius); }
+html[data-theme] .ops-overview .ops-kpi strong { font-size: 28px; line-height: 1.15; font-weight: 600; letter-spacing: -.01em; }
+html[data-theme] .ops-overview .ops-kpi .ops-kpi-label { font-size: 12.5px; font-weight: 500; color: var(--muted); }
+html[data-theme] .ops-overview .ops-kpi .ops-kpi-index { display: none; }

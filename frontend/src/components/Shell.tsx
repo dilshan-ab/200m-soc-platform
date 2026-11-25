@@ -22,44 +22,52 @@ const SECURITY_TOOLS: Item[] = [
   { to: '/app/xdr', label: 'XDR', icon: Network, cap: 'alerts.read' },
   { to: '/app/soar', label: 'SOAR', icon: Zap, cap: 'automation.read' },
 ];
+// Grouped by the analyst's task (monitor → investigate → respond), at most ~7 entries per group, so the sidebar fits
+// without scrolling when only the active group is open.
 const NAV: { group: string; items: Item[] }[] = [
-  { group: 'OPERATIONS', items: [
+  { group: 'MONITOR', items: [
     { to: '/app', label: 'Home', icon: LayoutDashboard },
-    { to: '/app/intel', label: 'Threat Intelligence', icon: Globe, cap: 'intel.read' },
-    { to: '/app/threat-intel-sharing', label: 'Intel Sharing (STIX/TAXII)', icon: Share2, cap: 'threat_intel.read' },
-    { to: '/app/enrichment', label: 'Enrichment', icon: Search, cap: 'intel.read' },
-    { to: '/app/ueba', label: 'Behavior Analytics', icon: Activity, cap: 'ueba.read' },
-    { to: '/app/copilot', label: 'AI Copilot', icon: Bot, cap: 'copilot.read' },
     { to: '/app/alerts', label: 'Alerts', icon: Bell, cap: 'alerts.read' },
     { to: '/app/triage', label: 'Triage Queue', icon: Flame, cap: 'alerts.triage' },
-    { to: '/app/correlation', label: 'Correlation', icon: GitMerge, cap: 'incidents.read' },
     { to: '/app/cases', label: 'Cases', icon: Layers, cap: 'cases.read' },
-    { to: '/app/response', label: 'Incident Response', icon: Workflow, cap: 'response.read' },
     { to: '/app/approvals', label: 'Approvals', icon: CheckCircle2, cap: 'response.approve' },
-    { to: '/app/playbooks', label: 'Playbooks', icon: Play, cap: 'playbooks.read' },
+  ] },
+  { group: 'INVESTIGATE', items: [
+    { to: '/app/correlation', label: 'Correlation', icon: GitMerge, cap: 'incidents.read' },
+    { to: '/app/logs', label: 'Log Search', icon: ScrollText, cap: 'logs.read' },
+    { to: '/app/hunting', label: 'Threat Hunting', icon: Radar, cap: 'hunts.read' },
     { to: '/app/notebooks', label: 'Investigation Notebooks', icon: BookMarked, cap: 'notebooks.read' },
+    { to: '/app/ueba', label: 'Behavior Analytics', icon: Activity, cap: 'ueba.read' },
+    { to: '/app/copilot', label: 'AI Copilot', icon: Bot, cap: 'copilot.read' },
+    { to: '/app/evidence', label: 'Evidence Vault', icon: Package, cap: 'evidence.read' },
+  ] },
+  { group: 'RESPOND', items: [
+    { to: '/app/response', label: 'Incident Response', icon: Workflow, cap: 'response.read' },
+    { to: '/app/playbooks', label: 'Playbooks', icon: Play, cap: 'playbooks.read' },
+    { to: '/app/runbooks', label: 'Runbooks', icon: BookOpen, cap: 'runbooks.read' },
     { to: '/app/warroom', label: 'War Room', icon: MessagesSquare, cap: 'warroom.read' },
     { to: '/app/handoff', label: 'Shift Handoff', icon: Repeat2, cap: 'handoff.read' },
-    { to: '/app/logs', label: 'Log Search', icon: ScrollText, cap: 'logs.read' },
-    { to: '/app/evidence', label: 'Evidence Vault', icon: Package, cap: 'evidence.read' },
     { to: '/app/jobs', label: 'Scheduled Jobs', icon: Clock, cap: 'automation.read' },
   ] },
-  { group: 'SECURITY POSTURE', items: [
+  { group: 'THREAT INTEL', items: [
+    { to: '/app/intel', label: 'Threat Intelligence', icon: Globe, cap: 'intel.read' },
+    { to: '/app/enrichment', label: 'Enrichment', icon: Search, cap: 'intel.read' },
+    { to: '/app/threat-intel-sharing', label: 'Intel Sharing (STIX/TAXII)', icon: Share2, cap: 'threat_intel.read' },
+    { to: '/app/threat-map', label: 'Threat map', icon: Globe, cap: 'alerts.read' },
+    { to: '/app/mitre', label: 'ATT&CK mapping', icon: Crosshair, cap: 'alerts.read' },
+    { to: '/app/sigma', label: 'Detection rules', icon: FileCode2, cap: 'detections.read' },
+  ] },
+  { group: 'POSTURE', items: [
     { to: '/app/servers', label: 'Servers', icon: Cpu, cap: 'servers.read' },
     { to: '/app/assets', label: 'Assets', icon: Server, cap: 'assets.read' },
     { to: '/app/vulnerabilities', label: 'Vulnerability Management', icon: AlertTriangle, cap: 'vulns.read' },
     { to: '/app/risk', label: 'Risk Analytics', icon: Activity, cap: 'vulns.read' },
-    { to: '/app/hunting', label: 'Threat Hunting', icon: Radar, cap: 'hunts.read' },
     { to: '/app/compliance', label: 'Compliance', icon: Shield, cap: 'compliance.read' },
-    { to: '/app/threat-map', label: 'Threat map', icon: Globe, cap: 'alerts.read' },
-    { to: '/app/mitre', label: 'ATT&CK mapping', icon: Crosshair, cap: 'alerts.read' },
-    { to: '/app/sigma', label: 'Detection rules', icon: FileCode2, cap: 'detections.read' },
     { to: '/app/simulation', label: 'Attack Simulation', icon: Target, cap: 'simulation.read' },
   ] },
   { group: 'INSIGHTS', items: [
     { to: '/app/analysts', label: 'Analyst Performance', icon: Gauge, cap: 'metrics.read' },
     { to: '/app/soar-metrics', label: 'SOAR Metrics', icon: Zap, cap: 'metrics.read' },
-    { to: '/app/runbooks', label: 'Runbooks', icon: BookOpen, cap: 'runbooks.read' },
     { to: '/app/reports', label: 'Reports', icon: FileText, cap: 'reports.read' },
   ] },
   { group: 'WORKSPACE', items: [
@@ -70,6 +78,17 @@ const NAV: { group: string; items: Item[] }[] = [
     { to: '/app/admin', label: 'Settings', icon: Settings, cap: 'admin.settings' },
   ] },
 ];
+const TOOLS_GROUP = 'POSTURE';
+const NAV_GROUPS_KEY = '200m-nav-groups';
+// First visit: only Monitor (and whichever group holds the current page) is open.
+const defaultCollapsed = () => new Set(NAV.map((g) => g.group).filter((g) => g !== 'MONITOR'));
+const loadCollapsed = () => {
+  try {
+    const saved = localStorage.getItem(NAV_GROUPS_KEY);
+    if (saved) return new Set((JSON.parse(saved) as string[]).filter((g) => NAV.some((n) => n.group === g)));
+  } catch { /* storage unavailable or old value */ }
+  return defaultCollapsed();
+};
 const NAV_ITEMS = [...NAV.flatMap((group) => group.items), ...SECURITY_TOOLS];
 const TITLES = Object.fromEntries(NAV_ITEMS.map((item) => [item.to, item.label]));
 const isToolRoute = (path: string) => SECURITY_TOOLS.some((item) => item.to === path.replace(/\/$/, ''));
@@ -81,7 +100,8 @@ export function Shell() {
   const nav = useNavigate();
   const loc = useLocation();
   const live = useLive(can('alerts.read'));
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(loadCollapsed);
+  useEffect(() => { try { localStorage.setItem(NAV_GROUPS_KEY, JSON.stringify([...collapsedGroups])); } catch { /* storage unavailable */ } }, [collapsedGroups]);
   const home = loc.pathname.replace(/\/$/, '') === '/app';
   const [toolsOpen, setToolsOpen] = useState(() => isToolRoute(loc.pathname));
   const visibleTools = SECURITY_TOOLS.filter((item) => !item.cap || can(item.cap));
@@ -105,7 +125,7 @@ export function Shell() {
   useEffect(() => {
     setMobile(false);
     setCollapsedGroups((current) => {
-      const group = NAV.find((section) => section.items.some((item) => item.to === loc.pathname) || (section.group === 'OPERATIONS' && isToolRoute(loc.pathname)));
+      const group = NAV.find((section) => section.items.some((item) => item.to === loc.pathname) || (section.group === TOOLS_GROUP && isToolRoute(loc.pathname)));
       if (!group || !current.has(group.group)) return current;
       const next = new Set(current);
       next.delete(group.group);
@@ -178,7 +198,7 @@ export function Shell() {
                     {i.to === '/app/approvals' && pending > 0 && <span className="nav-count hot">{pending}</span>}
                   </NavLink>
                 ))}
-                {g.group === 'OPERATIONS' && visibleTools.length > 0 && (
+                {g.group === TOOLS_GROUP && visibleTools.length > 0 && (
                   <div className="sidebar-tools">
                     <button type="button" className="sidebar-tools-toggle" aria-expanded={toolsOpen}
                       aria-controls="sidebar-security-tools" onClick={() => setToolsOpen((open) => !open)}>
