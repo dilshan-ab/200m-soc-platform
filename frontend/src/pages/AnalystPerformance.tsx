@@ -55,7 +55,7 @@ export default function AnalystPerformance() {
                   <td>{number.format(a.critical_high_handled)}</td>
                   <td>{minutes(a.mtta_minutes)}</td>
                   <td>{minutes(a.mttr_minutes)}</td>
-                  <td>{a.alerts_breached > 0 ? <span style={{ color: 'var(--danger, #c0392b)' }}>{a.alerts_breached}</span> : 0}</td>
+                  <td>{a.alerts_breached > 0 ? <span style={{ color: 'var(--danger)' }}>{a.alerts_breached}</span> : 0}</td>
                   <td>{number.format(a.cases_owned)}</td>
                   <td>{number.format(a.cases_closed)}</td>
                   <td>{minutes(a.case_mttr_minutes)}</td>

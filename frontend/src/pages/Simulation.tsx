@@ -51,7 +51,7 @@ function PlatformsPanel() {
             <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
               {p.capabilities.map((c) => <span key={c} className="badge">{c}</span>)}
             </div>
-            <span className="badge" style={{ background: p.configured ? 'var(--ok)' : 'var(--muted)', color: '#fff' }}>
+            <span className={`badge ${p.configured ? 'st-ok' : 'st-disabled'}`}>
               {p.configured ? 'Configured' : 'Not configured'}
             </span>
             {!p.configured && <p style={{ fontSize: 12, color: 'var(--muted)', margin: '8px 0 0' }}>Configure via Integrations page to enable.</p>}
@@ -217,13 +217,13 @@ function ResultsPanel() {
                       {f.technique_name && <div style={{ fontSize: 12, color: 'var(--muted)' }}>{f.technique_name}</div>}
                     </td>
                     <td>
-                      <span className="badge" style={{ background: f.status === 'success' ? 'var(--ok)' : f.status === 'failed' ? 'var(--bad)' : 'var(--muted)', color: '#fff' }}>
+                      <span className={`badge ${f.status === 'success' ? 'st-success' : f.status === 'failed' ? 'st-failed' : 'st-pending'}`}>
                         {f.status}
                       </span>
                     </td>
                     <td>
                       {f.detected != null && (
-                        <span className="badge" style={{ background: f.detected ? 'var(--ok)' : 'var(--bad)', color: '#fff' }}>
+                        <span className={`badge ${f.detected ? 'st-ok' : 'st-failed'}`}>
                           {f.detected ? 'Yes' : 'No'}
                         </span>
                       )}
