@@ -67,7 +67,7 @@ export function RiskAnalytics() {
   const critical = rows[0].open + rows[0].inProgress;
   return (
     <>
-      <PageHead title="Risk Analytics" eyebrow="SECURITY POSTURE" sub="Track vulnerability exposure, remediation backlog, and accepted risk within your scope.">
+      <PageHead title="Risk Analytics" eyebrow="POSTURE" sub="Track vulnerability exposure, remediation backlog, and accepted risk within your scope.">
         <Link className="btn" to="/app/vulnerabilities">Open findings <ArrowRight size={14} /></Link>
       </PageHead>
       {q.error ? <ErrorBox error={q.error} /> : !summary ? <Loading /> : <>

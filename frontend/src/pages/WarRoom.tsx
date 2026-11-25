@@ -27,7 +27,7 @@ export default function WarRoom() {
 
   return (
     <>
-      <PageHead title="War Room" sub="Real-time collaboration space for a major incident — chat, pinned actions, and a clean record for the post-mortem." eyebrow="OPERATIONS">
+      <PageHead title="War Room" sub="Real-time collaboration space for a major incident — chat, pinned actions, and a clean record for the post-mortem." eyebrow="RESPOND">
         {can('warroom.write') && <button className="btn primary" onClick={() => setCreating(true)}><Plus size={16} /> Start war room</button>}
       </PageHead>
 

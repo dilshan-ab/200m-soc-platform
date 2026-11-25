@@ -60,7 +60,7 @@ export default function Dashboard() {
   return (
     <div className="ops-overview">
       <div className="overview-heading">
-        <PageHead eyebrow="OPERATIONS" title="Security overview" sub={`${me?.name ? `Welcome back, ${firstName(me.name)}. ` : ''}Detections, investigations, and response at a glance.`} />
+        <PageHead eyebrow="MONITOR" title="Security overview" sub={`${me?.name ? `Welcome back, ${firstName(me.name)}. ` : ''}Detections, investigations, and response at a glance.`} />
         <div className="overview-status">
           <span className={`overview-stream ${live ? 'online' : 'offline'}`}><Activity size={15} aria-hidden="true" />{live ? 'Stream connected' : 'Stream disconnected'}</span>
           <DualClock live={live} />
