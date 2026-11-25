@@ -67,9 +67,9 @@ export default function ScheduledJobs() {
         { label: 'Failed', value: failed, tone: failed > 0 ? 'bad' : 'ok' },
       ]} />}
 
-      <div className="tabs" style={{ marginBottom: 12 }}>
-        <button className={tab === 'jobs' ? 'active' : ''} onClick={() => setTab('jobs')}>Job history</button>
-        <button className={tab === 'schedules' ? 'active' : ''} onClick={() => setTab('schedules')}>Report schedules{o ? ` (${o.schedules.total})` : ''}</button>
+      <div className="tabs" role="tablist" style={{ marginBottom: 12 }}>
+        <button type="button" role="tab" aria-selected={tab === 'jobs'} className={tab === 'jobs' ? 'active' : ''} onClick={() => setTab('jobs')}>Job history</button>
+        <button type="button" role="tab" aria-selected={tab === 'schedules'} className={tab === 'schedules' ? 'active' : ''} onClick={() => setTab('schedules')}>Report schedules{o ? ` (${o.schedules.total})` : ''}</button>
       </div>
 
       {tab === 'jobs' && (

@@ -14,10 +14,10 @@ export default function Simulation() {
   return (
     <>
       <PageHead title="Attack Simulation" sub="Breach and attack simulation — validate detection coverage with MITRE ATT&CK techniques." />
-      <div className="tabs" style={{ marginBottom: 16 }}>
-        <button className={tab === 'platforms' ? 'active' : ''} onClick={() => setTab('platforms')}>Platforms</button>
-        <button className={tab === 'run' ? 'active' : ''} onClick={() => setTab('run')}>Run Simulation</button>
-        <button className={tab === 'results' ? 'active' : ''} onClick={() => setTab('results')}>Results</button>
+      <div className="tabs" role="tablist" style={{ marginBottom: 16 }}>
+        <button type="button" role="tab" aria-selected={tab === 'platforms'} className={tab === 'platforms' ? 'active' : ''} onClick={() => setTab('platforms')}>Platforms</button>
+        <button type="button" role="tab" aria-selected={tab === 'run'} className={tab === 'run' ? 'active' : ''} onClick={() => setTab('run')}>Run Simulation</button>
+        <button type="button" role="tab" aria-selected={tab === 'results'} className={tab === 'results' ? 'active' : ''} onClick={() => setTab('results')}>Results</button>
       </div>
       {tab === 'platforms' && <PlatformsPanel />}
       {tab === 'run' && <RunPanel />}

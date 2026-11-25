@@ -21,9 +21,9 @@ export default function Enrichment() {
     <>
       <PageHead title="Enrichment Engine" sub="Local IOC database, custom rules, and reputation scoring." />
       <EngineOverview />
-      <div className="tabs" style={{ marginBottom: 16 }}>
-        <button className={tab === 'jobs' ? 'active' : ''} onClick={() => setTab('jobs')}>Enrichment Jobs</button>
-        <button className={tab === 'rules' ? 'active' : ''} onClick={() => setTab('rules')}>Enrichment Rules</button>
+      <div className="tabs" role="tablist" style={{ marginBottom: 16 }}>
+        <button type="button" role="tab" aria-selected={tab === 'jobs'} className={tab === 'jobs' ? 'active' : ''} onClick={() => setTab('jobs')}>Enrichment Jobs</button>
+        <button type="button" role="tab" aria-selected={tab === 'rules'} className={tab === 'rules' ? 'active' : ''} onClick={() => setTab('rules')}>Enrichment Rules</button>
       </div>
       {tab === 'jobs' ? <JobsPanel /> : <RulesPanel />}
     </>

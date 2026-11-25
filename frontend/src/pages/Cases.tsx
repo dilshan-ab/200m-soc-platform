@@ -118,11 +118,11 @@ function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
       )}
 
       {c.tasks?.length > 0 && <TaskProgress tasks={c.tasks} />}
-      <div className="tabs" style={{ marginBottom: 12, marginTop: 12 }}>
-        <button className={section === 'timeline' ? 'active' : ''} onClick={() => setSection('timeline')}>Timeline ({c.timeline?.length ?? 0})</button>
-        <button className={section === 'evidence' ? 'active' : ''} onClick={() => setSection('evidence')}>Evidence ({c.evidence?.length ?? 0})</button>
-        <button className={section === 'tasks' ? 'active' : ''} onClick={() => setSection('tasks')}>Tasks ({c.tasks?.length ?? 0})</button>
-        <button className={section === 'observables' ? 'active' : ''} onClick={() => setSection('observables')}>Observables ({c.observables?.length ?? 0})</button>
+      <div className="tabs" role="tablist" style={{ marginBottom: 12, marginTop: 12 }}>
+        <button type="button" role="tab" aria-selected={section === 'timeline'} className={section === 'timeline' ? 'active' : ''} onClick={() => setSection('timeline')}>Timeline ({c.timeline?.length ?? 0})</button>
+        <button type="button" role="tab" aria-selected={section === 'evidence'} className={section === 'evidence' ? 'active' : ''} onClick={() => setSection('evidence')}>Evidence ({c.evidence?.length ?? 0})</button>
+        <button type="button" role="tab" aria-selected={section === 'tasks'} className={section === 'tasks' ? 'active' : ''} onClick={() => setSection('tasks')}>Tasks ({c.tasks?.length ?? 0})</button>
+        <button type="button" role="tab" aria-selected={section === 'observables'} className={section === 'observables' ? 'active' : ''} onClick={() => setSection('observables')}>Observables ({c.observables?.length ?? 0})</button>
       </div>
 
       {section === 'timeline' && (

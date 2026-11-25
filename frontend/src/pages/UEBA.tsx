@@ -26,9 +26,9 @@ export default function UEBA() {
   return (
     <>
       <PageHead title="Behavior Analytics" sub="User and entity behavioral baselines, anomaly detection, and risk scoring." />
-      <div className="tabs" style={{ marginBottom: 16 }}>
-        <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>Overview</button>
-        <button className={tab === 'entities' ? 'active' : ''} onClick={() => setTab('entities')}>Entity Profiles</button>
+      <div className="tabs" role="tablist" style={{ marginBottom: 16 }}>
+        <button type="button" role="tab" aria-selected={tab === 'overview'} className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>Overview</button>
+        <button type="button" role="tab" aria-selected={tab === 'entities'} className={tab === 'entities' ? 'active' : ''} onClick={() => setTab('entities')}>Entity Profiles</button>
       </div>
       {tab === 'overview' ? <OverviewPanel /> : <EntitiesPanel />}
     </>

@@ -25,9 +25,9 @@ export default function Clients() {
     <>
       <PageHead title="Clients & MSSP" sub="Manage tenants, branding and membership — and watch every client's posture from one view." eyebrow="WORKSPACE" />
       {can('mssp.view') && me?.all_clients && (
-        <div className="tabs" style={{ marginBottom: 16 }}>
-          <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>MSSP Overview</button>
-          <button className={tab === 'manage' ? 'active' : ''} onClick={() => setTab('manage')}>Manage Clients</button>
+        <div className="tabs" role="tablist" style={{ marginBottom: 16 }}>
+          <button type="button" role="tab" aria-selected={tab === 'overview'} className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>MSSP Overview</button>
+          <button type="button" role="tab" aria-selected={tab === 'manage'} className={tab === 'manage' ? 'active' : ''} onClick={() => setTab('manage')}>Manage Clients</button>
         </div>
       )}
       {tab === 'overview' ? (
