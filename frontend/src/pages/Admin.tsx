@@ -319,7 +319,7 @@ function Permissions() {
                                 <td>
                                   <button
                                     type="button" className="btn small" disabled={!editable} onClick={() => cycle(cap)}
-                                    style={{ color: state === 'denied' ? 'var(--danger, #c0392b)' : state === 'granted' ? 'var(--accent)' : undefined, width: '100%' }}
+                                    style={{ color: state === 'denied' ? 'var(--danger)' : state === 'granted' ? 'var(--accent)' : undefined, width: '100%' }}
                                   >
                                     {label}
                                   </button>

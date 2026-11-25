@@ -130,9 +130,9 @@ html[data-theme] .main-shell td.truncate > .cell-text { display: block; overflow
 html[data-theme] .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 12px; }
 html[data-theme] .toolbar > .chips { margin: 0; }
 html[data-theme] .toolbar .chips button, html[data-theme] .chips button { height: 30px; padding: 0 12px; border-radius: 15px; font-size: 12.5px; font-weight: 500; }
-html[data-theme] .filters.compact { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+html[data-theme] .filters.compact { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin: 0 0 12px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 html[data-theme] .filters.compact .field { margin: 0; min-width: 0; }
-html[data-theme] .filters.compact .field > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+html[data-theme] .filters.compact .field > label { display: block; margin-bottom: 3px; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 html[data-theme] .filters.compact .field:first-child { flex: 1 1 280px; }
 html[data-theme] .filters.compact :is(input, select) { height: 34px; font-size: 13px; }
 html[data-theme] .filters.compact select { min-width: 140px; }
