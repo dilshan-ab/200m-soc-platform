@@ -71,7 +71,7 @@ def enrich_alert(body: BulkEnrichIn, p: Principal = Depends(require("intel.enric
     a = db.get(Alert, body.alert_id)
     if a is None or not p.can_see_client(a.client_id):
         raise HTTPException(404, "not found")
-    job_ids = svc.auto_enrich_alert(db, a.id)
+    job_ids = svc.auto_enrich_alert(db, a.id, requester_id=p.user.id)
     audit.record(db, "intel.enrich.bulk", actor=p.label, actor_id=p.user.id, resource_type="alert", resource_id=a.id, client_id=a.client_id, ip=p.ip, meta={"jobs": len(job_ids)})
     return {"alert_id": a.id, "jobs": job_ids}
 

@@ -22,6 +22,13 @@ VERDICT_ORDER = ["unknown", "benign", "suspicious", "malicious"]
 RATE_LIMIT_BACKOFF = timedelta(minutes=15)
 MAX_BACKOFF = timedelta(hours=6)
 MAX_DEFERRALS = 4
+# Providers are asked in tiers, cheapest first, and the lookup stops as soon as one says malicious:
+#   1. self-hosted, no quota (MISP, Cortex, OpenCTI)   2. free with generous limits (OTX and anything else)
+#   3. small free quotas (VirusTotal, AbuseIPDB, Shodan): only for high/critical alerts, file hashes and manual lookups.
+LOCAL_PROVIDERS = frozenset({"misp", "cortex", "opencti"})
+LIMITED_PROVIDERS = frozenset({"virustotal", "abuseipdb", "shodan"})
+PRIORITY_SEVERITIES = frozenset({"high", "critical"})
+SAVED_FOR_PRIORITY = "saved for high/critical alerts, file hashes and manual lookups"
 _cooldown: dict[str, datetime] = {}
 _cooldown_lock = threading.Lock()
 
@@ -59,6 +66,24 @@ def detect_type(value: str) -> str:
     raise ValueError("unrecognised indicator")
 
 
+def _tier(tool_type: str) -> int:
+    return 1 if tool_type in LOCAL_PROVIDERS else 3 if tool_type in LIMITED_PROVIDERS else 2
+
+
+def _is_priority(db: Session, itype: str, requester_id: str, alert_id: str | None, case_id: str | None) -> bool:
+    """May this lookup spend the small free quotas (tier 3)?"""
+    from .settings_svc import system_user
+
+    if itype == "hash" or case_id or requester_id != system_user(db).id:
+        return True
+    alert = db.get(Alert, alert_id) if alert_id else None
+    return alert is not None and alert.severity in PRIORITY_SEVERITIES
+
+
+def _saved_limited(j: EnrichmentJob) -> bool:
+    return any(isinstance(v, dict) and v.get("skipped") == SAVED_FOR_PRIORITY for v in (j.results or {}).values())
+
+
 def queue_enrichment(db: Session, indicator: str, itype: str, requester_id: str, *, alert_id: str | None = None, case_id: str | None = None, client_id: str | None = None, tlp: str = "AMBER") -> EnrichmentJob:
     indicator = indicator.strip()[:500]
     # Address and file reputation changes slowly, and every lookup spends provider quota: reuse a good result for a day.
@@ -67,7 +92,8 @@ def queue_enrichment(db: Session, indicator: str, itype: str, requester_id: str,
         select(EnrichmentJob).where(EnrichmentJob.indicator == indicator, EnrichmentJob.status == "done", EnrichmentJob.created_at >= utcnow() - timedelta(hours=cache_hours), EnrichmentJob.client_id == client_id)
         .order_by(EnrichmentJob.created_at.desc()).limit(1)
     ).scalars().first()
-    if cached is not None:
+    # A cached lookup that skipped the quota-limited providers is not good enough for a lookup that may use them.
+    if cached is not None and not (_saved_limited(cached) and cached.verdict != "malicious" and _is_priority(db, itype, requester_id, alert_id, case_id)):
         _write_back_enrichment(db, cached, alert_id=alert_id, case_id=case_id)
         return cached
     j = EnrichmentJob(indicator=indicator, indicator_type=itype, requester_id=requester_id, alert_id=alert_id, case_id=case_id, client_id=client_id, tlp=tlp, expires_at=utcnow() + timedelta(days=30))
@@ -108,9 +134,18 @@ def run_enrichment(db: Session, payload: dict[str, Any]) -> None:
 
     enrichable_types = [m.type for m in all_manifests() if "enrich" in m.capabilities]
     tools = db.execute(select(Tool).where(Tool.enabled.is_(True), Tool.type.in_(enrichable_types))).scalars().all() if enrichable_types else []
+    tools = sorted(tools, key=lambda t: (_tier(t.type), t.name))
+    priority = _is_priority(db, j.indicator_type, j.requester_id, j.alert_id, j.case_id)
     errors = answered = 0
     limited: list[datetime] = []
+    decided_by = ""
     for t in tools:
+        if verdict == "malicious":
+            results[t.name] = {"skipped": f"not needed: {decided_by or 'local intel'} already says malicious"}
+            continue
+        if _tier(t.type) == 3 and not priority:
+            results[t.name] = {"skipped": SAVED_FOR_PRIORITY}
+            continue
         until = _cooling_until(t.id)
         if until is not None:
             limited.append(until)
@@ -127,6 +162,7 @@ def run_enrichment(db: Session, payload: dict[str, Any]) -> None:
             v = r.get("verdict", "unknown")
             if VERDICT_ORDER.index(v if v in VERDICT_ORDER else "unknown") > VERDICT_ORDER.index(verdict):
                 verdict = v
+                decided_by = t.name
         except RateLimited as e:
             until = _start_cooldown(t.id, e.retry_after)
             limited.append(until)
@@ -153,7 +189,8 @@ def run_enrichment(db: Session, payload: dict[str, Any]) -> None:
     results["_reputation"] = reputation
 
     j.results, j.verdict = results, verdict
-    j.status = "failed" if tools and not answered and not local["local_intel"].get("matched") else "done"
+    # Failed only when a provider was actually tried and none answered; skipping by policy is a normal outcome.
+    j.status = "failed" if (errors or limited) and not answered and not local_hit else "done"
     _write_back_enrichment(db, j)
 
 
@@ -185,12 +222,12 @@ def _public_ip(value: str) -> bool:
         return False
 
 
-def auto_enrich_alert(db: Session, alert_id: str) -> list[str]:
-    """Extract IOCs from an alert and queue enrichment for each. Returns job IDs."""
+def auto_enrich_alert(db: Session, alert_id: str, requester_id: str | None = None) -> list[str]:
+    """Extract IOCs from an alert and queue enrichment for each. Returns job IDs. requester_id marks a manual request."""
     alert = db.get(Alert, alert_id)
     if alert is None:
         return []
-    if (alert.raw or {}).get("reputation"):
+    if requester_id is None and (alert.raw or {}).get("reputation"):
         # Raised because the address is already on a block list: a provider lookup adds little and would spend most of the
         # daily quota on scanners. Analysts can still enrich these by hand.
         return []
@@ -204,6 +241,6 @@ def auto_enrich_alert(db: Session, alert_id: str) -> list[str]:
 
     job_ids: list[str] = []
     for value, itype in indicators:
-        j = queue_enrichment(db, value, itype, system_user(db).id, alert_id=alert_id, client_id=alert.client_id)
+        j = queue_enrichment(db, value, itype, requester_id or system_user(db).id, alert_id=alert_id, client_id=alert.client_id)
         job_ids.append(j.id)
     return job_ids

@@ -132,7 +132,7 @@ def compute_reputation(
         verdicts.append((hit["verdict"], hit["confidence"]))
 
     for data in external_results.values():
-        if isinstance(data, dict) and not data.get("error"):
+        if isinstance(data, dict) and not data.get("error") and not data.get("skipped"):
             v = data.get("verdict", "unknown")
             confidence = 60
             if "abuse_score" in data:
