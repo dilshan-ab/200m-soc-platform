@@ -38,10 +38,10 @@ export default function ThreatIntelSharing() {
           <div className="kpi"><Fingerprint size={18} style={{ color: 'var(--bad)' }} /><div><strong>{stats.data.by_verdict.malicious ?? 0}</strong><small>Malicious</small></div></div>
         </div>
       )}
-      <div className="tabs" style={{ marginBottom: 16 }}>
-        <button className={tab === 'indicators' ? 'active' : ''} onClick={() => setTab('indicators')}>Indicators</button>
-        <button className={tab === 'share' ? 'active' : ''} onClick={() => setTab('share')}>Share &amp; Import</button>
-        {can('threat_intel.admin') && <button className={tab === 'feeds' ? 'active' : ''} onClick={() => setTab('feeds')}>TAXII Feeds</button>}
+      <div className="tabs" role="tablist" style={{ marginBottom: 16 }}>
+        <button type="button" role="tab" aria-selected={tab === 'indicators'} className={tab === 'indicators' ? 'active' : ''} onClick={() => setTab('indicators')}>Indicators</button>
+        <button type="button" role="tab" aria-selected={tab === 'share'} className={tab === 'share' ? 'active' : ''} onClick={() => setTab('share')}>Share &amp; Import</button>
+        {can('threat_intel.admin') && <button type="button" role="tab" aria-selected={tab === 'feeds'} className={tab === 'feeds' ? 'active' : ''} onClick={() => setTab('feeds')}>TAXII Feeds</button>}
       </div>
       {tab === 'indicators' && <IndicatorsPanel />}
       {tab === 'share' && <SharePanel />}

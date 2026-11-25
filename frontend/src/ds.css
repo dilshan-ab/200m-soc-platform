@@ -31,6 +31,9 @@
   --radius: 8px; --radius-sm: 6px;
   --row-h: 36px; --sidebar-w: 240px; --header-h: 56px;
   --ease: cubic-bezier(.2, .7, .2, 1);
+  /* Older names still used by inline styles in pages; they were never defined, so they resolved to nothing. */
+  --card: var(--surface); --fg: var(--text); --danger: var(--bad); --hover: var(--hover-surface); --mono: var(--font-mono);
+  --info: #4338ca; --info-bg: #e8e7fd;
 }
 html[data-theme=dark] {
   --bg: #0b1220;
@@ -53,6 +56,7 @@ html[data-theme=dark] {
   --sev-low: #67e8f9;      --sev-low-bg: #0f2e38;
   --sev-info: #cbd5e1;     --sev-info-bg: #222c3f;
   --ok: #4ade80; --ok-bg: #11301f; --warn: #fbbf24; --warn-bg: #33270b; --bad: #fca5a5; --bad-bg: #3b1219;
+  --info: #a5b4fc; --info-bg: #1e2147;
 }
 
 /* ---------------------------------------------------------------- base */
@@ -201,3 +205,13 @@ html[data-theme] .main-shell :is(pre, .log-raw) { font-family: var(--font-mono);
   html[data-theme] .main-shell .filters:not(.compact) .field { flex: 1 1 100%; }
 }
 html[data-theme] .filters.compact > :first-child { flex: 1 1 280px; }
+
+/* ================================================================ phase 3: tabs and empty states */
+html[data-theme] .main-shell .tabs { display: flex; flex-wrap: wrap; overflow: hidden; gap: 2px; margin-bottom: 14px; padding: 0; border: 0; border-bottom: 1px solid var(--border); background: none; border-radius: 0; }
+html[data-theme] .main-shell .tabs > button { position: relative; height: 36px; padding: 0 14px; border: 0; border-radius: var(--radius-sm) var(--radius-sm) 0 0; background: none; color: var(--muted); font-size: 13px; font-weight: 500; box-shadow: none; }
+html[data-theme] .main-shell .tabs > button:hover { color: var(--text); background: var(--hover-surface); }
+html[data-theme] .main-shell .tabs > button:is(.active, [aria-selected=true]) { color: var(--text); font-weight: 600; background: none; }
+html[data-theme] .main-shell .tabs > button:is(.active, [aria-selected=true])::after { content: ''; position: absolute; left: 10px; right: 10px; bottom: 0; height: 2px; border-radius: 2px; background: var(--accent); }
+
+html[data-theme] .main-shell .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 160px; margin: 0 0 12px; padding: 28px 20px; border: 1px dashed var(--border); border-radius: var(--radius); background: color-mix(in srgb, var(--surface) 60%, transparent); text-align: center; }
+html[data-theme] .main-shell .empty p { max-width: 52ch; margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; }
