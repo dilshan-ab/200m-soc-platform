@@ -77,6 +77,31 @@ def record(
     return e
 
 
+def record_many(db: Session, entries: list[dict[str, Any]]) -> int:
+    """Append several audit events in one flush. The hash chain is identical to calling record() once per entry: each
+    event links to the one before it. record() reads the chain head and flushes per call, which made deleting thousands
+    of alerts (one audit entry each) slow enough to time out behind the proxy."""
+    if not entries:
+        return 0
+    with _lock:
+        last = db.execute(select(AuditEvent).order_by(AuditEvent.id.desc()).limit(1)).scalar_one_or_none()
+        prev = last.hash if last else GENESIS
+        rows = []
+        for entry in entries:
+            e = AuditEvent(
+                ts=utcnow(), actor_id=entry.get("actor_id"), actor=entry.get("actor", "system"), action=entry["action"],
+                resource_type=entry.get("resource_type", ""), resource_id=str(entry.get("resource_id", "")),
+                outcome=entry.get("outcome", "success"), client_id=entry.get("client_id"), correlation_id=entry.get("correlation_id", ""),
+                ip=entry.get("ip", ""), meta=scrub(entry.get("meta")), prev_hash=prev,
+            )
+            e.hash = _digest(prev, e)
+            prev = e.hash
+            rows.append(e)
+        db.add_all(rows)
+        db.flush()
+    return len(rows)
+
+
 def verify_chain(db: Session) -> dict[str, Any]:
     prev = GENESIS
     n = 0
