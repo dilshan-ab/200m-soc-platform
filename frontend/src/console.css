@@ -267,6 +267,8 @@ body { background: var(--bg); }
 .category-reset { margin: 0 16px 16px; }
 .trend-controls { display: flex; align-items: center; gap: 8px; padding: 12px 16px 0; flex-wrap: wrap; }
 .trend-controls > span { flex: 1 1 160px; color: var(--muted); font-size: 10px; }
+.trend-controls > span.trend-sev-total { flex: 0 0 auto; color: var(--text); font-size: 11px; }
+.trend-controls > span.trend-sev-total b { font-variant-numeric: tabular-nums; }
 .main-shell .trend-controls .btn { min-height: 28px; font-size: 10px; }
 
 /* Smooth, contained scrolling for the page and nested work areas. */
