@@ -60,3 +60,28 @@ def test_delete_all_alerts_writes_one_audit_entry_per_alert(admin, monkeypatch):
         pass
     with dbmod.session_scope() as db:
         assert db.execute(select(func.count()).select_from(AuditEvent).where(AuditEvent.action == 'alert.delete')).scalar_one() == 3
+
+
+def test_a_full_batch_is_set_based_and_keeps_the_audit_chain_intact(admin):
+    """A 1,000-alert batch must finish quickly (the live site hit the proxy's 100 s timeout on 300) without losing the
+    one-audit-entry-per-alert record or breaking the hash chain."""
+    import time
+
+    from app import audit
+    from app.models import AuditEvent, Outbox, utcnow
+
+    with dbmod.session_scope() as db:
+        now = utcnow()
+        db.add_all([Alert(source='wazuh_indexer', source_id=f'bulk-{i}', title=f'scan {i}', severity='low', time=now, first_seen=now, last_seen=now,
+                          dedup_key=f'bulk-{i}') for i in range(1000)])
+    started = time.monotonic()
+    result = admin.post('/api/alerts/delete-all', {}).json()
+    elapsed = time.monotonic() - started
+    assert result == {'deleted': 1000, 'remaining': 0}
+    assert elapsed < 20, elapsed
+    with dbmod.session_scope() as db:
+        assert db.execute(select(func.count()).select_from(Alert)).scalar_one() == 0
+        assert db.execute(select(func.count()).select_from(AuditEvent).where(AuditEvent.action == 'alert.delete')).scalar_one() == 1000
+        assert audit.verify_chain(db)['ok'] is True
+        deleted_events = [row.payload for row in db.execute(select(Outbox).where(Outbox.kind == 'event')).scalars() if row.payload.get('type') == 'alert.deleted']
+        assert len(deleted_events) == 1 and deleted_events[0]['count'] == 1000  # one per client in the batch, not one per alert

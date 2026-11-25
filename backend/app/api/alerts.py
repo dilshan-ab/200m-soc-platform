@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import delete as sql_delete
 from sqlalchemy import distinct, func, select, update
 from sqlalchemy.orm import Session
 
@@ -240,14 +241,19 @@ def _delete_alerts(db: Session, p: Principal, ids: Sequence[str]) -> int:
     if len(alerts) != len(unique_ids):
         raise HTTPException(404, "one or more alerts were not found in your scope; no alerts were deleted")
 
+    # Set-based work only: per-alert ORM deletes, audit flushes and events made a 300-alert batch run past the proxy
+    # timeout and hold database connections long enough to stall the whole site.
     for model in (ActionRequest, AlertReceipt, CaseEvidence, EnrichmentJob, NotificationDelivery):
         db.execute(update(model).where(model.alert_id.in_(unique_ids)).values(alert_id=None))
     for incident in db.execute(select(Incident).where(p.scope(Incident.client_id)).with_for_update()).scalars():
         if unique_ids.intersection(incident.alert_ids):
             incident.alert_ids = [aid for aid in incident.alert_ids if aid not in unique_ids]
             incident.alert_count = len(incident.alert_ids)
-            times = db.execute(select(func.min(Alert.time), func.max(Alert.time)).where(Alert.id.in_(incident.alert_ids))).one()
-            incident.first_alert_time, incident.last_alert_time = times
+            if incident.alert_ids:
+                times = db.execute(select(func.min(Alert.time), func.max(Alert.time)).where(Alert.id.in_(incident.alert_ids), Alert.id.not_in(unique_ids))).one()
+                incident.first_alert_time, incident.last_alert_time = times
+            else:
+                incident.first_alert_time = incident.last_alert_time = None
     for handoff in db.execute(select(ShiftHandoff).where(p.scope(ShiftHandoff.client_id) | ShiftHandoff.client_id.is_(None)).with_for_update()).scalars():
         if unique_ids.intersection(handoff.alert_ids):
             handoff.alert_ids = [aid for aid in handoff.alert_ids if aid not in unique_ids]
@@ -256,10 +262,16 @@ def _delete_alerts(db: Session, p: Principal, ids: Sequence[str]) -> int:
             case = db.get(Case, alert.case_id)
             if case:
                 cases_svc.add_event(db, case, p.label, "alert", f"Alert deleted: {alert.title}", {"alert_id": alert.id})
-        audit.record(db, "alert.delete", actor=p.label, actor_id=p.user.id, resource_type="alert", resource_id=alert.id,
-                     client_id=alert.client_id, ip=p.ip, meta={"title": alert.title, "case_id": alert.case_id})
-        events.publish(db, "alert.deleted", id=alert.id, client_id=alert.client_id)
-        db.delete(alert)
+    audit.record_many(db, [
+        {"action": "alert.delete", "actor": p.label, "actor_id": p.user.id, "resource_type": "alert", "resource_id": alert.id,
+         "client_id": alert.client_id, "ip": p.ip, "meta": {"title": alert.title, "case_id": alert.case_id}}
+        for alert in alerts
+    ])
+    for client_id in {alert.client_id for alert in alerts}:
+        events.publish(db, "alert.deleted", count=sum(1 for a in alerts if a.client_id == client_id), client_id=client_id)
+    db.execute(sql_delete(Alert).where(Alert.id.in_(unique_ids)).execution_options(synchronize_session=False))
+    for alert in alerts:
+        db.expunge(alert)
     return len(alerts)
 
 
@@ -268,7 +280,7 @@ def bulk_delete(body: DeleteAlertsIn, p: Principal = Depends(require("alerts.del
     return {"deleted": _delete_alerts(db, p, body.ids)}
 
 
-DELETE_ALL_BATCH = 300  # alerts removed per request; each carries an audit entry, so one request must stay well inside the proxy timeout
+DELETE_ALL_BATCH = 1000  # alerts removed per request; set-based deletes keep even this well inside the proxy timeout
 
 
 @router.post("/delete-all")
@@ -279,9 +291,7 @@ def delete_all(p: Principal = Depends(require("alerts.delete")), db: Session = D
     single request ran past the proxy timeout (504) once there were thousands of alerts.
     """
     ids = db.execute(select(Alert.id).where(p.scope(Alert.client_id)).order_by(Alert.time, Alert.id).limit(DELETE_ALL_BATCH)).scalars().all()
-    deleted = 0
-    for i in range(0, len(ids), 100):
-        deleted += _delete_alerts(db, p, ids[i:i + 100])
+    deleted = _delete_alerts(db, p, ids) if ids else 0
     db.flush()  # the session doesn't autoflush; without this the count still includes the alerts just deleted
     remaining = db.execute(select(func.count()).select_from(Alert).where(p.scope(Alert.client_id))).scalar_one()
     return {"deleted": deleted, "remaining": remaining}
