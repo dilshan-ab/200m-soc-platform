@@ -80,7 +80,7 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
         )}
       </PageHead>
       {scoped && <p className="notice">Filtered telemetry{f.host ? ` · Host: ${f.host}` : ''}{f.source ? ` · Source: ${f.source}` : ''}{f.since ? ` · Since ${when(f.since)}` : ''}{f.until ? ` · Until ${when(f.until)}` : ''}</p>}
-      <SavedViews area="alerts" onApply={() => { setPage(1); setSel(new Set()); setCur(-1); }} />
+      <div className="toolbar">
       <Chips items={[
         { label: 'Medium+', active: isDefault, onClick: clearAll },
         { label: 'All severities', active: isShowAll, onClick: showAll },
@@ -89,7 +89,9 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
         { label: 'High', active: view('high', ''), onClick: () => setView('high', '') },
         { label: 'Investigating', active: view('', 'investigating'), onClick: () => setView('', 'investigating') },
       ]} />
-      <div className="filters">
+      <SavedViews area="alerts" onApply={() => { setPage(1); setSel(new Set()); setCur(-1); }} />
+      </div>
+      <div className="filters compact">
         <Field label="Search" id="f-q">
           <SearchBox id="f-q" value={f.q} onChange={(value) => setF('q', value)} placeholder="Title, host, IP, user, or rule" label="Search alerts" />
         </Field>
@@ -113,9 +115,9 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
           <div className="table-wrap"><table>
             <thead><tr><th><input type="checkbox" style={{ width: 'auto' }} aria-label="Select all on this page" checked={allSel} onChange={() => setSel(allSel ? new Set() : new Set(items.map((a) => a.id)))} /></th><th>Severity</th><th>Alert</th><th>Host</th><th>Source IP</th><th>Source</th><th>Status</th><th>Count</th><th>Ack due</th><th>Time</th></tr></thead>
             <tbody>{q.data!.items.map((a) => (
-              <tr key={a.id} tabIndex={0} className={`clickable${items[cur]?.id === a.id ? ' kbd-focus' : ''}`} onClick={() => openAlert(a.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); openAlert(a.id); } }}>
+              <tr key={a.id} data-sev={a.severity} tabIndex={0} className={`clickable${items[cur]?.id === a.id ? ' kbd-focus' : ''}`} onClick={() => openAlert(a.id)} onKeyDown={(event) => { if (event.target === event.currentTarget && event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); openAlert(a.id); } }}>
                 <td onClick={(e) => e.stopPropagation()}><input type="checkbox" style={{ width: 'auto' }} aria-label={`Select ${a.title}`} checked={sel.has(a.id)} onChange={() => toggle(a.id)} /></td>
-                <td><Sev v={a.severity} /></td><td className="wrap">{a.title}{a.sla_breached && <span className="badge st-failed" style={{ marginLeft: 8 }}>SLA</span>}</td>
+                <td><Sev v={a.severity} /></td><td className="truncate"><span className="cell-text" title={a.title}>{a.sla_breached && <span className="badge st-failed" style={{ marginRight: 8 }}>SLA</span>}{a.title}</span></td>
                 <td>{a.host || '—'}</td><td className="mono">{a.src_ip || '—'}</td><td>{a.source}</td><td><Status v={a.status} /></td><td>{a.count}</td>
                 <td><LiveTimer deadline={a.ack_due} done={a.status !== 'new'} /></td><td>{ago(a.time)}</td>
               </tr>))}</tbody>
