@@ -396,7 +396,7 @@ function Sla() {
   );
 }
 
-const SETTING_LABELS: Record<string, string> = { alert_dedup_minutes: 'Alert de-duplication window (minutes)', reputation_dedup_minutes: 'Reputation-list hit grouping window (minutes)', approval_window_minutes: 'Approval validity window (minutes)', response_max_per_hour: 'Response actions allowed per hour' };
+const SETTING_LABELS: Record<string, string> = { alert_dedup_minutes: 'Alert de-duplication window (minutes)', reputation_dedup_minutes: 'Reputation-list hit grouping window (minutes)', enrichment_cache_hours: 'Reuse enrichment results for (hours)', approval_window_minutes: 'Approval validity window (minutes)', response_max_per_hour: 'Response actions allowed per hour' };
 
 function Retention() {
   const toast = useToast();
