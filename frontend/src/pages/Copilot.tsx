@@ -28,12 +28,12 @@ export default function Copilot() {
         <div className="kpi"><Bot size={18} style={{ color: 'var(--accent)' }} /><div><strong>{s.provider}</strong><small>LLM Provider</small></div></div>
         <div className="kpi"><Brain size={18} /><div><strong style={{ fontSize: 12 }}>{s.model}</strong><small>Model</small></div></div>
       </div>
-      <div className="tabs" style={{ marginBottom: 16 }}>
-        <button className={tab === 'analyze' ? 'active' : ''} onClick={() => setTab('analyze')}>Deep Analysis</button>
-        <button className={tab === 'triage' ? 'active' : ''} onClick={() => setTab('triage')}>Quick Triage</button>
-        <button className={tab === 'explain' ? 'active' : ''} onClick={() => setTab('explain')}>Explain</button>
-        <button className={tab === 'suggest' ? 'active' : ''} onClick={() => setTab('suggest')}>Response Actions</button>
-        <button className={tab === 'summarize' ? 'active' : ''} onClick={() => setTab('summarize')}>Case Summary</button>
+      <div className="tabs" role="tablist" style={{ marginBottom: 16 }}>
+        <button type="button" role="tab" aria-selected={tab === 'analyze'} className={tab === 'analyze' ? 'active' : ''} onClick={() => setTab('analyze')}>Deep Analysis</button>
+        <button type="button" role="tab" aria-selected={tab === 'triage'} className={tab === 'triage' ? 'active' : ''} onClick={() => setTab('triage')}>Quick Triage</button>
+        <button type="button" role="tab" aria-selected={tab === 'explain'} className={tab === 'explain' ? 'active' : ''} onClick={() => setTab('explain')}>Explain</button>
+        <button type="button" role="tab" aria-selected={tab === 'suggest'} className={tab === 'suggest' ? 'active' : ''} onClick={() => setTab('suggest')}>Response Actions</button>
+        <button type="button" role="tab" aria-selected={tab === 'summarize'} className={tab === 'summarize' ? 'active' : ''} onClick={() => setTab('summarize')}>Case Summary</button>
       </div>
       {tab === 'analyze' && <AnalyzePanel />}
       {tab === 'triage' && <TriagePanel />}

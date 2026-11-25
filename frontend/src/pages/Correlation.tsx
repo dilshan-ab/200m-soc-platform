@@ -30,9 +30,9 @@ export default function Correlation() {
         </div>
       </PageHead>
       {run.error && <ErrorBox error={run.error} />}
-      <div className="tabs" style={{ marginBottom: 16 }}>
-        <button className={`tab ${tab === 'incidents' ? 'active' : ''}`} onClick={() => setTab('incidents')}>Incidents</button>
-        <button className={`tab ${tab === 'rules' ? 'active' : ''}`} onClick={() => setTab('rules')}>Rules</button>
+      <div className="tabs" role="tablist" style={{ marginBottom: 16 }}>
+        <button type="button" role="tab" aria-selected={tab === 'incidents'} className={`tab ${tab === 'incidents' ? 'active' : ''}`} onClick={() => setTab('incidents')}>Incidents</button>
+        <button type="button" role="tab" aria-selected={tab === 'rules'} className={`tab ${tab === 'rules' ? 'active' : ''}`} onClick={() => setTab('rules')}>Rules</button>
       </div>
       {tab === 'incidents' ? <IncidentList /> : <RuleList />}
     </>
