@@ -18,6 +18,7 @@ from . import events
 from .settings_svc import get_setting
 
 log = logging.getLogger("soc.ingest")
+REPUTATION_MAX_IPS = 50
 WAZUH_DEFAULT_LEVELS = [(15, "critical"), (12, "high"), (7, "medium"), (4, "low")]
 
 
@@ -37,8 +38,25 @@ def map_severity(tool: Tool | None, value: str) -> str:
     return "low"
 
 
+def _is_reputation(n: NormAlert) -> bool:
+    return bool((n.raw or {}).get("reputation"))
+
+
 def _dedup_key(source: str, n: NormAlert) -> str:
-    return sha256_hex("|".join([source, n.rule_id, n.host.lower(), n.src_ip, n.title.lower()]))[:64]
+    # Reputation-list hits come from hundreds of scanning addresses; keying them by address made one alert per address.
+    src_ip = "" if _is_reputation(n) else n.src_ip
+    return sha256_hex("|".join([source, n.rule_id, n.host.lower(), src_ip, n.title.lower()]))[:64]
+
+
+def _remember_src_ip(alert: Alert, ip: str) -> None:
+    """Keep the distinct addresses folded into a rolling reputation alert (capped), so analysts can still see them."""
+    if not ip:
+        return
+    raw = dict(alert.raw or {})
+    ips = list(raw.get("src_ips") or ([alert.src_ip] if alert.src_ip else []))
+    if ip not in ips and len(ips) < REPUTATION_MAX_IPS:
+        raw["src_ips"] = [*ips, ip]
+        alert.raw = raw
 
 
 def _find_asset(db: Session, n: NormAlert) -> Asset | None:
@@ -72,13 +90,15 @@ def ingest_alert(db: Session, tool: Tool | None, n: NormAlert, *, source: str | 
     now = utcnow()
     sev = map_severity(tool, n.severity)
     key = _dedup_key(src, n)
-    window = int(get_setting(db, "alert_dedup_minutes", 10))
+    window = int(get_setting(db, "reputation_dedup_minutes", 60) if _is_reputation(n) else get_setting(db, "alert_dedup_minutes", 10))
     dup = db.execute(
         select(Alert).where(Alert.dedup_key == key, Alert.last_seen >= now - timedelta(minutes=window), Alert.status.in_(["new", "acknowledged", "investigating"])).order_by(Alert.last_seen.desc()).limit(1)
     ).scalars().first()
     if dup is not None:
         dup.count += 1
         dup.last_seen = now
+        if _is_reputation(n):
+            _remember_src_ip(dup, n.src_ip)
         if sev_rank(sev) > sev_rank(dup.severity):
             dup.severity = sev
         if tool_id and n.source_id:

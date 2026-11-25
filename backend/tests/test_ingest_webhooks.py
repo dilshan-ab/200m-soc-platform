@@ -163,3 +163,43 @@ def test_poller_failure_backoff_and_isolation():
         t = db.get(Tool, tid)
         assert t.state.error_count == 1 and "503" in t.state.last_error
         assert not polling.is_due(t)  # backing off
+
+
+def _suricata(i, sig, src, host="CyberTest", level=10):
+    return {"id": f"s-{i}", "timestamp": "2026-11-25T01:00:00.000+0000", "rule": {"id": "100003", "level": level, "description": f"Suricata Alert - {sig}", "groups": ["suricata"]},
+            "agent": {"id": "002", "name": host}, "location": "/host/var/log/suricata/eve.json",
+            "data": {"src_ip": src, "dest_ip": "10.0.0.5", "src_port": "51515", "dest_port": "22", "alert": {"signature": sig}}}
+
+
+def test_suricata_addresses_are_mapped():
+    from app.connectors.plugins import WazuhIndexer
+    n = WazuhIndexer.normalize("s-1", _suricata(1, "ET SCAN Suspicious inbound to MSSQL port 1433. Signature ID: 2010935.", "198.51.100.9"))
+    assert (n.src_ip, n.dst_ip) == ("198.51.100.9", "10.0.0.5")
+    assert n.severity == "10" and "Signature ID" in n.title and not n.raw.get("reputation")
+    # Wazuh's own decoder names still win when present.
+    p = _wazuh_payload()
+    p["data"]["src_ip"] = "192.0.2.1"
+    assert WazuhIndexer.normalize("w", p).src_ip == "203.0.113.50"
+
+
+def test_reputation_list_hits_fold_into_one_low_alert_per_host():
+    from app.connectors.plugins import WazuhIndexer
+    sigs = [("ET CINS Active Threat Intelligence Poor Reputation IP group 57. Signature ID: 2403356.", "198.51.100.1"),
+            ("ET CINS Active Threat Intelligence Poor Reputation IP group 12. Signature ID: 2403311.", "198.51.100.2"),
+            ("ET CINS Active Threat Intelligence Poor Reputation IP group 90. Signature ID: 2403389.", "198.51.100.3"),
+            ("ET CINS Active Threat Intelligence Poor Reputation IP group 12. Signature ID: 2403311.", "198.51.100.2")]
+    with dbmod.session_scope() as db:
+        t = Tool(type="wazuh_indexer", name="wi", config={})
+        db.add(t)
+        db.flush()
+        results = [ingest.ingest_alert(db, t, WazuhIndexer.normalize(f"r-{i}", _suricata(i, s, ip))) for i, (s, ip) in enumerate(sigs)]
+        other_host, created_other = ingest.ingest_alert(db, t, WazuhIndexer.normalize("r-x", _suricata(9, sigs[0][0], "198.51.100.1", host="PM-Tool")))
+        exploit, created_exploit = ingest.ingest_alert(db, t, WazuhIndexer.normalize("r-e", _suricata(10, "ET EXPLOIT D-Link Devices Home Network Administration", "198.51.100.1", level=12)))
+        first = results[0][0]
+        assert [c for _, c in results] == [True, False, False, False]
+        assert first.count == 4 and first.severity == "low" and first.src_ip == "198.51.100.1"
+        assert first.title == "Suricata Alert - ET CINS Active Threat Intelligence Poor Reputation IP."
+        assert first.raw["reputation"] is True and first.raw["src_ips"] == ["198.51.100.1", "198.51.100.2", "198.51.100.3"]
+        # Other hosts get their own rolling alert, and real exploit signatures are untouched.
+        assert created_other and other_host.id != first.id
+        assert created_exploit and exploit.severity == "high" and exploit.src_ip == "198.51.100.1"
