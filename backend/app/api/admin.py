@@ -481,7 +481,7 @@ def put_sla(body: SlaIn, p: Principal = Depends(require_admin_step_up("admin.set
 
 
 # ------------------------------------------------------------------------ settings & retention
-EDITABLE = {"alert_dedup_minutes": (1, 120), "reputation_dedup_minutes": (5, 1440), "approval_window_minutes": (5, 1440), "response_max_per_hour": (1, 500)}
+EDITABLE = {"alert_dedup_minutes": (1, 120), "reputation_dedup_minutes": (5, 1440), "enrichment_cache_hours": (1, 168), "approval_window_minutes": (5, 1440), "response_max_per_hour": (1, 500)}
 
 
 @router.get("/admin/settings")

@@ -16,6 +16,14 @@ class ConnectorError(Exception):
     pass
 
 
+class RateLimited(ConnectorError):
+    """The provider answered HTTP 429. retry_after is the provider's Retry-After in seconds, when it sent one."""
+
+    def __init__(self, message: str, retry_after: int | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
 @dataclass
 class FieldSpec:
     name: str
@@ -146,6 +154,9 @@ class Connector:
 
     def json(self, method: str, path: str = "", **kw: Any) -> Any:
         r = self.request(method, path, **kw)
+        if r.status_code == 429:
+            ra = str(r.headers.get("Retry-After", "")).strip()
+            raise RateLimited(f"HTTP 429 from {self.manifest.type}", int(ra) if ra.isdigit() else None)
         if r.status_code >= 400:
             raise ConnectorError(f"HTTP {r.status_code} from {self.manifest.type}")
         try:
