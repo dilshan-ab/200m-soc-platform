@@ -33,6 +33,8 @@ def _abuse(status_by_call, calls):
 
 
 def _queue(ip=PUBLIC_IP, alert_id=None):
+    # Background lookups use the quota-limited providers only for high/critical alerts.
+    alert_id = alert_id or mk_alert(src_ip="", severity="high", title=f"for {ip}")
     with dbmod.session_scope() as db:
         j = intel.queue_enrichment(db, ip, "ip", system_user(db).id, alert_id=alert_id)
         return j.id
@@ -96,3 +98,48 @@ def test_auto_enrich_skips_blocklist_alerts_and_private_addresses():
         assert intel.auto_enrich_alert(db, rep.id) == []
         jobs = intel.auto_enrich_alert(db, lan.id)
         assert [db.get(EnrichmentJob, j).indicator for j in jobs] == [PUBLIC_IP]
+
+
+def _job(ip, severity, requester=None, itype="ip"):
+    aid = mk_alert(src_ip="", severity=severity, title=f"{severity} {ip}")
+    with dbmod.session_scope() as db:
+        return intel.queue_enrichment(db, ip, itype, requester or system_user(db).id, alert_id=aid).id
+
+
+def test_tiers_stop_at_first_malicious_and_save_limited_quota():
+    mk_tool("misp", "MISP", {"url": "https://misp.corp.local"}, {"auth_key": "mk"})
+    mk_tool("abuseipdb", "AbuseIPDB", {"url": "https://abuse.corp.local/api/v2"}, {"api_key": "k"})
+    hits = {"misp": [], "abuse": []}
+    misp_events = {"8.8.4.4": [{"event_id": "7"}], "8.8.8.8": []}
+
+    def handler(r: httpx.Request):
+        if r.url.host == "misp.corp.local":
+            ip = r.read().decode()
+            value = next(v for v in misp_events if v in ip)
+            hits["misp"].append(value)
+            return jresp({"response": {"Attribute": misp_events[value]}})
+        hits["abuse"].append(r.url.params.get("ipAddress"))
+        return jresp({"data": {"abuseConfidenceScore": 0, "totalReports": 0}})
+    mock_http(handler)
+
+    # MISP already says malicious: AbuseIPDB is not asked, even for a high alert.
+    status, verdict, results, _ = _run(_job("8.8.4.4", "high"))
+    assert (status, verdict) == ("done", "malicious") and "not needed: MISP" in results["AbuseIPDB"]["skipped"] and hits["abuse"] == []
+    # Unknown to MISP on a medium alert: the limited quota is saved, and the job is still done, not failed.
+    status, verdict, results, _ = _run(_job("8.8.8.8", "medium"))
+    assert (status, verdict) == ("done", "unknown") and results["AbuseIPDB"]["skipped"] == intel.SAVED_FOR_PRIORITY and hits["abuse"] == []
+    # The same address on a high alert does not reuse that partial result: AbuseIPDB is asked now.
+    status, _, results, _ = _run(_job("8.8.8.8", "high"))
+    assert hits["abuse"] == ["8.8.8.8"] and results["AbuseIPDB"]["verdict"] == "unknown" and status == "done"
+
+
+def test_manual_lookup_uses_limited_providers_on_a_low_alert(admin):
+    mk_tool("abuseipdb", "AbuseIPDB", {"url": "https://abuse.corp.local/api/v2"}, {"api_key": "k"})
+    calls: list = []
+    mock_http(_abuse(lambda n: (200, {}), calls))
+    with dbmod.session_scope() as db:
+        from app.models import User
+        analyst = db.execute(select(User).where(User.id != system_user(db).id)).scalars().first()
+        analyst_id = analyst.id
+    status, verdict, _, _ = _run(_job(PUBLIC_IP, "low", requester=analyst_id))
+    assert (status, verdict) == ("done", "malicious") and calls == [PUBLIC_IP]
