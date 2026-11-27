@@ -40,6 +40,7 @@ export default function Dashboard() {
   const { dark, live } = useOutletContext<{ dark: boolean; live: boolean }>();
   const [days, setDays] = useState(1);
   const allowed = can('alerts.read');
+  const canReadCases = can('cases.read');
   const query = useQuery({
     queryKey: ['dashboard', days],
     queryFn: () => get<DashboardData>('/api/dashboard', { days }),
@@ -51,11 +52,19 @@ export default function Dashboard() {
     enabled: allowed, refetchInterval: REFRESH_MS,
   });
   const cases = useQuery({
-    queryKey: ['overview-active-cases'],
+    queryKey: ['cases', 'overview-active'],
     queryFn: () => get<Page<ActiveCase>>('/api/cases', { status: ['open', 'in_progress'], limit: 5 }),
-    enabled: can('cases.read'), refetchInterval: REFRESH_MS,
+    enabled: canReadCases, refetchInterval: REFRESH_MS,
   });
-  const data = query.data;
+  const data = allowed ? query.data : undefined;
+  const refreshing = query.isFetching || map.isFetching || cases.isFetching;
+  function refresh() {
+    if (allowed) {
+      void query.refetch();
+      void map.refetch();
+    }
+    if (canReadCases) void cases.refetch();
+  }
 
   return (
     <div className="ops-overview">
@@ -67,17 +76,19 @@ export default function Dashboard() {
         </div>
       </div>
       <div className="soc-period">
-        {allowed && <>
+        {allowed && (
           <div className="period-switch" role="group" aria-label="Reporting period">
             {[[1, '24 hours'], [7, '7 days'], [30, '30 days']].map(([value, label]) => <button key={value} type="button" aria-pressed={days === value} onClick={() => setDays(Number(value))}>{label}</button>)}
           </div>
-          <Button variant="outline" disabled={query.isFetching} onClick={() => void query.refetch()}><RefreshCw className={query.isFetching ? 'console-refreshing' : undefined} size={16} />{query.isFetching ? 'Updating…' : 'Refresh'}</Button>
-        </>}
+        )}
+        {(allowed || canReadCases) && (
+          <Button variant="outline" disabled={refreshing} onClick={refresh}><RefreshCw className={refreshing ? 'console-refreshing' : undefined} size={16} />{refreshing ? 'Updating…' : 'Refresh'}</Button>
+        )}
       </div>
-      {!allowed && <p className="notice">Use the navigation to open the areas assigned to your role.</p>}
+      {!allowed && !canReadCases && <p className="notice">Use the navigation to open the areas assigned to your role.</p>}
       {allowed && query.isPending && <Loading />}
-      {query.error && <ErrorBox error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} />}
-      {data && <OverviewData data={data} dark={dark} map={map} cases={cases} />}
+      {allowed && query.error && <ErrorBox error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} />}
+      {(data || canReadCases) && <OverviewData data={data} dark={dark} map={map} cases={cases} />}
     </div>
   );
 }
@@ -129,7 +140,7 @@ type OverviewQuery<T> = { data?: T; error: Error | null; isPending: boolean; ref
 type ActiveCase = { id: string; number: string; title: string; severity: string; status: string; updated_at: string };
 
 function OverviewData({ data, dark, map, cases }: {
-  data: DashboardData; dark: boolean;
+  data?: DashboardData; dark: boolean;
   map: OverviewQuery<MapData>; cases: OverviewQuery<Page<ActiveCase>>;
 }) {
   const { can } = useAuth();
@@ -137,37 +148,39 @@ function OverviewData({ data, dark, map, cases }: {
   const [preview, setPreview] = useState<PreviewRecord | null>(null);
   const inspect = (point: Point, severity?: string) => {
     if (!point.since || !point.until) return;
-    const params = new URLSearchParams({ since: point.since, until: point.until });
+    const params = new URLSearchParams({ since: point.since, until: point.until, show_all: '1' });
     if (severity) params.set('severity', severity);
     navigate(`/app/alerts?${params}`);
   };
   const previewLink = (event: React.MouseEvent, kind: PreviewRecord['kind'], id: string) => { if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) { event.preventDefault(); setPreview({ kind, id }); } };
-  const m = data.metrics;
-  const open = ['new', 'acknowledged', 'investigating'].reduce((count, status) => count + (m.alerts_by_status[status] ?? 0), 0);
-  const cards = [
+  const m = data?.metrics;
+  const open = ['new', 'acknowledged', 'investigating'].reduce((count, status) => count + (m?.alerts_by_status[status] ?? 0), 0);
+  const cards = m ? [
     { tone: 'red', label: 'Active alerts', value: <AnimatedNumber value={open} />, note: 'In the selected reporting window', icon: Bell, to: '/app/alerts', cap: 'alerts.read' },
-    { tone: 'amber', label: 'Open incidents', value: <AnimatedNumber value={m.open_cases} />, note: 'Across your assigned scope', icon: Layers, to: '/app/cases', cap: 'cases.read' },
+    { tone: 'amber', label: 'Active cases', value: <AnimatedNumber value={m.open_cases} />, note: 'Across your assigned scope', icon: Layers, to: '/app/cases', cap: 'cases.read' },
     { tone: 'blue', label: 'Mean time to acknowledge', value: <AnimatedNumber value={m.mtta_minutes} suffix=" min" />, note: `${number.format(m.sla_breached)} SLA breaches in this period`, icon: Clock },
     { tone: 'teal', label: 'Endpoint coverage', value: <AnimatedNumber value={m.assets_total ? m.agent_coverage_pct : null} suffix="%" />, note: `${m.agents_active} of ${m.assets_total} agents active`, icon: Shield, to: '/app/assets', cap: 'assets.read' },
-  ];
-  const categories = data.categories ?? [];
+  ] : [];
+  const categories = data?.categories ?? [];
 
   return (
     <DashboardLayout>
-      <div className="metrics ops-metrics">
-        {cards.filter(({ cap }) => cap !== 'cases.read' || can(cap)).map(({label, value, note, icon: Icon, to, cap, tone}, index) => {
-          const body = <><span className="ops-kpi-index" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span><span className="ops-kpi-label"><Icon size={17} aria-hidden="true" />{label}</span><strong>{value}</strong><small>{note}</small></>;
-          return to && cap && can(cap)
-            ? <Link className="metric ops-kpi" data-tone={tone} key={label} to={to}>{body}</Link>
-            : <article className="metric ops-kpi" data-tone={tone} key={label}>{body}</article>;
-        })}
-      </div>
-      <section className="panel ops-trend primary-security-overview">
-        <div className="panel-title"><div><h2><Activity size={18} /> Security overview</h2><p>Alert volume by severity · UTC / Local</p></div></div>
-        <Suspense fallback={<div className="chart empty">Loading chart…</div>}><Trend dark={dark} series={data.series} onInspect={inspect} /></Suspense>
-      </section>
+      {data && <>
+        <div className="metrics ops-metrics">
+          {cards.filter(({ cap }) => cap !== 'cases.read' || can(cap)).map(({label, value, note, icon: Icon, to, cap, tone}, index) => {
+            const body = <><span className="ops-kpi-index" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span><span className="ops-kpi-label"><Icon size={17} aria-hidden="true" />{label}</span><strong>{value}</strong><small>{note}</small></>;
+            return to && cap && can(cap)
+              ? <Link className="metric ops-kpi" data-tone={tone} key={label} to={to}>{body}</Link>
+              : <article className="metric ops-kpi" data-tone={tone} key={label}>{body}</article>;
+          })}
+        </div>
+        <section className="panel ops-trend primary-security-overview">
+          <div className="panel-title"><div><h2><Activity size={18} /> Security overview</h2><p>Alert volume by severity · UTC / Local</p></div></div>
+          <Suspense fallback={<div className="chart empty">Loading chart…</div>}><Trend dark={dark} series={data.series} onInspect={inspect} /></Suspense>
+        </section>
+      </>}
       <WidgetGrid group="records">
-        <section key="Threat landscape" data-widget-title="Threat landscape" className="panel soc-landscape">
+        {data && <section key="Threat landscape" data-widget-title="Threat landscape" className="panel soc-landscape">
           <div className="panel-title"><div><h2><Globe size={18} /> Threat landscape</h2><p>Alert origins in the selected period</p></div><Link to="/app/threat-map">Open map <ArrowRight size={14} /></Link></div>
           <div className="soc-landscape-body">
             <div>
@@ -177,9 +190,9 @@ function OverviewData({ data, dark, map, cases }: {
               {map.data && <p className="soc-map-note">{map.data.unique_countries ? `${map.data.unique_countries} countries with located alerts` : 'No geolocated alert origins'}</p>}
             </div>
           </div>
-        </section>
+        </section>}
         {can('cases.read') && <section key="Active incidents" data-widget-title="Active incidents" className="panel soc-active">
-          <div className="panel-title"><h2><Shield size={18} /> Active incidents</h2><Link to="/app/cases">View cases <ArrowRight size={14} /></Link></div>
+          <div className="panel-title"><h2><Shield size={18} /> Active cases</h2><Link to="/app/cases">View cases <ArrowRight size={14} /></Link></div>
           {cases.error ? <ErrorBox error={cases.error} onRetry={() => void cases.refetch()} retrying={cases.isFetching} /> : cases.isPending ? <Loading /> : cases.data?.items.length ? (
             <div className="table-scroll"><table><thead><tr><th>Case</th><th>Severity</th><th>Status</th><th>Updated</th></tr></thead>
               <tbody>{cases.data.items.map((item) => <tr key={item.id}>
@@ -188,12 +201,12 @@ function OverviewData({ data, dark, map, cases }: {
               </tr>)}</tbody></table></div>
           ) : <p className="empty">No active cases.</p>}
         </section>}
-        <DashboardLinks key="Linked dashboards" data-widget-title="Linked dashboards" />
-        <ThreatCategories key="Threat categories" data-widget-title="Threat categories" categories={categories} onInspect={(category) => {
-          const params = new URLSearchParams({ category });
+        {data && <DashboardLinks key="Linked dashboards" data-widget-title="Linked dashboards" />}
+        {data && <ThreatCategories key="Threat categories" data-widget-title="Threat categories" categories={categories} onInspect={(category) => {
+          const params = new URLSearchParams({ category, show_all: '1' });
           if (data.window) { params.set('since', data.window.since); params.set('until', data.window.until); }
           navigate(`/app/alerts?${params}`);
-        }} />
+        }} />}
       </WidgetGrid>
       {preview && <RecordPreview record={preview} onClose={() => setPreview(null)} />}
     </DashboardLayout>

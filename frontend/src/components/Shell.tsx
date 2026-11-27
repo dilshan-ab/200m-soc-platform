@@ -260,7 +260,14 @@ export function Shell() {
           </div>
         </header>
         {can('alerts.read') && <AlertPopups live={live} />}
-        <main onKeyDown={tableKeyboard} id="workspace-main" tabIndex={-1} className="content" key={loc.pathname}><Outlet context={{ dark, live }} /></main>
+        <main onKeyDown={tableKeyboard} id="workspace-main" tabIndex={-1} className="content" key={loc.pathname}>
+          {me?.client_ids?.length === 0 && (can('alerts.read') || can('cases.read')) && (
+            <p className="notice" role="status">
+              Your account has no client access. Ask a SOC administrator to assign your clients under Administration → Users. Alerts, alert pop-ups, and cases are limited to your client assignments.
+            </p>
+          )}
+          <Outlet context={{ dark, live }} />
+        </main>
         {backToTop && <button type="button" className="back-to-top" onClick={() => { document.getElementById('workspace-main')?.focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }); }}><ArrowUp size={15} aria-hidden="true" />Back to top</button>}
       </div>
       {palette && (
