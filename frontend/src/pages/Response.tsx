@@ -69,7 +69,7 @@ export default function Response() {
         </table></div>
       )}
       {detail && <RequestDetail id={detail} />}
-      <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>Approvers: see <Link to="/app/approvals">Approvals</Link>. Protected targets: {g.data?.protected_targets?.join(', ') || 'none'}.</p>
+      <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>{can('response.approve') ? <>Approvers: see <Link to="/app/approvals">Approvals</Link>. </> : 'Requests are approved by L2 analysts or above. '}Protected targets: {g.data?.protected_targets?.join(', ') || 'none'}.</p>
       {open && <RequestActionModal onClose={() => setOpen(false)} />}
     </>
   );
