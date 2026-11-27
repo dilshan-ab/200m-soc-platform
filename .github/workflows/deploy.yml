@@ -3,6 +3,9 @@ name: Build and deploy
 on:
   push:
     branches: [main]
+  # Re-run a deploy by hand (Actions → Build and deploy → Run workflow) when GitHub drops the push event, as it did
+  # for the 25 Nov release.
+  workflow_dispatch:
 
 # Keep image publication and server replacement in the same serialized run.
 concurrency:
@@ -15,6 +18,8 @@ env:
 jobs:
   # Tests, typecheck and build are not repeated here: CI (ci.yml) already runs on every pull request into main and dev.
   build-and-push:
+    # A manual run may only deploy main, never another branch picked in the Run workflow menu.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
