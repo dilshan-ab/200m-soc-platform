@@ -3,6 +3,7 @@ import { AlertTriangle, Crosshair, Play, Target, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { Empty, ErrorBox, Loading, PageHead } from '../components/ui';
 import { get, post } from '../lib/api';
+import { useAuth } from '../lib/auth';
 
 type Platform = { system_type: string; name: string; description: string; configured: boolean; tool_id: string | null; capabilities: string[] };
 
@@ -11,16 +12,18 @@ const TYPE_COLORS: Record<string, string> = { caldera: 'var(--bad)', atomic_red_
 
 export default function Simulation() {
   const [tab, setTab] = useState<'platforms' | 'run' | 'results'>('platforms');
+  const { can } = useAuth();
+  const canRun = can('simulation.write'); // starting a simulation is Admin-only; other roles don't see the tab at all
   return (
     <>
       <PageHead title="Attack Simulation" sub="Breach and attack simulation — validate detection coverage with MITRE ATT&CK techniques." />
       <div className="tabs" role="tablist" style={{ marginBottom: 16 }}>
         <button type="button" role="tab" aria-selected={tab === 'platforms'} className={tab === 'platforms' ? 'active' : ''} onClick={() => setTab('platforms')}>Platforms</button>
-        <button type="button" role="tab" aria-selected={tab === 'run'} className={tab === 'run' ? 'active' : ''} onClick={() => setTab('run')}>Run Simulation</button>
+        {canRun && <button type="button" role="tab" aria-selected={tab === 'run'} className={tab === 'run' ? 'active' : ''} onClick={() => setTab('run')}>Run Simulation</button>}
         <button type="button" role="tab" aria-selected={tab === 'results'} className={tab === 'results' ? 'active' : ''} onClick={() => setTab('results')}>Results</button>
       </div>
       {tab === 'platforms' && <PlatformsPanel />}
-      {tab === 'run' && <RunPanel />}
+      {tab === 'run' && canRun && <RunPanel />}
       {tab === 'results' && <ResultsPanel />}
     </>
   );
