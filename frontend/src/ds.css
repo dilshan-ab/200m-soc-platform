@@ -215,3 +215,7 @@ html[data-theme] .main-shell .tabs > button:is(.active, [aria-selected=true])::a
 
 html[data-theme] .main-shell .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 160px; margin: 0 0 12px; padding: 28px 20px; border: 1px dashed var(--border); border-radius: var(--radius); background: color-mix(in srgb, var(--surface) 60%, transparent); text-align: center; }
 html[data-theme] .main-shell .empty p { max-width: 52ch; margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; }
+
+/* Background purge progress */
+html[data-theme] .purge-progress { height: 8px; margin: 12px 0 6px; border-radius: 4px; background: var(--soft); overflow: hidden; }
+html[data-theme] .purge-progress > span { display: block; height: 100%; background: var(--bad); border-radius: 4px; transition: width .4s var(--ease); }

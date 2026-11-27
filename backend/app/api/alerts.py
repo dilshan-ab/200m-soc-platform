@@ -232,14 +232,19 @@ class DeleteAlertsIn(BaseModel):
     ids: list[str] = Field(min_length=1, max_length=100)
 
 
-def _delete_alerts(db: Session, p: Principal, ids: Sequence[str]) -> int:
+def _delete_alerts(db: Session, p: Principal, ids: Sequence[str], *, strict: bool = True) -> int:
+    """strict: the caller named these alerts, so a missing one rejects the whole request. Delete-all picks its own
+    batch and may race a batch still finishing after a proxy timeout, so it deletes whatever is still there."""
     policy = db.execute(select(RetentionPolicy).where(RetentionPolicy.dataset == "alerts")).scalar_one_or_none()
     if policy and policy.legal_hold:
         raise HTTPException(409, "alerts are under legal hold; an administrator must release the hold before deletion")
     unique_ids = set(ids)
     alerts = db.execute(select(Alert).where(Alert.id.in_(unique_ids), p.scope(Alert.client_id)).with_for_update()).scalars().all()
-    if len(alerts) != len(unique_ids):
+    if strict and len(alerts) != len(unique_ids):
         raise HTTPException(404, "one or more alerts were not found in your scope; no alerts were deleted")
+    unique_ids = {alert.id for alert in alerts}
+    if not unique_ids:
+        return 0
 
     # Set-based work only: per-alert ORM deletes, audit flushes and events made a 300-alert batch run past the proxy
     # timeout and hold database connections long enough to stall the whole site.
@@ -291,10 +296,87 @@ def delete_all(p: Principal = Depends(require("alerts.delete")), db: Session = D
     single request ran past the proxy timeout (504) once there were thousands of alerts.
     """
     ids = db.execute(select(Alert.id).where(p.scope(Alert.client_id)).order_by(Alert.time, Alert.id).limit(DELETE_ALL_BATCH)).scalars().all()
-    deleted = _delete_alerts(db, p, ids) if ids else 0
+    deleted = _delete_alerts(db, p, ids, strict=False) if ids else 0
     db.flush()  # the session doesn't autoflush; without this the count still includes the alerts just deleted
     remaining = db.execute(select(func.count()).select_from(Alert).where(p.scope(Alert.client_id))).scalar_one()
     return {"deleted": deleted, "remaining": remaining}
+
+
+PURGE_KEY = "alerts_purge"
+
+
+def _purge_state(db: Session) -> dict[str, Any]:
+    from ..services.settings_svc import get_setting
+
+    return dict(get_setting(db, PURGE_KEY, None) or {"status": "idle"})
+
+
+def _purge_public(state: dict[str, Any]) -> dict[str, Any]:
+    return {k: state.get(k) for k in ("status", "deleted", "remaining", "started_at", "finished_at", "started_by", "error")}
+
+
+@router.post("/delete-all/background", status_code=202)
+def start_purge(p: Principal = Depends(require("alerts.delete")), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Delete every alert in the caller's scope as a server-side job, one batch per background step.
+
+    The browser no longer has to stay open, and no request runs into the proxy timeout. Starting while a purge is
+    already running returns that purge instead of starting a second one.
+    """
+    from ..services.settings_svc import set_setting
+
+    state = _purge_state(db)
+    if state.get("status") == "running":
+        return _purge_public(state)
+    policy = db.execute(select(RetentionPolicy).where(RetentionPolicy.dataset == "alerts")).scalar_one_or_none()
+    if policy and policy.legal_hold:
+        raise HTTPException(409, "alerts are under legal hold; an administrator must release the hold before deletion")
+    remaining = db.execute(select(func.count()).select_from(Alert).where(p.scope(Alert.client_id))).scalar_one()
+    state = {"status": "running", "deleted": 0, "remaining": remaining, "started_at": utcnow().isoformat(), "finished_at": None,
+             "started_by": p.label, "error": None, "user_id": p.user.id, "ip": p.ip,
+             "client_ids": sorted(p.client_ids) if p.client_ids is not None else None}
+    set_setting(db, PURGE_KEY, state)
+    audit.record(db, "alert.purge.start", actor=p.label, actor_id=p.user.id, resource_type="alert", ip=p.ip, meta={"remaining": remaining})
+    events.enqueue(db, "alerts.purge", {})
+    return _purge_public(state)
+
+
+@router.get("/delete-all/status")
+def purge_status(p: Principal = Depends(require("alerts.delete")), db: Session = Depends(get_db)) -> dict[str, Any]:
+    return _purge_public(_purge_state(db))
+
+
+@events.handler("alerts.purge")
+def _run_purge_step(db: Session, payload: dict[str, Any]) -> None:
+    """One purge batch per outbox job, re-queued until nothing is left: short transactions, no proxy in the way."""
+    from ..services.settings_svc import set_setting
+
+    state = _purge_state(db)
+    if state.get("status") != "running":
+        return
+    user = db.get(User, state.get("user_id"))
+    if user is None or not user.active:
+        state.update(status="failed", error="the user who started the purge no longer exists or is disabled", finished_at=utcnow().isoformat())
+        set_setting(db, PURGE_KEY, state)
+        return
+    client_ids = state.get("client_ids")
+    p = Principal(user=user, session=None, token=None, client_ids=frozenset(client_ids) if client_ids is not None else None,
+                  ip=str(state.get("ip") or ""), correlation_id="alerts-purge")
+    ids = db.execute(select(Alert.id).where(p.scope(Alert.client_id)).order_by(Alert.time, Alert.id).limit(DELETE_ALL_BATCH)).scalars().all()
+    try:
+        deleted = _delete_alerts(db, p, ids, strict=False) if ids else 0
+    except HTTPException as e:
+        state.update(status="failed", error=str(e.detail), finished_at=utcnow().isoformat())
+        set_setting(db, PURGE_KEY, state)
+        return
+    db.flush()
+    remaining = db.execute(select(func.count()).select_from(Alert).where(p.scope(Alert.client_id))).scalar_one()
+    state.update(deleted=int(state.get("deleted") or 0) + deleted, remaining=remaining)
+    if remaining and (deleted or ids):  # a batch that only raced an earlier one still has more to do
+        events.enqueue(db, "alerts.purge", {})
+    else:
+        state.update(status="done", finished_at=utcnow().isoformat())
+        audit.record(db, "alert.purge.finish", actor=p.label, actor_id=user.id, resource_type="alert", ip=p.ip, meta={"deleted": state["deleted"], "remaining": remaining})
+    set_setting(db, PURGE_KEY, state)
 
 
 @router.delete("/{alert_id}", status_code=204)
