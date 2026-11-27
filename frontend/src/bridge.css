@@ -997,3 +997,5 @@ tr:has(.hover-actions) { position: relative; }
 .alert-investigation-timeline li { display: grid; gap: 2px; margin-bottom: 10px; overflow-wrap: anywhere; }
 .alert-investigation-timeline :is(time, small) { color: var(--muted); font-size: 11px; }
 .triage-sla { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+
+.alert-volume-overview { margin-bottom: 16px; }

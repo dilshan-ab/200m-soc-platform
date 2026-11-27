@@ -1,8 +1,8 @@
 import { LiveTimer, Skeleton } from '../components/Interactive';
 import { SavedViews } from '../components/SavedViews';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Link, useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
 import { Chips } from '../components/manage';
 import { Drawer, Empty, ErrorBox, Field, PageHead, Pager, Modal, SearchBox, Sev, Status, useToast } from '../components/ui';
 import { get, patch, post, type Page } from '../lib/api';
@@ -10,6 +10,10 @@ import { useAct } from '../lib/mut';
 import { useAuth } from '../lib/auth';
 import { SEVERITIES, ago, when } from '../lib/format';
 import { RequestActionModal } from './Response';
+import { REFRESH_MS } from '../lib/refresh';
+import type { Point } from '../Trend';
+
+const Trend = lazy(() => import('../Trend'));
 
 type Alert = any;
 
@@ -18,6 +22,7 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
   const [page, setPage] = useState(1);
   const [deleting, setDeleting] = useState<string[] | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [overviewOpen, setOverviewOpen] = useState(false);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const DEFAULT_SEVERITIES = ['medium', 'high', 'critical'];
   const explicitSev = sp.getAll('severity');
@@ -69,16 +74,31 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
     return () => window.removeEventListener('keydown', h);
   });
   const toggle = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const showOverview = workspace === 'alerts' && !f.unassigned_client;
+  function inspectBucket(point: Point, severity?: string) {
+    if (!point.since || !point.until) return;
+    const filters = new URLSearchParams({ since: point.since, until: point.until, show_all: '1' });
+    if (f.client_id) filters.set('client_id', f.client_id);
+    if (severity) filters.set('severity', severity);
+    setSp(filters);
+    changePage(1);
+    setOverviewOpen(false);
+  }
   return (
     <>
       <PageHead title={workspace === 'siem' ? 'SIEM' : workspace === 'hunting' ? 'Threat Hunting' : 'Alerts'}
         sub={workspace === 'siem' ? 'Search normalized security alerts across connected sources.'
           : workspace === 'hunting' ? 'Hunt by hostname, IP address, username, or detection rule across normalized alerts.'
           : 'Normalised, de-duplicated alerts from every connected source'}>
+        {showOverview && <button type="button" className="btn small" aria-expanded={overviewOpen}
+          aria-controls={overviewOpen ? 'alerts-overview' : undefined} onClick={() => setOverviewOpen((open) => !open)}>
+          {overviewOpen ? 'Hide alert overview' : 'Show alert overview'}
+        </button>}
         {workspace === 'alerts' && can('alerts.delete') && (q.data?.total ?? 0) > 0 && (
           <button className="btn small danger" onClick={() => setDeletingAll(true)}>Delete all alerts</button>
         )}
       </PageHead>
+      {showOverview && overviewOpen && <AlertOverview clientId={f.client_id} onInspect={inspectBucket} />}
       {scoped && <p className="notice">Filtered telemetry{f.host ? ` · Host: ${f.host}` : ''}{f.username ? ` · User: ${f.username}` : ''}{f.source ? ` · Source: ${f.source}` : ''}{f.since ? ` · Since ${when(f.since)}` : ''}{f.until ? ` · Until ${when(f.until)}` : ''}</p>}
       <div className="toolbar">
       <Chips items={[
@@ -137,6 +157,26 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
       {deletingAll && <DeleteAllAlertsModal total={q.data?.total ?? 0} onClose={() => setDeletingAll(false)} onDeleted={() => { setDeletingAll(false); setSel(new Set()); setCur(-1); setPage(1); }} />}
       {open && <AlertDrawer key={open} id={open} onClose={() => { const n = new URLSearchParams(sp); n.delete('open'); setSp(n); }} />}
     </>
+  );
+}
+
+function AlertOverview({ clientId, onInspect }: { clientId: string; onInspect: (point: Point, severity?: string) => void }) {
+  const { dark } = useOutletContext<{ dark: boolean }>();
+  const overview = useQuery({
+    queryKey: clientId ? ['dashboard', 1, clientId] : ['dashboard', 1],
+    queryFn: () => get<{ series: Point[] }>('/api/dashboard', { days: 1, client_id: clientId }),
+    refetchInterval: REFRESH_MS,
+  });
+  return (
+    <section id="alerts-overview" className="panel ops-trend alert-volume-overview" aria-labelledby="alert-volume-heading">
+      <div className="panel-title">
+        <div><h2 id="alert-volume-heading">Alert overview</h2><p>Hourly alert counts · Last 24 hours · UTC</p></div>
+      </div>
+      {overview.error ? <ErrorBox error={overview.error} onRetry={() => void overview.refetch()} retrying={overview.isFetching} />
+        : overview.data ? <Suspense fallback={<Skeleton lines={4} />}>
+            <Trend key={clientId} dark={dark} series={overview.data.series} onInspect={onInspect} />
+          </Suspense> : <Skeleton lines={4} />}
+    </section>
   );
 }
 
