@@ -218,39 +218,56 @@ function DeleteAlertsModal({ ids, onClose, onDeleted }: { ids: string[]; onClose
   </Modal>;
 }
 
+type PurgeStatus = { status: 'idle' | 'running' | 'done' | 'failed'; deleted?: number; remaining?: number; started_by?: string; error?: string | null };
+
 function DeleteAllAlertsModal({ total, onClose, onDeleted }: { total: number; onClose: () => void; onDeleted: () => void }) {
   const qc = useQueryClient();
   const toast = useToast();
   const [confirmText, setConfirmText] = useState('');
-  const [progress, setProgress] = useState(0);
+  const [started, setStarted] = useState(false);
   // Delete-all removes every alert in your scope, not only the filtered list, so show that number (the filtered total understated it).
   const everything = useQuery({ queryKey: ['alerts-total-unfiltered'], queryFn: () => get<Page<unknown>>('/api/alerts', { limit: 1 }) });
   const all = everything.data?.total ?? total;
-  // The server deletes one batch per call (a single call for thousands of alerts hits the proxy timeout), so repeat until none remain.
-  const deleteAll = async () => {
-    let deleted = 0;
-    for (;;) {
-      const r = await post<{ deleted: number; remaining: number }>('/api/alerts/delete-all');
-      deleted += r.deleted;
-      setProgress(deleted);
-      if (r.remaining === 0 || r.deleted === 0) return { deleted };
-    }
-  };
-  const remove = useAct(deleteAll, [], undefined, (r) => {
-    toast(`${r.deleted} alert${r.deleted === 1 ? '' : 's'} deleted`);
-    onDeleted();
-    void qc.invalidateQueries();
+  // The purge runs as a server-side job, one batch at a time, so it never hits the proxy timeout and the page can be closed.
+  const status = useQuery({
+    queryKey: ['alerts-purge-status'],
+    queryFn: () => get<PurgeStatus>('/api/alerts/delete-all/status'),
+    refetchInterval: (q) => (q.state.data?.status === 'running' ? 2000 : false),
   });
-  return <Modal title={`Delete all ${all} alerts`} onClose={() => { if (!remove.isPending) onClose(); }}>
-    <p className="notice">This permanently deletes every alert you can see across all filters and severities. It cannot be undone.</p>
-    <Field label="Type DELETE to confirm" id="confirm-delete-all">
-      <input id="confirm-delete-all" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="DELETE" autoFocus />
-    </Field>
-    {remove.error && <ErrorBox error={remove.error} />}
-    {remove.error && progress > 0 && <p className="notice">{progress} alert{progress === 1 ? ' was' : 's were'} deleted before the error. Run Delete all again to continue.</p>}
-    <div className="row">
-      <button className="btn" disabled={remove.isPending} onClick={onClose}>Cancel</button>
-      <button className="btn danger" disabled={remove.isPending || confirmText !== 'DELETE'} onClick={() => remove.mutate(undefined)}>{remove.isPending ? `Deleting… ${progress} of ${all}` : 'Delete all alerts'}</button>
-    </div>
+  const running = status.data?.status === 'running';
+  const start = useMutation({
+    mutationFn: () => post<PurgeStatus>('/api/alerts/delete-all/background'),
+    onSuccess: (s) => { setStarted(true); qc.setQueryData(['alerts-purge-status'], s); },
+    onError: (e: Error) => toast(e.message, true),
+  });
+  useEffect(() => {
+    if (!started || !status.data) return;
+    if (status.data.status === 'done') {
+      toast(`${status.data.deleted ?? 0} alert${status.data.deleted === 1 ? '' : 's'} deleted`);
+      onDeleted();
+      void qc.invalidateQueries();
+    }
+  }, [started, status.data, toast, onDeleted, qc]);
+  const done = status.data?.deleted ?? 0;
+  const left = status.data?.remaining ?? all;
+  return <Modal title={running ? 'Deleting all alerts' : `Delete all ${all} alerts`} onClose={onClose}>
+    {running ? <>
+      <p className="notice">Running on the server{status.data?.started_by ? ` (started by ${status.data.started_by})` : ''}. You can close this window; it keeps going.</p>
+      <div className="purge-progress" role="progressbar" aria-valuemin={0} aria-valuemax={done + left} aria-valuenow={done} aria-label="Alerts deleted">
+        <span style={{ width: `${Math.min(100, Math.round((done / Math.max(1, done + left)) * 100))}%` }} />
+      </div>
+      <p className="muted">{done.toLocaleString()} deleted · {left.toLocaleString()} remaining</p>
+      <div className="row"><button className="btn" onClick={onClose}>Close</button></div>
+    </> : <>
+      <p className="notice">This permanently deletes every alert you can see across all filters and severities. It cannot be undone.</p>
+      {status.data?.status === 'failed' && <ErrorBox error={new Error(`The last purge stopped: ${status.data.error ?? 'unknown error'}`)} />}
+      <Field label="Type DELETE to confirm" id="confirm-delete-all">
+        <input id="confirm-delete-all" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="DELETE" autoFocus />
+      </Field>
+      <div className="row">
+        <button className="btn" disabled={start.isPending} onClick={onClose}>Cancel</button>
+        <button className="btn danger" disabled={start.isPending || confirmText !== 'DELETE'} onClick={() => start.mutate()}>{start.isPending ? 'Starting…' : 'Delete all alerts'}</button>
+      </div>
+    </>}
   </Modal>;
 }

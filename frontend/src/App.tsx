@@ -55,7 +55,8 @@ function Guard({ children }: { children: ReactNode }) {
 
 function Need({ cap, children }: { cap: string; children: ReactNode }) {
   const { can } = useAuth();
-  return can(cap) ? <>{children}</> : <div className="error" role="alert">You do not have permission to view this page.</div>;
+  // A page the role can't use is hidden everywhere; reaching it by URL or an old bookmark goes home instead of a dead end.
+  return can(cap) ? <>{children}</> : <Navigate to="/app" replace />;
 }
 
 export default function App() {

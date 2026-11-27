@@ -308,8 +308,9 @@ class AlertReceipt(Base):
     id: Mapped[str] = _pk()
     tool_id: Mapped[str] = mapped_column(String(36))
     source_id: Mapped[str] = mapped_column(String(200))
-    alert_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    received_at: Mapped[datetime] = _ts()
+    # Indexed: deleting alerts unlinks their receipts, and without this every delete batch scanned millions of rows.
+    alert_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    received_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
 
 
 class SavedView(Base):

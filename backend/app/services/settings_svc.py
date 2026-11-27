@@ -14,6 +14,8 @@ DEFAULTS: dict[str, Any] = {
     "alert_dedup_minutes": 10,
     "reputation_dedup_minutes": 60,
     "enrichment_cache_hours": 24,
+    "receipt_retention_days": 14,
+    "outbox_retention_days": 3,
     "approval_window_minutes": 240,
     "severity_labels": {"info": "Info", "low": "Low", "medium": "Medium", "high": "High", "critical": "Critical"},
 }
