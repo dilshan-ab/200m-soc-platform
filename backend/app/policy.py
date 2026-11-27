@@ -108,13 +108,19 @@ def get_role_overrides() -> dict[str, list[str]] | None:
     return _role_overrides
 
 
+def _hierarchy_caps(role: str) -> list[str]:
+    """Capabilities the role hierarchy unconditionally grants (overrides cannot remove these)."""
+    rank = role_rank(role)
+    return [cap for cap, min_role in CAPABILITIES.items() if rank >= role_rank(min_role)]
+
+
 def role_capabilities(role: str) -> list[str]:
     if role == "superadmin":  # explicit, unconditional: never gated by overrides or a missed rank entry
         return list(CAPABILITIES)
+    base = set(_hierarchy_caps(role))
     if _role_overrides and role in _role_overrides:
-        return _role_overrides[role]
-    rank = role_rank(role)
-    return [cap for cap, min_role in CAPABILITIES.items() if rank >= role_rank(min_role)]
+        base.update(_role_overrides[role])
+    return sorted(base)
 
 
 def has_capability(role: str, grants: list[str] | None, cap: str, denied: list[str] | None = None) -> bool:
@@ -127,9 +133,11 @@ def has_capability(role: str, grants: list[str] | None, cap: str, denied: list[s
         return False
     if cap in (grants or []):
         return True
+    if role_rank(role) >= role_rank(need):
+        return True
     if _role_overrides and role in _role_overrides:
         return cap in _role_overrides[role]
-    return role_rank(role) >= role_rank(need)
+    return False
 
 
 @dataclass(frozen=True)
