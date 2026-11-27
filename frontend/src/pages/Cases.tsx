@@ -15,7 +15,8 @@ export default function Cases() {
   const [sp, setSp] = useSearchParams();
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
-  const { can } = useAuth();
+  const { can, me } = useAuth();
+  const hasClientAccess = me?.client_ids?.length !== 0;
   const f = { status: sp.get('status') ?? '', severity: sp.get('severity') ?? '', mine: sp.get('mine') === '1', q: sp.get('q') ?? '' };
   const setF = (k: string, v: string) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); setSp(n, { replace: true }); setPage(1); };
   const q = useQuery({ queryKey: ['cases', f, page], queryFn: () => get<Page<any>>('/api/cases', { status: f.status ? [f.status] : [], severity: f.severity, mine: f.mine, q: f.q, page, limit: 50 }) });
@@ -25,7 +26,7 @@ export default function Cases() {
   return (
     <>
       <PageHead title="Cases" sub="Investigations with tasks, observables and a full timeline.">
-        {can('cases.write') && <button className="btn primary" onClick={() => setCreating(true)}>New case</button>}
+        {can('cases.write') && hasClientAccess && <button className="btn primary" onClick={() => setCreating(true)}>New case</button>}
       </PageHead>
       <div className="toolbar">
       <Chips items={[
@@ -44,7 +45,8 @@ export default function Cases() {
         <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={f.mine} onChange={(e) => setF('mine', e.target.checked ? '1' : '')} /> Mine</label>
         {(f.q || f.status || f.severity || f.mine) && <button className="btn" onClick={() => { setSp(new URLSearchParams(), { replace: true }); setPage(1); }}>Clear filters</button>}
       </div>
-      {q.isLoading ? <Skeleton lines={6} /> : q.error ? <ErrorBox error={q.error} onRetry={() => void q.refetch()} retrying={q.isFetching} /> : q.data!.items.length === 0 ? <Empty onAction={() => { setSp(new URLSearchParams()); setPage(1); }}>No cases match these filters. Clear filters to see all investigations.</Empty> : (
+      {q.isLoading ? <Skeleton lines={6} /> : q.error ? <ErrorBox error={q.error} onRetry={() => void q.refetch()} retrying={q.isFetching} /> : q.data!.items.length === 0 ? <Empty onAction={() => { setSp(new URLSearchParams()); setPage(1); }}>{!hasClientAccess ? 'No clients are assigned to your account.' : f.q || f.status || f.severity || f.mine
+        ? 'No cases match these filters.' : 'No cases are visible in your client scope.'}</Empty> : (
         <>
           <div className="table-wrap"><table><thead><tr><th>#</th><th>Title</th><th>Severity</th><th>Status</th><th>Resolve SLA</th><th>Sync</th><th>Created</th></tr></thead>
             <tbody>{q.data!.items.map((c) => <tr key={c.id} tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => openCase(c.id)} onKeyDown={(e) => { if (e.target === e.currentTarget && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); openCase(c.id); } }}>
@@ -60,9 +62,12 @@ export default function Cases() {
 
 function CreateCase({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const tpl = useQuery({ queryKey: ['case-templates'], queryFn: () => get<any[]>('/api/cases/templates') });
-  const clients = useQuery({ queryKey: ['clients'], queryFn: () => get<any[]>('/api/clients') });
+  const { me } = useAuth();
+  const needsClient = me?.client_ids != null;
+  const clients = useQuery({ queryKey: ['clients'], queryFn: () => get<{ id: string; name: string }[]>('/api/clients') });
   const [v, setV] = useState({ title: '', description: '', severity: 'medium', template: '', client_id: '', tlp: 'AMBER' });
-  const m = useAct(() => post('/api/cases', { ...v, template: v.template || null, client_id: v.client_id || null }), ['cases'], 'Case created', (r) => onCreated(r.id));
+  const clientId = v.client_id || (needsClient && clients.data?.length === 1 ? clients.data[0].id : '');
+  const m = useAct(() => post('/api/cases', { ...v, template: v.template || null, client_id: clientId || null }), ['cases', 'dashboard'], 'Case created', (r) => onCreated(r.id));
   return (
     <Modal title="New case" onClose={onClose}>
       <Field label="Title" id="ct"><input id="ct" value={v.title} onChange={(e) => setV({ ...v, title: e.target.value })} /></Field>
@@ -71,10 +76,11 @@ function CreateCase({ onClose, onCreated }: { onClose: () => void; onCreated: (i
         <Field label="Severity" id="cs"><select id="cs" value={v.severity} onChange={(e) => setV({ ...v, severity: e.target.value })}>{['low', 'medium', 'high', 'critical'].map((s) => <option key={s}>{s}</option>)}</select></Field>
         <Field label="TLP" id="ctl"><select id="ctl" value={v.tlp} onChange={(e) => setV({ ...v, tlp: e.target.value })}>{['WHITE', 'GREEN', 'AMBER', 'RED'].map((s) => <option key={s}>{s}</option>)}</select></Field>
         <Field label="Template (adds tasks)" id="cx"><select id="cx" value={v.template} onChange={(e) => setV({ ...v, template: e.target.value })}><option value="">None</option>{tpl.data?.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}</select></Field>
-        <Field label="Client / business unit" id="cc"><select id="cc" value={v.client_id} onChange={(e) => setV({ ...v, client_id: e.target.value })}><option value="">Unassigned</option>{clients.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+        <Field label="Client / business unit" id="cc"><select id="cc" required={needsClient} value={clientId} onChange={(e) => setV({ ...v, client_id: e.target.value })}><option value="" disabled={needsClient}>{needsClient ? 'Select a client' : 'Unassigned'}</option>{clients.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
       </div>
+      {clients.error && <ErrorBox error={clients.error} />}
       {m.error && <ErrorBox error={m.error} />}
-      <button className="btn primary" disabled={v.title.trim().length < 3 || m.isPending} onClick={() => m.mutate(undefined)}>Create case</button>
+      <button className="btn primary" disabled={v.title.trim().length < 3 || m.isPending || (needsClient && !clientId)} onClick={() => m.mutate(undefined)}>Create case</button>
     </Modal>
   );
 }
@@ -99,7 +105,7 @@ function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const setTaskStatus = useAct((a: { tid: string; status: string }) => patch(`/api/cases/${id}/tasks/${a.tid}`, { status: a.status }), keys);
   const addObs = useAct(() => post(`/api/cases/${id}/observables`, obs), keys, 'Observable added', () => setObs({ ...obs, value: '' }));
   const enrich = useAct((value: string) => post('/api/intel/enrich', { indicator: value, case_id: id }), ['case', 'intel-jobs'], 'Enrichment queued');
-  const setStatus = useAct((a: { status: string; resolution?: string }) => patch(`/api/cases/${id}`, { version: q.data.version, status: a.status, resolution: a.resolution ?? '' }), keys, 'Case updated', () => setResolve(null));
+  const setStatus = useAct((a: { status: string; resolution?: string }) => patch(`/api/cases/${id}`, { version: q.data.version, status: a.status, resolution: a.resolution ?? '' }), [...keys, 'dashboard'], 'Case updated', () => setResolve(null));
   if (q.isLoading) return <Drawer title="Case" onClose={onClose}><Loading /></Drawer>;
   if (q.error) return <Drawer title="Case" onClose={onClose}><ErrorBox error={q.error} onRetry={() => void q.refetch()} retrying={q.isFetching} /></Drawer>;
   const c = q.data;

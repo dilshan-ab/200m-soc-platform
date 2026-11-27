@@ -199,7 +199,7 @@ function AlertDrawer({ id, onClose }: { id: string; onClose: () => void }) {
     onSuccess: () => { toast('Alert updated'); void qc.invalidateQueries({ queryKey: ['alert', id] }); void qc.invalidateQueries({ queryKey: ['alerts'] }); void qc.invalidateQueries({ queryKey: ['triage-queue'] }); },
     onError: (e: Error) => toast(e.message, true),
   });
-  const toCase = useMutation({ mutationFn: () => post('/api/alerts/to-case', { alert_ids: [id] }), onSuccess: (r: any) => { toast(`Case #${r.number} created`); nav(`/app/cases?open=${r.id}`); }, onError: (e: Error) => toast(e.message, true) });
+  const toCase = useMutation({ mutationFn: () => post('/api/alerts/to-case', { alert_ids: [id] }), onSuccess: (r: any) => { ['cases', 'dashboard', 'alert', 'alerts'].forEach((key) => void qc.invalidateQueries({ queryKey: [key] })); toast(`Case #${r.number} created`); nav(`/app/cases?open=${r.id}`); }, onError: (e: Error) => toast(e.message, true) });
   const enrich = useMutation({ mutationFn: (ind: string) => post('/api/intel/enrich', { indicator: ind, alert_id: id }), onSuccess: () => toast('Enrichment queued — see Threat intel'), onError: (e: Error) => toast(e.message, true) });
   return (
     <Drawer title={a ? <><Sev v={a.severity} /> {a.title}</> : 'Alert'} onClose={onClose}>

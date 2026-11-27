@@ -2,9 +2,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
 const MAP: Record<string, string[]> = {
-  'alert.created': ['alerts', 'dashboard', 'alert-stats', 'triage-queue', 'mitre-matrix', 'notif-alerts'], 'alert.updated': ['alerts', 'dashboard', 'alert', 'alert-stats', 'triage-queue', 'mitre-matrix', 'notif-alerts'], 'case.created': ['cases'], 'case.updated': ['cases', 'case'],
+  'alert.created': ['alerts', 'dashboard', 'threat-map', 'alert-stats', 'triage-queue', 'mitre-matrix', 'notif-alerts'], 'alert.updated': ['alerts', 'dashboard', 'threat-map', 'alert', 'alert-stats', 'triage-queue', 'mitre-matrix', 'notif-alerts'], 'case.created': ['cases', 'dashboard'], 'case.updated': ['cases', 'case', 'dashboard'],
   'action.updated': ['requests', 'approvals', 'request'], 'approval.pending': ['approvals'], 'server.down': ['servers', 'dashboard'],
-  'alert.deleted': ['alerts', 'alert', 'alert-stats', 'dashboard', 'triage-queue', 'mitre-matrix', 'threat-map', 'overview-recent-alerts', 'overview-active-cases', 'cases', 'case', 'incidents', 'incident', 'assets', 'asset', 'notif-alerts'],
+  'alert.deleted': ['alerts', 'alert', 'alert-stats', 'dashboard', 'triage-queue', 'mitre-matrix', 'threat-map', 'overview-recent-alerts', 'cases', 'case', 'incidents', 'incident', 'assets', 'asset', 'notif-alerts'],
   'warroom.deleted': ['warrooms'],
   'warroom.message': ['warroom', 'warrooms'], 'warroom.created': ['warrooms'],
 };

@@ -84,3 +84,20 @@ def test_triage_claim_keeps_owner_and_records_investigation_activity(make_sessio
     ]
     matches = analyst.get('/api/alerts', params={'username': 'sam'}).json()['items']
     assert [row['id'] for row in matches] == [alert_id]
+
+
+def test_l2_dashboard_matches_scoped_alerts_and_active_cases(admin, make_session, clients):
+    client, other_client = clients
+    analyst = make_session("dashboard-l2@t.local", "l2", all_clients=False, client_ids=[client])
+    mk_alert(client, title="In scope", severity="low")
+    mk_alert(other_client, title="Other client", severity="critical")
+    assert admin.post("/api/cases", {"title": "Other client case", "client_id": other_client}).status_code == 201
+    created = analyst.post("/api/cases", {"title": "L2 investigation", "client_id": client})
+    assert created.status_code == 201
+
+    dashboard = analyst.get("/api/dashboard", params={"days": 1}).json()
+    assert sum(bucket["alerts"] for bucket in dashboard["series"]) == 1
+    assert dashboard["metrics"]["alerts_by_severity"]["low"] == 1
+    assert dashboard["metrics"]["open_cases"] == 1
+    active = analyst.get("/api/cases", params={"status": ["open", "in_progress"]}).json()
+    assert [case["id"] for case in active["items"]] == [created.json()["id"]]

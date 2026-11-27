@@ -102,3 +102,7 @@ def test_case_scope_and_versions(make_session, clients):
     assert s.get(f"/api/cases/{cid}").status_code == 404
     assert s.get("/api/cases").json()["total"] == 0
     assert s.post("/api/cases", {"title": "sneaky", "client_id": b}).status_code == 403
+    assert s.post("/api/cases", {"title": "Unassigned case"}).status_code == 403
+    created = s.post("/api/cases", {"title": "Assigned client case", "client_id": a})
+    assert created.status_code == 201
+    assert {row["id"] for row in s.get("/api/cases").json()["items"]} == {created.json()["id"]}
