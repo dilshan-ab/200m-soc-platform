@@ -78,3 +78,17 @@ def test_maintenance_prunes_old_receipts_and_finished_outbox_rows():
     with dbmod.session_scope() as db:
         assert db.execute(select(AlertReceipt.source_id).where(AlertReceipt.tool_id == 't')).scalars().all() == ['new']
         assert db.execute(select(func.count()).select_from(Outbox).where(Outbox.status == 'pending')).scalar_one() >= 1
+
+
+def test_delete_all_skips_alerts_a_racing_batch_already_removed(admin):
+    """After a proxy timeout the earlier batch can still be finishing; the retry must not fail on the alerts it took."""
+    from app.api.alerts import _delete_alerts
+    from app.deps import Principal
+    from app.models import User
+
+    keep_going = mk_alert(rule_id='race-1')
+    with dbmod.session_scope() as db:
+        user = db.execute(select(User).where(User.role == 'superadmin')).scalars().first() or db.execute(select(User)).scalars().first()
+        p = Principal(user=user, session=None, token=None, client_ids=None, ip='', correlation_id='t')
+        assert _delete_alerts(db, p, [keep_going, 'already-gone'], strict=False) == 1
+        assert _delete_alerts(db, p, ['already-gone'], strict=False) == 0
