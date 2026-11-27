@@ -14,8 +14,9 @@ from sqlalchemy.engine import CursorResult
 
 from ..config import get_settings
 from ..db import session_factory, session_scope
-from ..models import Alert, EnrichmentJob, OidcState, ReportJob, RetentionPolicy, SessionRecord, WebhookReplay, utcnow
+from ..models import Alert, AlertReceipt, EnrichmentJob, OidcState, Outbox, ReportJob, RetentionPolicy, SessionRecord, WebhookReplay, utcnow
 from ..services import events, keycloak_sync, notifications, playbooks_engine, polling, reports, response
+from ..services.settings_svc import get_setting
 from ..sla import check_breaches
 
 _last_low_clear_date: str | None = None
@@ -63,7 +64,27 @@ def tick_maintenance() -> None:
         db.execute(delete(OidcState).where(OidcState.expires_at < now))
         db.execute(delete(WebhookReplay).where(WebhookReplay.seen_at < now - timedelta(hours=1)))
         db.execute(delete(SessionRecord).where(SessionRecord.expires_at < now - timedelta(days=7)))
+    prune_bookkeeping()
     clear_low_alerts()
+
+
+PRUNE_CHUNK = 20_000  # rows per table per maintenance tick (30 s): a large backlog drains in hours without long locks
+
+
+def prune_bookkeeping() -> dict[str, int]:
+    """Drop old ingest receipts and finished outbox rows. Both grew without bound (5.7 million receipts and 117,000
+    outbox rows on the live site), slowing alert deletes and bloating the database. A receipt only has to outlive the
+    window in which the same source event could be replayed (poll overlap, webhook retries), so days, not months."""
+    out: dict[str, int] = {}
+    with session_scope() as db:
+        now = utcnow()
+        receipt_days = int(get_setting(db, "receipt_retention_days", 14))
+        outbox_days = int(get_setting(db, "outbox_retention_days", 3))
+        old_receipts = select(AlertReceipt.id).where(AlertReceipt.received_at < now - timedelta(days=receipt_days)).limit(PRUNE_CHUNK)
+        out["receipts"] = cast(CursorResult[Any], db.execute(delete(AlertReceipt).where(AlertReceipt.id.in_(old_receipts.scalar_subquery())))).rowcount or 0
+        old_outbox = select(Outbox.id).where(Outbox.status.in_(["done", "dead"]), Outbox.created_at < now - timedelta(days=outbox_days)).limit(PRUNE_CHUNK)
+        out["outbox"] = cast(CursorResult[Any], db.execute(delete(Outbox).where(Outbox.id.in_(old_outbox.scalar_subquery())))).rowcount or 0
+    return out
 
 
 def apply_retention() -> dict[str, int]:
