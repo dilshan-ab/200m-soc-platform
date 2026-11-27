@@ -55,3 +55,32 @@ def test_dashboard_bucket_links_match_chart_counts(admin, clients):
             end = datetime.fromisoformat(first['until'].replace('Z', '+00:00'))
             start = datetime.fromisoformat(second['since'].replace('Z', '+00:00'))
             assert end < start
+
+
+def test_triage_claim_keeps_owner_and_records_investigation_activity(make_session, clients):
+    client_id, other_client_id = clients
+    analyst = make_session('triage-owner@t.local', 'l1', all_clients=False, client_ids=[client_id])
+    teammate = make_session('triage-teammate@t.local', 'l1', all_clients=False, client_ids=[client_id])
+    alert_id = mk_alert(client_id, title='Investigation alert', username='sam')
+    mk_alert(client_id, title='Similar user', username='samuel')
+    mk_alert(other_client_id, title='Other client', username='sam')
+    route = f'/api/alerts/{alert_id}'
+    alert = analyst.get(route).json()
+
+    claimed = analyst.patch(route, {'version': alert['version'], 'claim': True, 'status': 'acknowledged'})
+    assert claimed.status_code == 200
+    version = claimed.json()['version']
+    assert teammate.patch(route, {'version': version, 'claim': True, 'status': 'investigating'}).status_code == 409
+    assert analyst.patch(route, {'version': version, 'claim': True, 'status': 'investigating'}).status_code == 200
+
+    mine = analyst.get('/api/alerts/queue', params={'mine': True}).json()['items']
+    assert [(row['id'], row['status']) for row in mine] == [(alert_id, 'investigating')]
+    assert mine[0]['assignee_name'] and mine[0]['acknowledged_at'] and mine[0]['resolve_due']
+    assert teammate.get('/api/alerts/queue', params={'mine': True}).json()['items'] == []
+
+    activity = analyst.get(route).json()['activity']
+    assert [(event['status'], event['assigned']) for event in activity] == [
+        ('investigating', False), ('acknowledged', True),
+    ]
+    matches = analyst.get('/api/alerts', params={'username': 'sam'}).json()['items']
+    assert [row['id'] for row in matches] == [alert_id]

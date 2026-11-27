@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from .. import audit
 from ..db import get_db
 from ..deps import Principal, require, scoped_get
-from ..models import ActionRequest, Alert, AlertReceipt, Case, CaseEvidence, EnrichmentJob, Incident, NotificationDelivery, RetentionPolicy, SavedView, ShiftHandoff, User, utcnow
+from ..models import ActionRequest, Alert, AlertReceipt, AuditEvent, Case, CaseEvidence, EnrichmentJob, Incident, NotificationDelivery, RetentionPolicy, SavedView, ShiftHandoff, User, utcnow
 from ..policy import SEVERITIES
 from ..services import cases as cases_svc
 from ..services import events
@@ -40,7 +40,7 @@ def alert_out(a: Alert, detail: bool = False) -> dict[str, Any]:
 def list_alerts(
     p: Principal = Depends(require("alerts.read")), db: Session = Depends(get_db), severity: list[str] = Query(default=[]), status: list[str] = Query(default=[]),
     source: str | None = None, category: str | None = None, client_id: str | None = None, host: str | None = None, q: str | None = Query(default=None, max_length=200),
-    unassigned_client: bool = False, since: datetime | None = None, until: datetime | None = None, sla_breached: bool | None = None, unassigned: bool | None = None,
+    unassigned_client: bool = False, username: str | None = Query(default=None, max_length=160), since: datetime | None = None, until: datetime | None = None, sla_breached: bool | None = None, unassigned: bool | None = None,
     sort: Literal["time", "-time", "severity", "-severity"] = "-time", page: int = 1, limit: int = 50,
 ) -> dict[str, Any]:
     qy = select(Alert).where(p.scope(Alert.client_id))
@@ -58,6 +58,8 @@ def list_alerts(
         qy = qy.where(Alert.client_id.is_(None))
     if host:
         qy = qy.where(Alert.host == host)
+    if username:
+        qy = qy.where(Alert.username == username)
     if since:
         qy = qy.where(Alert.time >= since)
     if until:
@@ -77,27 +79,35 @@ def list_alerts(
 @router.get("/queue")
 def triage_queue(
     p: Principal = Depends(require("alerts.triage")), db: Session = Depends(get_db),
-    unassigned_only: bool = True, severity: list[str] = Query(default=[]), limit: int = Query(default=25, ge=1, le=100),
+    unassigned_only: bool = True, mine: bool = False, severity: list[str] = Query(default=[]), limit: int = Query(default=25, ge=1, le=100),
 ) -> dict[str, Any]:
     """Prioritised live triage queue: new alerts ordered by severity, then SLA urgency."""
     from sqlalchemy import case as sql_case
 
     sev_rank = sql_case(*[(Alert.severity == s, i) for i, s in enumerate(SEVERITIES)], else_=0)
-    conditions = [p.scope(Alert.client_id), Alert.status == "new"]
-    if unassigned_only:
+    conditions = [p.scope(Alert.client_id)]
+    if mine:
+        conditions.extend([Alert.assignee_id == p.user.id, Alert.status.in_(STATUSES[:3])])
+    else:
+        conditions.append(Alert.status == "new")
+    if unassigned_only and not mine:
         conditions.append(Alert.assignee_id.is_(None))
     if severity:
         conditions.append(Alert.severity.in_([s for s in severity if s in SEVERITIES]))
 
-    qy = select(Alert).where(*conditions).order_by(sev_rank.desc(), Alert.ack_due.asc().nulls_last(), Alert.time.asc())
+    next_due = sql_case((Alert.acknowledged_at.is_(None), Alert.ack_due), else_=Alert.resolve_due)
+    qy = select(Alert).where(*conditions).order_by(sev_rank.desc(), next_due.asc().nulls_last(), Alert.time.asc(), Alert.id)
     items = db.execute(qy.limit(limit)).scalars().all()
 
     stats_rows = db.execute(select(Alert.severity, func.count()).where(*conditions).group_by(Alert.severity)).all()
     by_severity = {s: 0 for s in SEVERITIES}
     by_severity.update({sev: n for sev, n in stats_rows})
     oldest = db.execute(select(func.min(Alert.time)).where(*conditions)).scalar()
+    owner_ids = {a.assignee_id for a in items if a.assignee_id}
+    owners = {u.id: u.name or u.email for u in db.scalars(select(User).where(User.id.in_(owner_ids)))} if owner_ids else {}
     return {
-        "items": [alert_out(a) for a in items],
+        "items": [{**alert_out(a), "assignee_name": owners.get(a.assignee_id or ""),
+                   "acknowledged_at": iso(a.acknowledged_at)} for a in items],
         "total_waiting": sum(by_severity.values()),
         "by_severity": by_severity,
         "oldest_waiting": iso(oldest),
@@ -145,7 +155,27 @@ def correlations(
 
 @router.get("/{alert_id}")
 def get_alert(alert_id: str, p: Principal = Depends(require("alerts.read")), db: Session = Depends(get_db)) -> dict[str, Any]:
-    return alert_out(scoped_get(db, Alert, alert_id, p), detail=True)
+    alert = scoped_get(db, Alert, alert_id, p)
+    owner = db.get(User, alert.assignee_id) if alert.assignee_id else None
+    activity = db.scalars(
+        select(AuditEvent).where(
+            AuditEvent.resource_type == "alert",
+            AuditEvent.resource_id == alert.id,
+            AuditEvent.action == "alert.update",
+            p.scope(AuditEvent.client_id),
+        ).order_by(AuditEvent.id.desc()).limit(50)
+    )
+    return {
+        **alert_out(alert, detail=True),
+        "assignee_name": (owner.name or owner.email) if owner else None,
+        "activity": [
+            {"id": event.id, "time": iso(event.ts), "actor": event.actor,
+             "status": event.meta.get("status"), "assigned": "assignee" in event.meta,
+             "released": event.meta.get("assignee_released", False)}
+            for event in activity
+            if "status" in event.meta or "assignee" in event.meta or "assignee_released" in event.meta
+        ],
+    }
 
 
 class AlertPatch(BaseModel):
@@ -154,6 +184,7 @@ class AlertPatch(BaseModel):
     status: Literal["new", "acknowledged", "investigating", "resolved", "false_positive"] | None = None
     assignee_id: str | None = None
     unassign: bool = False
+    claim: bool = False
     tuning_note: str | None = Field(default=None, max_length=2000)
     severity: Literal["info", "low", "medium", "high", "critical"] | None = None
 
@@ -176,14 +207,21 @@ def _apply_patch(db: Session, p: Principal, a: Alert, body: AlertPatch) -> None:
             if a.acknowledged_at is None:
                 a.acknowledged_at = now
         changed["status"] = body.status
-    if body.assignee_id:
+    if body.claim:
+        if a.assignee_id and a.assignee_id != p.user.id:
+            raise HTTPException(409, "alert is already assigned to another analyst")
+        if not a.assignee_id:
+            a.assignee_id = p.user.id
+            changed["assignee"] = p.user.id
+    elif body.assignee_id:
         u = db.get(User, body.assignee_id)
         if u is None or not u.active or not (u.all_clients or True):
             raise HTTPException(400, "invalid assignee")
         a.assignee_id = u.id
         changed["assignee"] = u.id
-    if body.unassign:
+    if body.unassign and a.assignee_id:
         a.assignee_id = None
+        changed["assignee_released"] = True
     if body.tuning_note is not None:
         if not p.can("alerts.tune"):
             raise HTTPException(403, "missing capability alerts.tune")
@@ -202,7 +240,9 @@ def _apply_patch(db: Session, p: Principal, a: Alert, body: AlertPatch) -> None:
 
 @router.patch("/{alert_id}")
 def patch_alert(alert_id: str, body: AlertPatch, p: Principal = Depends(require("alerts.triage")), db: Session = Depends(get_db)) -> dict[str, Any]:
-    a = scoped_get(db, Alert, alert_id, p)
+    a = db.scalar(select(Alert).where(Alert.id == alert_id, p.scope(Alert.client_id)).with_for_update())
+    if a is None:
+        raise HTTPException(404, "not found")
     _apply_patch(db, p, a, body)
     return alert_out(a, detail=True)
 

@@ -1,7 +1,7 @@
 import { LiveTimer, Skeleton } from '../components/Interactive';
 import { SavedViews } from '../components/SavedViews';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Chips } from '../components/manage';
 import { Drawer, Empty, ErrorBox, Field, PageHead, Pager, Modal, SearchBox, Sev, Status, useToast } from '../components/ui';
@@ -22,7 +22,7 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
   const DEFAULT_SEVERITIES = ['medium', 'high', 'critical'];
   const explicitSev = sp.getAll('severity');
   const f = { severity: explicitSev.length > 0 ? explicitSev : (sp.has('show_all') ? [] : DEFAULT_SEVERITIES), status: sp.get('status') ?? '', q: sp.get('q') ?? '', category: sp.get('category') ?? '',
-    source: sp.get('source') ?? '', host: sp.get('host') ?? '', client_id: sp.get('client_id') ?? '',
+    source: sp.get('source') ?? '', host: sp.get('host') ?? '', username: sp.get('username') ?? '', client_id: sp.get('client_id') ?? '',
     unassigned_client: sp.get('unassigned_client') === 'true' ? true : undefined,
     since: sp.get('since') ?? '', until: sp.get('until') ?? '',
   };
@@ -30,7 +30,7 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
   const q = useQuery({ queryKey: ['alerts', f, page], queryFn: () => get<Page<Alert>>('/api/alerts', { ...f, status: f.status ? [f.status] : [], page, limit: 50 }) });
   const total = q.data?.total;
   useEffect(() => { if (total !== undefined) setPage((current) => Math.min(current, Math.max(1, Math.ceil(total / 50)))); }, [total]);
-  const scoped = Boolean(f.source || f.host || f.since || f.until || f.client_id || f.unassigned_client);
+  const scoped = Boolean(f.source || f.host || f.username || f.since || f.until || f.client_id || f.unassigned_client);
   const sources = useQuery({ queryKey: ['alert-sources'], queryFn: () => get<string[]>('/api/alerts/sources'), enabled: workspace !== 'alerts' });
   const { can } = useAuth();
   const qc = useQueryClient();
@@ -41,7 +41,7 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
     onError: (e: Error) => toast(e.message, true),
   });
   const severityKey = f.severity.join(',');
-  useEffect(() => { setPage(1); setSel(new Set()); setCur(-1); }, [f.q, f.status, f.category, severityKey, f.source, f.host, f.since, f.until, f.client_id, f.unassigned_client]);
+  useEffect(() => { setPage(1); setSel(new Set()); setCur(-1); }, [f.q, f.status, f.category, severityKey, f.source, f.host, f.username, f.since, f.until, f.client_id, f.unassigned_client]);
   const open = sp.get('open');
   const [cur, setCur] = useState(-1);
   const items = q.data?.items ?? [];
@@ -79,7 +79,7 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
           <button className="btn small danger" onClick={() => setDeletingAll(true)}>Delete all alerts</button>
         )}
       </PageHead>
-      {scoped && <p className="notice">Filtered telemetry{f.host ? ` · Host: ${f.host}` : ''}{f.source ? ` · Source: ${f.source}` : ''}{f.since ? ` · Since ${when(f.since)}` : ''}{f.until ? ` · Until ${when(f.until)}` : ''}</p>}
+      {scoped && <p className="notice">Filtered telemetry{f.host ? ` · Host: ${f.host}` : ''}{f.username ? ` · User: ${f.username}` : ''}{f.source ? ` · Source: ${f.source}` : ''}{f.since ? ` · Since ${when(f.since)}` : ''}{f.until ? ` · Until ${when(f.until)}` : ''}</p>}
       <div className="toolbar">
       <Chips items={[
         { label: 'Medium+', active: isDefault, onClick: clearAll },
@@ -140,6 +140,49 @@ export default function Alerts({ workspace = 'alerts' }: { workspace?: 'alerts' 
   );
 }
 
+function alertPivot(field: string, value: string, client: string | null) {
+  const params = new URLSearchParams({ [field]: value, show_all: '1' });
+  if (client) params.set('client_id', client);
+  else params.set('unassigned_client', 'true');
+  return `/app/alerts?${params}`;
+}
+
+type AlertActivity = {
+  id: number; time: string; actor: string; status: string | null; assigned: boolean; released: boolean;
+};
+
+function InvestigationTimeline({ alert }: { alert: {
+  first_seen: string | null; last_seen: string | null; count: number;
+  acknowledged_at: string | null; resolved_at: string | null; activity?: AlertActivity[];
+} }) {
+  const activity = alert.activity ?? [];
+  const entries = activity.map((event) => ({
+    id: String(event.id), time: event.time, actor: event.actor,
+    label: [
+      event.status && `Status changed to ${event.status.replaceAll('_', ' ')}`,
+      event.assigned && 'Ownership assigned',
+      event.released && 'Ownership released',
+    ].filter(Boolean).join(' · '),
+  }));
+  if (alert.first_seen) entries.push({ id: 'first', time: alert.first_seen, actor: '', label: 'First observed' });
+  if (alert.last_seen && alert.count > 1) entries.push({ id: 'last', time: alert.last_seen, actor: '', label: `Last observed · ${alert.count} occurrences` });
+  if (alert.acknowledged_at && !activity.some((event) => event.time === alert.acknowledged_at || event.status === 'acknowledged')) {
+    entries.push({ id: 'ack', time: alert.acknowledged_at, actor: '', label: 'Acknowledged' });
+  }
+  if (alert.resolved_at && !activity.some((event) => event.status === 'resolved' || event.status === 'false_positive')) {
+    entries.push({ id: 'closed', time: alert.resolved_at, actor: '', label: 'Closed' });
+  }
+  entries.sort((a, b) => Date.parse(b.time) - Date.parse(a.time));
+  return <section className="alert-investigation-timeline">
+    <h3>Investigation timeline</h3>
+    {entries.length ? <ol>{entries.map((entry) => <li key={entry.id}>
+      <strong>{entry.label}</strong>
+      <time dateTime={entry.time}>{when(entry.time)}</time>
+      {entry.actor && <small>{entry.actor}</small>}
+    </li>)}</ol> : <p className="muted">No recorded activity.</p>}
+  </section>;
+}
+
 function AlertDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const q = useQuery({ queryKey: ['alert', id], queryFn: () => get<Alert>(`/api/alerts/${id}`) });
   const { can } = useAuth();
@@ -149,10 +192,11 @@ function AlertDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const [note, setNote] = useState('');
   const [block, setBlock] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const rawEvent = useRef<HTMLDetailsElement>(null);
   const a = q.data;
   const upd = useMutation({
     mutationFn: (body: Record<string, unknown>) => patch(`/api/alerts/${id}`, { version: a.version, ...body }),
-    onSuccess: () => { toast('Alert updated'); void qc.invalidateQueries({ queryKey: ['alert', id] }); void qc.invalidateQueries({ queryKey: ['alerts'] }); },
+    onSuccess: () => { toast('Alert updated'); void qc.invalidateQueries({ queryKey: ['alert', id] }); void qc.invalidateQueries({ queryKey: ['alerts'] }); void qc.invalidateQueries({ queryKey: ['triage-queue'] }); },
     onError: (e: Error) => toast(e.message, true),
   });
   const toCase = useMutation({ mutationFn: () => post('/api/alerts/to-case', { alert_ids: [id] }), onSuccess: (r: any) => { toast(`Case #${r.number} created`); nav(`/app/cases?open=${r.id}`); }, onError: (e: Error) => toast(e.message, true) });
@@ -172,20 +216,28 @@ function AlertDrawer({ id, onClose }: { id: string; onClose: () => void }) {
           </div>
           {deleting && <DeleteAlertsModal ids={[id]} onClose={() => setDeleting(false)} onDeleted={onClose} />}
           <dl className="kv">
-            <dt>Status</dt><dd><Status v={a.status} /></dd><dt>Source</dt><dd>{a.source} · rule {a.rule_id || '—'}</dd><dt>Host</dt><dd>{a.host || '—'}</dd>
+            <dt>Status</dt><dd><Status v={a.status} /></dd><dt>Owner</dt><dd>{a.assignee_name ?? (a.assignee_id ? 'Assigned analyst' : 'Unassigned')}</dd><dt>Source</dt><dd>{a.source} · rule {a.rule_id || '—'}</dd><dt>Host</dt><dd>{a.host || '—'}</dd>
             <dt>Source IP</dt><dd className="mono">{a.src_ip || '—'}</dd><dt>User</dt><dd>{a.username || '—'}</dd><dt>First seen</dt><dd>{when(a.first_seen)}</dd><dt>Occurrences</dt><dd>{a.count}</dd>
             <dt>Ack due</dt><dd>{a.acknowledged_at ? `acknowledged ${when(a.acknowledged_at)}` : when(a.ack_due)}</dd><dt>Resolve due</dt><dd>{when(a.resolve_due)}</dd>
-            <dt>MITRE</dt><dd>{a.mitre?.join(', ') || '—'}</dd><dt>Case</dt><dd>{a.case_id ? <a href={`/app/cases?open=${a.case_id}`}>Open case</a> : '—'}</dd>
+            <dt>MITRE</dt><dd>{a.mitre?.join(', ') || '—'}</dd><dt>Case</dt><dd>{a.case_id ? <Link to={`/app/cases?open=${a.case_id}`}>Open case</Link> : '—'}</dd>
           </dl>
-          {(a.src_ip || a.host || a.rule_id) && <section className="investigation-pivots" aria-label="Related alert searches">
-            <h3>Related activity</h3>
-            <p>Search the alert queue for a shared indicator.</p>
+          <section className="investigation-pivots" aria-label="Investigation pivots">
+            <h3>Investigate</h3>
             <div className="row">
-              {[[a.src_ip, 'Source IP'], [a.host, 'Host'], [a.rule_id, 'Rule']].filter(([value]) => value).map(([value, label]) => (
-                <Link className="btn small" key={label} to={`/app/alerts?q=${encodeURIComponent(value)}`}>{label} · {value}</Link>
-              ))}
+              {a.host && <Link className="btn small" to={alertPivot('host', a.host, a.client_id)}>Host alerts</Link>}
+              {a.username && <Link className="btn small" to={alertPivot('username', a.username, a.client_id)}>User alerts</Link>}
+              {a.src_ip && <Link className="btn small" to={alertPivot('q', a.src_ip, a.client_id)}>Source IP alerts</Link>}
+              {a.rule_id && <Link className="btn small" to={alertPivot('q', a.rule_id, a.client_id)}>Related rule alerts</Link>}
+              {a.raw != null && <button type="button" className="btn small" onClick={() => {
+                const details = rawEvent.current;
+                if (details) {
+                  details.open = true;
+                  details.querySelector('summary')?.focus();
+                }
+              }}>View raw event</button>}
             </div>
-          </section>}
+          </section>
+          <InvestigationTimeline alert={a} />
           {a.description && <><h3 style={{ margin: '16px 0 6px' }}>Description</h3><p style={{ whiteSpace: 'pre-wrap' }}>{a.description}</p></>}
           {can('alerts.tune') && (
             <div style={{ marginTop: 16 }}>
@@ -193,7 +245,7 @@ function AlertDrawer({ id, onClose }: { id: string; onClose: () => void }) {
               <div className="row"><button className="btn small" disabled={!note.trim()} onClick={() => upd.mutate({ tuning_note: note })}>Save note</button><button className="btn small" disabled={!note.trim() && !a.tuning_note} onClick={() => upd.mutate({ status: 'false_positive', tuning_note: note || a.tuning_note })}>Mark false positive</button></div>
             </div>
           )}
-          <details style={{ marginTop: 16 }}><summary>Raw event</summary><pre className="mono" style={{ overflow: 'auto' }}>{JSON.stringify(a.raw, null, 2)}</pre></details>
+          <details ref={rawEvent} style={{ marginTop: 16 }}><summary>Raw event</summary><pre className="mono" style={{ overflow: 'auto' }}>{JSON.stringify(a.raw, null, 2)}</pre></details>
           {block && <RequestActionModal initial={{ action_key: 'block_ip', targets: a.src_ip, alert_id: id }} onClose={() => setBlock(false)} />}
         </>
       )}
