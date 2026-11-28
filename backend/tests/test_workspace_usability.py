@@ -86,12 +86,12 @@ def test_triage_claim_keeps_owner_and_records_investigation_activity(make_sessio
     assert [row['id'] for row in matches] == [alert_id]
 
 
-def test_l2_dashboard_matches_scoped_alerts_and_active_cases(admin, make_session, clients):
+def test_l2_dashboard_matches_scoped_alerts_and_active_cases(superadmin, make_session, clients):
     client, other_client = clients
     analyst = make_session("dashboard-l2@t.local", "l2", all_clients=False, client_ids=[client])
     mk_alert(client, title="In scope", severity="low")
     mk_alert(other_client, title="Other client", severity="critical")
-    assert admin.post("/api/cases", {"title": "Other client case", "client_id": other_client}).status_code == 201
+    assert superadmin.post("/api/cases", {"title": "Other client case", "client_id": other_client}).status_code == 201
     created = analyst.post("/api/cases", {"title": "L2 investigation", "client_id": client})
     assert created.status_code == 201
 

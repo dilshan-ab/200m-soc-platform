@@ -35,21 +35,22 @@ def test_warroom_delete_permissions_and_scope(make_session, clients):
     assert scoped.post('/api/warrooms', {'title': 'Out of scope', 'client_id': clients[1]}).status_code == 403
 
 
-def test_alert_deletion_requires_capability(admin, make_session):
+def test_alert_deletion_requires_capability(admin, superadmin, make_session):
     aid = mk_alert()
     analyst = make_session('alert-delete-analyst@t.local', 'l2')
     assert analyst.delete(f'/api/alerts/{aid}').status_code == 403
     assert analyst.post('/api/alerts/bulk-delete', {'ids': [aid]}).status_code == 403
-    assert admin.delete(f'/api/alerts/{aid}').status_code == 204
-    assert admin.get(f'/api/alerts/{aid}').status_code == 404
-    assert admin.delete(f'/api/alerts/{aid}').status_code == 404
+    assert admin.delete(f'/api/alerts/{aid}').status_code == 403
+    assert superadmin.delete(f'/api/alerts/{aid}').status_code == 204
+    assert superadmin.get(f'/api/alerts/{aid}').status_code == 404
+    assert superadmin.delete(f'/api/alerts/{aid}').status_code == 404
 
 
-def test_alert_deletion_cleans_links_and_preserves_related_records(admin, clients):
+def test_alert_deletion_cleans_links_and_preserves_related_records(superadmin, clients):
     aid = mk_alert(client_id=clients[0])
     other = mk_alert(client_id=clients[0], title='Remaining alert', rule_id='another')
-    case_id = admin.post('/api/alerts/to-case', {'alert_ids': [aid]}).json()['id']
-    uid = admin.get('/api/auth/me').json()['id']
+    case_id = superadmin.post('/api/alerts/to-case', {'alert_ids': [aid]}).json()['id']
+    uid = superadmin.get('/api/auth/me').json()['id']
     with dbmod.session_scope() as db:
         request = ActionRequest(action_key='block_ip', requester_id=uid, alert_id=aid, client_id=clients[0], payload_hash='test', expires_at=utcnow() + timedelta(hours=1))
         evidence = CaseEvidence(case_id=case_id, name='Collected log', alert_id=aid)
@@ -62,7 +63,7 @@ def test_alert_deletion_cleans_links_and_preserves_related_records(admin, client
         db.flush()
         references = [(type(row), row.id) for row in [request, evidence, enrichment, notice, receipt]]
         iid, hid = incident.id, handoff.id
-    assert admin.delete(f'/api/alerts/{aid}').status_code == 204
+    assert superadmin.delete(f'/api/alerts/{aid}').status_code == 204
     with dbmod.session_scope() as db:
         for model, rid in references:
             assert db.get(model, rid).alert_id is None
@@ -71,7 +72,7 @@ def test_alert_deletion_cleans_links_and_preserves_related_records(admin, client
         assert incident.first_alert_time == incident.last_alert_time == db.get(Alert, other).time
         assert db.get(ShiftHandoff, hid).alert_ids == [other]
         assert db.execute(select(AuditEvent).where(AuditEvent.action == 'alert.delete', AuditEvent.resource_id == aid)).first() is not None
-    detail = admin.get(f'/api/cases/{case_id}').json()
+    detail = superadmin.get(f'/api/cases/{case_id}').json()
     assert detail['alerts'] == []
     assert detail['evidence'][0]['name'] == 'Collected log'
     assert any(entry['kind'] == 'alert' and aid == entry['meta'].get('alert_id') for entry in detail['timeline'])
@@ -80,7 +81,7 @@ def test_alert_deletion_cleans_links_and_preserves_related_records(admin, client
 def test_bulk_alert_delete_is_atomic_scoped_and_deduplicated(make_session, clients):
     a = mk_alert(client_id=clients[0])
     b = mk_alert(client_id=clients[1], rule_id='other')
-    scoped = make_session('delete-scoped-admin@t.local', 'admin', all_clients=False, client_ids=[clients[0]])
+    scoped = make_session('delete-scoped-admin@t.local', 'superadmin', all_clients=False, client_ids=[clients[0]])
     assert scoped.post('/api/alerts/bulk-delete', {'ids': [a, b]}).status_code == 404
     assert scoped.get(f'/api/alerts/{a}').status_code == 200
     assert scoped.post('/api/alerts/bulk-delete', {'ids': []}).status_code == 422
@@ -90,11 +91,11 @@ def test_bulk_alert_delete_is_atomic_scoped_and_deduplicated(make_session, clien
         assert db.get(Alert, b) is not None
 
 
-def test_alert_delete_respects_legal_hold(admin):
+def test_alert_delete_respects_legal_hold(superadmin):
     aid = mk_alert()
     with dbmod.session_scope() as db:
         policy = db.execute(select(RetentionPolicy).where(RetentionPolicy.dataset == 'alerts')).scalar_one()
         policy.legal_hold = True
-    assert admin.delete(f'/api/alerts/{aid}').status_code == 409
-    assert admin.post('/api/alerts/bulk-delete', {'ids': [aid]}).status_code == 409
-    assert admin.get(f'/api/alerts/{aid}').status_code == 200
+    assert superadmin.delete(f'/api/alerts/{aid}').status_code == 409
+    assert superadmin.post('/api/alerts/bulk-delete', {'ids': [aid]}).status_code == 409
+    assert superadmin.get(f'/api/alerts/{aid}').status_code == 200

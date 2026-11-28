@@ -3,12 +3,12 @@ from app.models import Asset, User
 from tests.helpers import mk_alert
 
 
-def test_workspace_search_scopes_every_result_type(admin, clients, make_session):
+def test_workspace_search_scopes_every_result_type(superadmin, clients, make_session):
     own, other = clients
     alert = mk_alert(client_id=own, title='Needle alert')
     mk_alert(client_id=other, title='Needle outside', rule_id='outside')
-    case = admin.post('/api/cases', {'title': 'Needle case', 'client_id': own}).json()['id']
-    admin.post('/api/cases', {'title': 'Needle outside case', 'client_id': other})
+    case = superadmin.post('/api/cases', {'title': 'Needle case', 'client_id': own}).json()['id']
+    superadmin.post('/api/cases', {'title': 'Needle outside case', 'client_id': other})
     with dbmod.session_scope() as db:
         asset = Asset(name='Needle device', hostname='needle-host', client_id=own)
         db.add_all([asset, Asset(name='Needle outside device', client_id=other)])
@@ -22,9 +22,9 @@ def test_workspace_search_scopes_every_result_type(admin, clients, make_session)
     assert analyst.get('/api/search?q=needle-host').json()['assets'][0]['id'] == asset_id
 
 
-def test_workspace_search_respects_each_capability(admin):
+def test_workspace_search_respects_each_capability(admin, superadmin):
     alert = mk_alert(title='Lookup alert')
-    admin.post('/api/cases', {'title': 'Lookup case'})
+    assert superadmin.post('/api/cases', {'title': 'Lookup case'}).status_code == 201
     uid = admin.get('/api/auth/me').json()['id']
     with dbmod.session_scope() as db:
         db.add(Asset(name='Lookup device'))
