@@ -14,7 +14,10 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 function renderIntegrations(canWrite: boolean) {
   vi.mocked(useAuth).mockReturnValue({ can: (cap: string) => canWrite && cap === 'integrations.write' } as ReturnType<typeof useAuth>);
   vi.mocked(get).mockImplementation(async (path) => {
-    if (path === '/api/integrations/tools') return [{ id: 'hive', type: 'thehive', label: 'TheHive', name: 'Existing case bridge', status: 'disabled' }];
+    if (path === '/api/integrations/tools') return [
+      { id: 'hive', type: 'thehive', label: 'TheHive', name: 'Existing case bridge', status: 'disabled' },
+      { id: 'wazuh', type: 'wazuh_indexer', label: 'Wazuh indexer', name: 'Existing indexer', status: 'enabled' },
+    ];
     if (path === '/api/integrations/catalogue') return [
       { type: 'wazuh_indexer', label: 'Wazuh indexer' }, { type: 'thehive', label: 'TheHive' },
       { type: 'shuffle', label: 'Shuffle' }, { type: 'keycloak', label: 'Keycloak' }, { type: 'custom', label: 'Custom' },
@@ -30,7 +33,9 @@ it('omits built-in workflow alternatives from Add integrations and retains exist
   await screen.findByText('Existing case bridge');
   fireEvent.click(screen.getByRole('tab', { name: 'Add integrations' }));
   const catalog = within(screen.getByRole('tabpanel', { name: 'Add integrations' }));
-  await catalog.findByRole('button', { name: 'Wazuh indexer' });
+  const configured = await catalog.findByRole('button', { name: 'Wazuh indexer Configured' });
+  expect(configured.classList.contains('tool-pick-configured')).toBe(true);
+  expect(catalog.getByRole('button', { name: 'Custom' }).classList.contains('tool-pick-configured')).toBe(false);
   for (const name of ['TheHive', 'Shuffle', 'Keycloak']) {
     expect(catalog.queryByRole('button', { name })).toBeNull();
   }
@@ -45,5 +50,14 @@ it('keeps connected integrations visible to read-only users', async () => {
   renderIntegrations(false);
   await screen.findByText('Existing case bridge');
   expect(screen.queryByRole('tab', { name: 'Add integrations' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Add tool' })).toBeNull();
   expect(get).not.toHaveBeenCalledWith('/api/integrations/catalogue');
+});
+
+it('opens the add integrations tab from the Add tool shortcut', async () => {
+  renderIntegrations(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Add tool' }));
+  const tab = screen.getByRole('tab', { name: 'Add integrations', selected: true });
+  expect(document.activeElement).toBe(tab);
+  await within(screen.getByRole('tabpanel', { name: 'Add integrations' })).findByRole('button', { name: /Wazuh indexer/ });
 });

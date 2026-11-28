@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Fragment, useState } from 'react';
+import { Fragment, useRef, useState } from 'react';
 import { CheckCircle, XCircle, Loader, RotateCw, Zap, ArrowLeft, ArrowRight, Play, Pause, RefreshCw, Trash2, Settings, Map as MapIcon, Key, Power, Shield, Eye, EyeOff } from 'lucide-react';
 import { Summary } from '../components/manage';
 import { Drawer, Empty, ErrorBox, Field, Loading, Modal, PageHead, SearchBox, Status, useToast } from '../components/ui';
@@ -42,6 +42,7 @@ export default function Integrations() {
   const [adding, setAdding] = useState(false);
   const canAdd = can('integrations.write');
   const showAdd = canAdd && adding;
+  const addTab = useRef<HTMLButtonElement>(null);
   const [fq, setFq] = useState('');
   const [fs, setFs] = useState('');
   const all = tools.data ?? [];
@@ -51,7 +52,11 @@ export default function Integrations() {
   const rows = all.filter((t) => (!fq || `${t.name} ${t.label}`.toLowerCase().includes(fq.trim().toLowerCase())) && (!fs || (fs === 'failing' ? failing.includes(t) : paused.includes(t))));
   return (
     <>
-      <PageHead title="Integrations" sub="Connect external data sources, services, and tools." />
+      <PageHead title="Integrations" sub="Connect external data sources, services, and tools.">
+        {canAdd && <button type="button" className="btn primary" onClick={() => { setAdding(true); addTab.current?.focus(); }}>
+          <Zap size={15} aria-hidden="true" /> Add tool
+        </button>}
+      </PageHead>
       {canAdd && (
         <div className="tabs" role="tablist" aria-label="Integrations" onKeyDown={(event) => {
           if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -62,7 +67,7 @@ export default function Integrations() {
         }}>
           <button type="button" role="tab" className={`tab${!showAdd ? ' active' : ''}`} id="integrations-connected-tab"
             aria-controls="integrations-connected" aria-selected={!showAdd} tabIndex={showAdd ? -1 : 0} onClick={() => setAdding(false)}>Connected</button>
-          <button type="button" role="tab" className={`tab${showAdd ? ' active' : ''}`} id="integrations-add-tab"
+          <button type="button" role="tab" className={`tab${showAdd ? ' active' : ''}`} id="integrations-add-tab" ref={addTab}
             aria-controls="integrations-add" aria-selected={showAdd} tabIndex={showAdd ? 0 : -1} onClick={() => setAdding(true)}>Add integrations</button>
         </div>
       )}
@@ -81,7 +86,7 @@ export default function Integrations() {
         )}
       </div>
       {canAdd && <div id="integrations-add" role="tabpanel" aria-labelledby="integrations-add-tab" hidden={!showAdd}>
-        {showAdd && <Wizard onDone={(id) => { setAdding(false); setSel(id); }} />}
+        {showAdd && <Wizard configuredTypes={new Set(all.map((tool) => tool.type))} onDone={(id) => { setAdding(false); setSel(id); }} />}
       </div>}
       {sel && <ToolDrawer id={sel} onClose={() => setSel(null)} />}
     </>
@@ -117,7 +122,7 @@ function pickTool(c: Manifest, name: string, setM: (m: Manifest) => void, setVal
   setStep(1);
 }
 
-function Wizard({ onDone }: { onDone: (id: string) => void }) {
+function Wizard({ configuredTypes, onDone }: { configuredTypes: ReadonlySet<string>; onDone: (id: string) => void }) {
   const cat = useQuery({ queryKey: ['catalogue'], queryFn: () => get<Manifest[]>('/api/integrations/catalogue') });
   const servers = useQuery({ queryKey: ['servers'], queryFn: () => get<any[]>('/api/servers') });
   const [step, setStep] = useState(0);
@@ -140,11 +145,16 @@ function Wizard({ onDone }: { onDone: (id: string) => void }) {
       {step === 0 && (cat.isLoading ? <Loading /> : cat.error ? <ErrorBox error={cat.error} /> : (
         <>
           <div className="wizard-search"><SearchBox value={q} onChange={setQ} placeholder="Search by name, or type a tool that isn't listed…" label="Find a tool" /></div>
-          <div className="tool-pick-grid">{matches.map((c) => (
-            <button key={c.type} type="button" className="tool-pick" onClick={() => pickTool(c, c.label, setM, setVals, setName, setStep)}>
-              <Shield size={18} />
-              <span>{c.label}</span>
-            </button>))}</div>
+          <div className="tool-pick-grid">{matches.map((c) => {
+            const configured = configuredTypes.has(c.type);
+            return (
+              <button key={c.type} type="button" className={`tool-pick${configured ? ' tool-pick-configured' : ''}`} onClick={() => pickTool(c, c.label, setM, setVals, setName, setStep)}>
+                {configured ? <CheckCircle size={18} aria-hidden="true" /> : <Shield size={18} aria-hidden="true" />}
+                <span>{c.label}</span>
+                {configured && <small className="tool-pick-status">Configured</small>}
+              </button>
+            );
+          })}</div>
           {builtInMatch && matches.length === 0 && <Empty>{BUILT_IN_WORKFLOWS.get(builtInMatch.type)}</Empty>}
           {term && matches.length === 0 && custom && !builtInMatch && (
             <div className="notice wizard-custom-notice">
