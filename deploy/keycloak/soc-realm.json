@@ -332,6 +332,14 @@
           "description": "Ueba: write (default minimum role: l2)"
         },
         {
+          "name": "uptime.read",
+          "description": "Uptime: read (default minimum role: l1)"
+        },
+        {
+          "name": "uptime.write",
+          "description": "Uptime: write (default minimum role: l2)"
+        },
+        {
           "name": "users.provision",
           "description": "Users: provision (default minimum role: admin)"
         },
@@ -433,6 +441,8 @@
           "threat_intel.write",
           "ueba.read",
           "ueba.write",
+          "uptime.read",
+          "uptime.write",
           "users.provision",
           "vulns.read",
           "vulns.write",
@@ -510,6 +520,8 @@
           "threat_intel.write",
           "ueba.read",
           "ueba.write",
+          "uptime.read",
+          "uptime.write",
           "users.provision",
           "vulns.read",
           "vulns.write",
@@ -559,6 +571,7 @@
           "servers.read",
           "threat_intel.read",
           "ueba.read",
+          "uptime.read",
           "vulns.read",
           "warroom.read",
           "warroom.write"
@@ -605,6 +618,7 @@
               "servers.read",
               "threat_intel.read",
               "ueba.read",
+              "uptime.read",
               "vulns.read",
               "warroom.read",
               "warroom.write"
@@ -637,6 +651,7 @@
               "simulation.read",
               "threat_intel.write",
               "ueba.write",
+              "uptime.write",
               "vulns.write",
               "warroom.manage"
             ]
