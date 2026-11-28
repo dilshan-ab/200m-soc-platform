@@ -2,7 +2,7 @@ import { tableKeyboard } from '../lib/tableKeyboard';
 import { KeyboardHelp, NotificationPanel, Pulse } from './Interactive';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, ArrowUp, AlertTriangle, Bell, BookMarked, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Crosshair, FileCode2, FileText, Flame, GitMerge, Globe, HeartPulse, MessagesSquare, Network, Package, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Repeat2, ScrollText, Search, Server, Settings, Share2, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react'; // Building2 removed with the Clients & MSSP nav entry below — re-add it when un-commenting
+import { Activity, ArrowUp, AlertTriangle, Bell, BookMarked, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Crosshair, FileCode2, FileText, Flame, GitMerge, Globe, HeartPulse, MessagesSquare, MonitorCheck, Network, Package, Radar, Layers, LayoutDashboard, LogOut, Menu, Moon, Play, Plug, Repeat2, ScrollText, Search, Server, Settings, Share2, Shield, Sun, Target, Workflow, X, Zap, BookOpen, CheckCircle2, Cpu, Gauge, type LucideIcon } from 'lucide-react'; // Building2 removed with the Clients & MSSP nav entry below — re-add it when un-commenting
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { get } from '../lib/api';
@@ -31,6 +31,7 @@ const NAV: { group: string; items: Item[] }[] = [
     { to: '/app/triage', label: 'Triage Queue', icon: Flame, cap: 'alerts.triage' },
     { to: '/app/cases', label: 'Cases', icon: Layers, cap: 'cases.read' },
     { to: '/app/approvals', label: 'Approvals', icon: CheckCircle2, cap: 'response.approve' },
+    { to: '/app/uptime', label: 'Uptime', icon: MonitorCheck, cap: 'uptime.read' },
   ] },
   { group: 'INVESTIGATE', items: [
     { to: '/app/correlation', label: 'Correlation', icon: GitMerge, cap: 'incidents.read' },

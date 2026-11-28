@@ -285,6 +285,8 @@ const CAP_LABELS: Record<string, string> = {
   'clients.write': 'Manage client organisations',
   'clients.manage_members': 'Manage client members',
   'mssp.view': 'View multi-tenant overview',
+  'uptime.read': 'View website uptime monitors',
+  'uptime.write': 'Manage website uptime monitors',
 };
 
 const GROUP_LABELS: Record<string, string> = {
@@ -320,6 +322,7 @@ const GROUP_LABELS: Record<string, string> = {
   logs: 'Logs',
   clients: 'Client Organisations',
   mssp: 'Multi-Tenant',
+  uptime: 'Website Uptime',
 };
 
 function Permissions() {

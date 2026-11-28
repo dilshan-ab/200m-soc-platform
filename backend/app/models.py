@@ -1068,3 +1068,39 @@ class WarRoomMessage(Base):
     content: Mapped[str] = mapped_column(Text, default="")
     pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = _ts()
+
+
+class UptimeMonitor(Base):
+    __tablename__ = "uptime_monitors"
+    id: Mapped[str] = _pk()
+    name: Mapped[str] = mapped_column(String(200))
+    url: Mapped[str] = mapped_column(String(2000))
+    method: Mapped[str] = mapped_column(String(10), default="HEAD")
+    interval_seconds: Mapped[int] = mapped_column(Integer, default=60)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=10)
+    expected_status: Mapped[int] = mapped_column(Integer, default=200)
+    headers: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    tags: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    notify_channels: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    status: Mapped[str] = mapped_column(String(20), default="unknown")
+    last_checked_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    last_status_change: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+    fail_threshold: Mapped[int] = mapped_column(Integer, default=2)
+    client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True, index=True)
+    created_by: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = _ts()
+    updated_at: Mapped[datetime] = _ts()
+
+
+class UptimeCheck(Base):
+    __tablename__ = "uptime_checks"
+    __table_args__ = (Index("ix_uptime_checks_monitor_checked", "monitor_id", "checked_at"),)
+    id: Mapped[str] = _pk()
+    monitor_id: Mapped[str] = mapped_column(ForeignKey("uptime_monitors.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(10))
+    status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    response_time_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    checked_at: Mapped[datetime] = _ts()

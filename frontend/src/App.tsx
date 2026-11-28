@@ -43,6 +43,7 @@ const EvidenceVault = lazy(() => import('./pages/EvidenceVault'));
 const ScheduledJobs = lazy(() => import('./pages/ScheduledJobs'));
 const Xdr = lazy(() => import('./pages/DetectionWorkspaces').then(({ Xdr }) => ({ default: Xdr })));
 const RiskAnalytics = lazy(() => import('./pages/DetectionWorkspaces').then(({ RiskAnalytics }) => ({ default: RiskAnalytics })));
+const Uptime = lazy(() => import('./pages/Uptime'));
 const Admin = lazy(() => import('./pages/Admin'));
 
 function Guard({ children }: { children: ReactNode }) {
@@ -107,6 +108,7 @@ export default function App() {
           <Route path="logs" element={<Need cap="logs.read"><LogSearch /></Need>} />
           <Route path="evidence" element={<Need cap="evidence.read"><EvidenceVault /></Need>} />
           <Route path="jobs" element={<Need cap="automation.read"><ScheduledJobs /></Need>} />
+          <Route path="uptime" element={<Need cap="uptime.read"><Uptime /></Need>} />
           <Route path="admin" element={<Need cap="admin.settings"><Admin /></Need>} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Route>

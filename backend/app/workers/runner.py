@@ -15,7 +15,7 @@ from sqlalchemy.engine import CursorResult
 from ..config import get_settings
 from ..db import session_factory, session_scope
 from ..models import Alert, AlertReceipt, EnrichmentJob, OidcState, Outbox, ReportJob, RetentionPolicy, SessionRecord, WebhookReplay, utcnow
-from ..services import events, keycloak_sync, notifications, playbooks_engine, polling, reports, response
+from ..services import events, keycloak_sync, notifications, playbooks_engine, polling, reports, response, uptime
 from ..services.settings_svc import get_setting
 from ..sla import check_breaches
 
@@ -66,6 +66,7 @@ def tick_maintenance() -> None:
         db.execute(delete(SessionRecord).where(SessionRecord.expires_at < now - timedelta(days=7)))
     prune_bookkeeping()
     clear_low_alerts()
+    uptime.purge_old_checks()
 
 
 PRUNE_CHUNK = 20_000  # rows per table per maintenance tick (30 s): a large backlog drains in hours without long locks
@@ -134,6 +135,7 @@ def start_workers(app: FastAPI) -> None:
         Worker("outbox", s.outbox_tick_seconds, lambda: events.dispatch_once(sf), stop),
         Worker("poll", s.poll_tick_seconds, lambda: polling.poll_due(sf), stop),
         Worker("maintenance", 30, tick_maintenance, stop),
+        Worker("uptime", 60, lambda: uptime.run_checks(sf), stop),
     ]
     if s.keycloak_sync_minutes > 0:
         ws.append(Worker("keycloak-sync", s.keycloak_sync_minutes * 60, lambda: keycloak_sync.run_scheduled(sf), stop))

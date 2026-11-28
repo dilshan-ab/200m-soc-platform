@@ -14,7 +14,7 @@ from ..models import Alert, Case, NotificationDelivery, NotificationDestination,
 from ..policy import sev_rank
 from . import events, tools_svc
 
-SUPPORTED_EVENTS = {"alert.created", "server.down", "case.created", "sla.breached", "approval.pending"}
+SUPPORTED_EVENTS = {"alert.created", "server.down", "case.created", "sla.breached", "approval.pending", "uptime.down", "uptime.recovered"}
 
 
 def _in_quiet_hours(rule: NotificationRule) -> bool:
@@ -50,6 +50,10 @@ def _describe(db: Session, ev: dict[str, Any]) -> tuple[str, str, str, str | Non
         return (f"[{c.severity.upper()}] New case #{c.number}: {c.title}", f"{base}/cases/{c.id}", c.severity, c.client_id, "security", None)
     if t == "approval.pending":
         return ("Approval pending", f"{base}/approvals", ev.get("severity") or "medium", ev.get("client_id"), "security", None)
+    if t == "uptime.down":
+        return (f"[DOWN] {ev.get('name', 'Site')} is down", f"URL: {ev.get('url', '-')}\nError: {ev.get('error', '-')}\n{base}/app/uptime", "critical", ev.get("client_id"), "infrastructure", None)
+    if t == "uptime.recovered":
+        return (f"[RECOVERED] {ev.get('name', 'Site')} is back up", f"URL: {ev.get('url', '-')}\n{base}/app/uptime", "info", ev.get("client_id"), "infrastructure", None)
     raise LookupError(t)
 
 

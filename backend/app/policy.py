@@ -90,6 +90,8 @@ CAPABILITIES: dict[str, str] = {
     "clients.write": "admin",
     "clients.manage_members": "admin",
     "mssp.view": "l2",
+    "uptime.read": "l1",
+    "uptime.write": "l2",
 }
 
 
