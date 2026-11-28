@@ -17,10 +17,12 @@ function renderIntegrations(canWrite: boolean) {
     if (path === '/api/integrations/tools') return [
       { id: 'hive', type: 'thehive', label: 'TheHive', name: 'Existing case bridge', status: 'disabled' },
       { id: 'wazuh', type: 'wazuh_indexer', label: 'Wazuh indexer', name: 'Existing indexer', status: 'enabled' },
+      { id: 'wazuh-draft', type: 'wazuh_indexer', label: 'Wazuh indexer', name: 'Second indexer', status: 'draft' },
+      { id: 'openvas-draft', type: 'openvas', label: 'OpenVAS', name: 'Scanner draft', status: 'draft' },
     ];
     if (path === '/api/integrations/catalogue') return [
       { type: 'wazuh_indexer', label: 'Wazuh indexer' }, { type: 'thehive', label: 'TheHive' },
-      { type: 'shuffle', label: 'Shuffle' }, { type: 'keycloak', label: 'Keycloak' }, { type: 'custom', label: 'Custom' },
+      { type: 'openvas', label: 'OpenVAS' }, { type: 'shuffle', label: 'Shuffle' }, { type: 'keycloak', label: 'Keycloak' }, { type: 'custom', label: 'Custom' },
     ].map((connector) => ({ ...connector, fields: [] }));
     return [];
   });
@@ -36,6 +38,7 @@ it('omits built-in workflow alternatives from Add integrations and retains exist
   const configured = await catalog.findByRole('button', { name: 'Wazuh indexer Configured' });
   expect(configured.classList.contains('tool-pick-configured')).toBe(true);
   expect(catalog.getByRole('button', { name: 'Custom' }).classList.contains('tool-pick-configured')).toBe(false);
+  expect(catalog.getByRole('button', { name: 'OpenVAS' }).classList.contains('tool-pick-configured')).toBe(false);
   for (const name of ['TheHive', 'Shuffle', 'Keycloak']) {
     expect(catalog.queryByRole('button', { name })).toBeNull();
   }
@@ -54,10 +57,8 @@ it('keeps connected integrations visible to read-only users', async () => {
   expect(get).not.toHaveBeenCalledWith('/api/integrations/catalogue');
 });
 
-it('opens the add integrations tab from the Add tool shortcut', async () => {
+it('uses the Add integrations tab without a header shortcut', () => {
   renderIntegrations(true);
-  fireEvent.click(screen.getByRole('button', { name: 'Add tool' }));
-  const tab = screen.getByRole('tab', { name: 'Add integrations', selected: true });
-  expect(document.activeElement).toBe(tab);
-  await within(screen.getByRole('tabpanel', { name: 'Add integrations' })).findByRole('button', { name: /Wazuh indexer/ });
+  expect(screen.getByRole('tab', { name: 'Add integrations' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Add tool' })).toBeNull();
 });
