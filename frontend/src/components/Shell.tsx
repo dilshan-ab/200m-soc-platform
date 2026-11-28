@@ -259,7 +259,7 @@ export function Shell() {
             <button type="button" className="avatar workspace-account" aria-label="Open account menu" onClick={() => { setMobile(false); setAccount(true); }}>{initials(name)}</button>
           </div>
         </header>
-        {can('alerts.read') && <AlertPopups live={live} />}
+        {can('alerts.triage') && <AlertPopups live={live} />}
         <main onKeyDown={tableKeyboard} id="workspace-main" tabIndex={-1} className="content" key={loc.pathname}>
           {me?.client_ids?.length === 0 && (can('alerts.read') || can('cases.read')) && (
             <p className="notice" role="status">

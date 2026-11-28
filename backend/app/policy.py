@@ -92,6 +92,13 @@ CAPABILITIES: dict[str, str] = {
 }
 
 
+ROLE_DENIED: dict[str, set[str]] = {
+    "admin": {
+        "alerts.triage", "alerts.tune", "alerts.delete",
+        "cases.write", "cases.close",
+    },
+}
+
 def role_rank(role: str) -> int:
     return ROLES.index(role) if role in ROLES else -1
 
@@ -109,9 +116,10 @@ def get_role_overrides() -> dict[str, list[str]] | None:
 
 
 def _hierarchy_caps(role: str) -> list[str]:
-    """Capabilities the role hierarchy unconditionally grants (overrides cannot remove these)."""
+    """Capabilities the role hierarchy unconditionally grants, minus any role-level denials."""
     rank = role_rank(role)
-    return [cap for cap, min_role in CAPABILITIES.items() if rank >= role_rank(min_role)]
+    denied = ROLE_DENIED.get(role, set())
+    return [cap for cap, min_role in CAPABILITIES.items() if rank >= role_rank(min_role) and cap not in denied]
 
 
 def role_capabilities(role: str) -> list[str]:
@@ -133,6 +141,8 @@ def has_capability(role: str, grants: list[str] | None, cap: str, denied: list[s
         return False
     if cap in (grants or []):
         return True
+    if cap in ROLE_DENIED.get(role, set()):
+        return False
     if role_rank(role) >= role_rank(need):
         return True
     if _role_overrides and role in _role_overrides:
