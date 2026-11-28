@@ -174,12 +174,14 @@ export default function Playbooks() {
   );
 }
 
+type CaseSummary = { id: string; number: number; title: string; severity: string; status: string };
+
 function PlaybookDetail({ id, onClose, onEdit }: { id: string; onClose: () => void; onEdit: (id: string) => void }) {
   const q = useQuery({ queryKey: ['playbook', id], queryFn: () => get<PB>(`/api/playbooks/${id}`) });
   const { can } = useAuth();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [executeOpen, setExecuteOpen] = useState(false);
   const publish = useAct(() => patch(`/api/playbooks/${id}`, { status: 'published' }), ['playbooks', 'playbook'], 'Published');
-  const execute = useAct(() => post(`/api/playbooks/${id}/execute`), ['playbooks', 'playbook'], 'Executed');
   const remove = useAct(() => del(`/api/playbooks/${id}`), ['playbooks'], 'Deleted', onClose);
   const resume = useAct(
     (vars: { runId: string; approved: boolean }) => post(`/api/playbooks/${id}/runs/${vars.runId}/resume`, { approved: vars.approved, reason: vars.approved ? 'approved from playbook run history' : 'rejected from playbook run history' }),
@@ -199,7 +201,7 @@ function PlaybookDetail({ id, onClose, onEdit }: { id: string; onClose: () => vo
         <span className="spacer" />
         {can('playbooks.write') && <button className="btn small" onClick={() => onEdit(id)}>Edit in builder</button>}
         {can('playbooks.write') && pb.status === 'draft' && <button className="btn small primary" onClick={() => publish.mutate(undefined)}>Publish</button>}
-        {can('playbooks.execute') && pb.status === 'published' && <button className="btn small" onClick={() => execute.mutate(undefined)}>Execute</button>}
+        {can('playbooks.execute') && pb.status === 'published' && <button className="btn small" onClick={() => setExecuteOpen(true)}>Execute</button>}
         {can('playbooks.write') && <button className="btn small danger" onClick={() => { if (confirm('Delete this playbook?')) remove.mutate(undefined); }}>Delete</button>}
       </div>
       {pb.description && <p style={{ marginBottom: 16 }}>{pb.description}</p>}
@@ -260,7 +262,44 @@ function PlaybookDetail({ id, onClose, onEdit }: { id: string; onClose: () => vo
           </table>
         </>
       )}
+      {executeOpen && <ExecutePlaybookModal playbookId={id} playbookName={pb.name} onClose={() => setExecuteOpen(false)} />}
     </Drawer>
+  );
+}
+
+function ExecutePlaybookModal({ playbookId, playbookName, onClose }: { playbookId: string; playbookName: string; onClose: () => void }) {
+  const [caseId, setCaseId] = useState('');
+  const [q, setQ] = useState('');
+  const cases = useQuery({
+    queryKey: ['cases-for-playbook', q],
+    queryFn: () => get<{ items: CaseSummary[] }>('/api/cases', { status: ['open', 'in_progress'], q: q || undefined, limit: 20 }),
+  });
+  const execute = useAct(
+    () => post(`/api/playbooks/${playbookId}/execute`, { case_id: caseId || null }),
+    ['playbooks', 'playbook', 'case-pb-runs'],
+    'Playbook started',
+    onClose,
+  );
+
+  return (
+    <Modal title={`Execute: ${playbookName}`} onClose={onClose}>
+      <Field label="Run against a case (optional)" id="exec-case">
+        <input placeholder="Search cases…" aria-label="Search cases" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginBottom: 6 }} />
+        <select id="exec-case" value={caseId} onChange={(e) => setCaseId(e.target.value)} size={Math.min((cases.data?.items.length ?? 0) + 1, 6)} style={{ width: '100%' }}>
+          <option value="">No case (manual run)</option>
+          {cases.data?.items.map((c) => (
+            <option key={c.id} value={c.id}>#{c.number} {c.title} ({c.severity} · {c.status})</option>
+          ))}
+        </select>
+      </Field>
+      {execute.error && <ErrorBox error={execute.error} />}
+      <div className="row" style={{ gap: 8, marginTop: 12 }}>
+        <button className="btn primary" disabled={execute.isPending} onClick={() => execute.mutate(undefined)}>
+          {execute.isPending ? 'Starting…' : caseId ? 'Run against case' : 'Run manually'}
+        </button>
+        <button className="btn" onClick={onClose}>Cancel</button>
+      </div>
+    </Modal>
   );
 }
 
