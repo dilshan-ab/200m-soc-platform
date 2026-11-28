@@ -655,6 +655,13 @@ html[data-theme=dark] .wizard-step.active .wizard-step-num { color: var(--accent
 }
 .tool-pick-grid .tool-pick svg { color: var(--accent); opacity: .7; }
 .tool-pick-grid .tool-pick:hover svg { opacity: 1; }
+.tool-pick-grid .tool-pick-configured {
+  border-color: var(--ok);
+  background: var(--ok-bg);
+}
+.tool-pick-grid .tool-pick-configured svg,
+.tool-pick-grid .tool-pick-status { color: var(--ok); opacity: 1; }
+
 
 /* ── Permissions user list ─────────────────────────────────────────── */
 .perm-user-list {
