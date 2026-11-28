@@ -211,6 +211,117 @@ function EditUser({ u, canChangeRole, clients, onClose }: { u: any; canChangeRol
 
 const initials = (n: string) => n.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((x) => x[0].toUpperCase()).join('');
 
+const CAP_LABELS: Record<string, string> = {
+  'alerts.read': 'View alerts',
+  'alerts.triage': 'Handle and respond to alerts',
+  'alerts.tune': 'Adjust alert rules and thresholds',
+  'alerts.delete': 'Delete alerts',
+  'cases.read': 'View cases',
+  'cases.write': 'Create and edit cases',
+  'cases.close': 'Close and resolve cases',
+  'cases.delete': 'Delete cases',
+  'assets.read': 'View assets',
+  'assets.write': 'Add and edit assets',
+  'servers.read': 'View servers',
+  'servers.write': 'Manage server settings',
+  'vulns.read': 'View vulnerabilities',
+  'vulns.write': 'Manage vulnerabilities',
+  'compliance.read': 'View compliance status',
+  'compliance.write': 'Manage compliance controls',
+  'intel.read': 'View threat intelligence',
+  'intel.enrich': 'Run threat lookups',
+  'hunts.read': 'View threat hunts',
+  'hunts.request': 'Request a threat hunt',
+  'response.read': 'View response actions',
+  'response.request': 'Request a response action',
+  'response.approve': 'Approve response actions',
+  'response.approve_critical': 'Approve critical response actions',
+  'reports.read': 'View reports',
+  'reports.generate': 'Generate reports',
+  'reports.schedule': 'Schedule automated reports',
+  'automation.read': 'View automation rules',
+  'automation.write': 'Manage automation rules',
+  'notifications.write': 'Manage notification settings',
+  'runbooks.read': 'View runbooks',
+  'runbooks.write': 'Create and edit runbooks',
+  'playbooks.read': 'View playbooks',
+  'playbooks.write': 'Create and edit playbooks',
+  'playbooks.execute': 'Run playbooks',
+  'correlation.read': 'View correlation rules',
+  'correlation.write': 'Manage correlation rules',
+  'incidents.read': 'View incidents',
+  'incidents.write': 'Create and manage incidents',
+  'integrations.read': 'View integrations',
+  'integrations.write': 'Manage integrations',
+  'admin.users': 'View user accounts',
+  'users.provision': 'Create and manage user accounts',
+  'admin.settings': 'Manage platform settings',
+  'admin.audit': 'View audit logs',
+  'admin.backups': 'Manage backups',
+  'admin.tokens': 'Manage API tokens',
+  'metrics.read': 'View dashboard metrics',
+  'detections.read': 'View detection rules',
+  'detections.write': 'Manage detection rules',
+  'evidence.read': 'View evidence',
+  'evidence.write': 'Collect and manage evidence',
+  'ueba.read': 'View user behavior analytics',
+  'ueba.write': 'Manage behavior analytics rules',
+  'copilot.read': 'Use AI copilot',
+  'copilot.write': 'Configure AI copilot',
+  'simulation.read': 'View attack simulations',
+  'simulation.write': 'Run attack simulations',
+  'notebooks.read': 'View investigation notebooks',
+  'notebooks.write': 'Create and edit notebooks',
+  'threat_intel.read': 'View threat intelligence feeds',
+  'threat_intel.write': 'Manage threat intelligence feeds',
+  'threat_intel.admin': 'Administer threat intelligence',
+  'handoff.read': 'View shift handoffs',
+  'handoff.write': 'Create shift handoffs',
+  'warroom.read': 'View war rooms',
+  'warroom.write': 'Participate in war rooms',
+  'warroom.manage': 'Manage war rooms',
+  'logs.read': 'View log data',
+  'clients.read': 'View client organisations',
+  'clients.write': 'Manage client organisations',
+  'clients.manage_members': 'Manage client members',
+  'mssp.view': 'View multi-tenant overview',
+};
+
+const GROUP_LABELS: Record<string, string> = {
+  alerts: 'Alerts',
+  cases: 'Cases',
+  assets: 'Assets',
+  servers: 'Servers',
+  vulns: 'Vulnerabilities',
+  compliance: 'Compliance',
+  intel: 'Threat Intelligence',
+  hunts: 'Threat Hunting',
+  response: 'Response Actions',
+  reports: 'Reports',
+  automation: 'Automation',
+  notifications: 'Notifications',
+  runbooks: 'Runbooks',
+  playbooks: 'Playbooks',
+  correlation: 'Correlation Rules',
+  incidents: 'Incidents',
+  integrations: 'Integrations',
+  admin: 'Administration',
+  users: 'User Management',
+  metrics: 'Metrics',
+  detections: 'Detection Rules',
+  evidence: 'Evidence',
+  ueba: 'User Behavior Analytics',
+  copilot: 'AI Copilot',
+  simulation: 'Attack Simulations',
+  notebooks: 'Notebooks',
+  threat_intel: 'Threat Intel Feeds',
+  handoff: 'Shift Handoffs',
+  warroom: 'War Rooms',
+  logs: 'Logs',
+  clients: 'Client Organisations',
+  mssp: 'Multi-Tenant',
+};
+
 function Permissions() {
   const { can, me } = useAuth();
   const toast = useToast();
@@ -265,7 +376,7 @@ function Permissions() {
       <div className="row" style={{ marginBottom: 8, alignItems: 'flex-start' }}>
         <h2 style={{ margin: 0 }}>Permissions</h2>
         <span className="spacer" />
-        {!editable && <span style={{ color: 'var(--muted)', fontSize: 13 }}>View only — user management permission is required to change permissions.</span>}
+        {!editable && <span style={{ color: 'var(--muted)', fontSize: 13 }}>View only — you need user management access to change permissions.</span>}
       </div>
       {(users.isLoading || perms.isLoading) ? <Loading /> : (users.error || perms.error) ? <ErrorBox error={users.error || perms.error} /> : (
         <div className="grid" style={{ gridTemplateColumns: 'minmax(220px, 280px) 1fr', gap: 18, alignItems: 'start' }}>
@@ -291,31 +402,31 @@ function Permissions() {
             {sel && (
               <>
                 <p style={{ color: 'var(--muted)', margin: '0 0 8px' }}>
-                  <strong>{sel.name || sel.email}</strong> — base role <strong>{sel.role}</strong>.
-                  {editable ? ' Click a capability to grant or restrict it for this user only.' : ''}
+                  <strong>{sel.name || sel.email}</strong> — role: <strong>{titleCase(sel.role)}</strong>.
+                  {editable ? ' Click any permission to change access for this person.' : ''}
                   {dirty && <span style={{ color: 'var(--accent)', marginLeft: 8 }}>Unsaved changes</span>}
                 </p>
                 <div className="table-wrap" style={{ maxHeight: 460, overflowY: 'auto' }}>
                   <table style={{ fontSize: 13 }}>
                     <thead>
                       <tr>
-                        <th style={{ position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 2, minWidth: 200 }}>Capability</th>
-                        <th style={{ position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 2, width: 140 }}>State</th>
+                        <th style={{ position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 2, minWidth: 200 }}>Permission</th>
+                        <th style={{ position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 2, width: 140 }}>Access</th>
                       </tr>
                     </thead>
                     <tbody>
                       {Object.entries(groups).map(([ns, caps]) => (
                         <>
-                          <tr key={`hdr-${ns}`}><td colSpan={2} style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: 11, color: 'var(--muted)', paddingTop: 12, borderBottom: '1px solid var(--border)' }}>{ns}</td></tr>
+                          <tr key={`hdr-${ns}`}><td colSpan={2} style={{ fontWeight: 700, fontSize: 12, color: 'var(--muted)', paddingTop: 12, borderBottom: '1px solid var(--border)' }}>{GROUP_LABELS[ns] || titleCase(ns)}</td></tr>
                           {caps.map((cap) => {
                             const fromRole = roleCaps.has(cap);
                             const isGranted = grants.includes(cap);
                             const isDenied = denied.includes(cap);
                             const state = isDenied ? 'denied' : isGranted ? 'granted' : fromRole ? 'role' : 'none';
-                            const label = { denied: 'Denied', granted: 'Granted (extra)', role: `Via ${sel.role} role`, none: 'Not available' }[state];
+                            const label = { denied: 'Blocked', granted: 'Extra access', role: `From ${titleCase(sel.role)} role`, none: 'No access' }[state];
                             return (
                               <tr key={cap}>
-                                <td className="mono" style={{ fontSize: 12 }}>{cap}</td>
+                                <td style={{ fontSize: 13 }} title={cap}>{CAP_LABELS[cap] || cap}</td>
                                 <td>
                                   <button
                                     type="button" className="btn small" disabled={!editable} onClick={() => cycle(cap)}

@@ -24,7 +24,9 @@ import { useAuth } from '../lib/auth';
 import { useAct } from '../lib/mut';
 
 type PB = { id: string; name: string; description: string; trigger: string; status: string; enabled: boolean; version: number; schedule_interval_minutes?: number | null; next_run_at?: string | null; last_run_at?: string | null; client_id: string | null; created_by: string; created_at: string; updated_at: string; nodes?: any[]; edges?: any[]; runs?: Run[] };
-type Run = { id: string; playbook_id: string; trigger_ref: string; status: string; current_node: string; execution_log: any[]; error: string; started_at: string; finished_at: string | null };
+type RunCase = { id: string; number: number; title: string; severity: string; status: string };
+type RunAlert = { id: string; title: string; severity: string };
+type Run = { id: string; playbook_id: string; trigger_ref: string; status: string; current_node: string; execution_log: any[]; error: string; started_at: string; finished_at: string | null; case?: RunCase; alert?: RunAlert };
 type ActionSpec = { key: string; label: string; system: string; risk: string; reversible: boolean; approvals: number; target_kind: string; params: string[]; capability: string };
 type Destination = { id: string; name: string; channel: string };
 
@@ -217,13 +219,14 @@ function PlaybookDetail({ id, onClose, onEdit }: { id: string; onClose: () => vo
         <>
           <h4 style={{ marginTop: 16 }}>Recent runs</h4>
           <table className="table">
-            <thead><tr><th>Started</th><th>Trigger</th><th>Status</th><th>Duration</th><th /></tr></thead>
+            <thead><tr><th>Started</th><th>Trigger</th><th>Case</th><th>Status</th><th>Duration</th><th /></tr></thead>
             <tbody>
               {pb.runs.map((r) => (
                 <Fragment key={r.id}>
                   <tr>
                     <td>{new Date(r.started_at).toLocaleString()}</td>
-                    <td>{r.trigger_ref}</td>
+                    <td>{r.case ? 'Case' : r.alert ? 'Alert' : 'Manual'}</td>
+                    <td>{r.case ? <span title={r.case.title}>#{r.case.number} {r.case.title.length > 30 ? r.case.title.slice(0, 30) + '…' : r.case.title} <Status v={r.case.status} /></span> : r.alert ? <span title={r.alert.title}>{r.alert.title.length > 30 ? r.alert.title.slice(0, 30) + '…' : r.alert.title}</span> : '—'}</td>
                     <td><Status v={r.status} /></td>
                     <td>{r.finished_at ? `${((new Date(r.finished_at).getTime() - new Date(r.started_at).getTime()) / 1000).toFixed(1)}s` : '—'}</td>
                     <td>
@@ -238,7 +241,7 @@ function PlaybookDetail({ id, onClose, onEdit }: { id: string; onClose: () => vo
                   </tr>
                   {expanded === r.id && (
                     <tr>
-                      <td colSpan={5}>
+                      <td colSpan={6}>
                         {r.error && <div style={{ color: 'var(--danger)', marginBottom: 6 }}>{r.error}</div>}
                         <table className="table">
                           <thead><tr><th>Node</th><th>Type</th><th>Status</th><th>Result</th></tr></thead>

@@ -17,7 +17,7 @@ from .common import iso, page_out, paginate
 router = APIRouter(prefix="/api/playbooks", tags=["playbooks"])
 
 
-def playbook_out(pb: Playbook, detail: bool = False) -> dict[str, Any]:
+def playbook_out(pb: Playbook, detail: bool = False, db: Session | None = None) -> dict[str, Any]:
     d = {
         "id": pb.id,
         "name": pb.name,
@@ -37,12 +37,12 @@ def playbook_out(pb: Playbook, detail: bool = False) -> dict[str, Any]:
     if detail:
         d["nodes"] = pb.nodes or []
         d["edges"] = pb.edges or []
-        d["runs"] = [run_out(r) for r in sorted(pb.runs, key=lambda r: r.started_at, reverse=True)[:20]]
+        d["runs"] = [run_out(r, db) for r in sorted(pb.runs, key=lambda r: r.started_at, reverse=True)[:20]]
     return d
 
 
-def run_out(r: PlaybookRun) -> dict[str, Any]:
-    return {
+def run_out(r: PlaybookRun, db: Session | None = None) -> dict[str, Any]:
+    d: dict[str, Any] = {
         "id": r.id,
         "playbook_id": r.playbook_id,
         "trigger_ref": r.trigger_ref,
@@ -53,6 +53,19 @@ def run_out(r: PlaybookRun) -> dict[str, Any]:
         "started_at": iso(r.started_at),
         "finished_at": iso(r.finished_at),
     }
+    if db and r.trigger_ref:
+        parts = r.trigger_ref.split(":", 1)
+        if len(parts) == 2:
+            kind, ref_id = parts
+            if kind == "case":
+                c = db.get(Case, ref_id)
+                if c:
+                    d["case"] = {"id": c.id, "number": c.number, "title": c.title, "severity": c.severity, "status": c.status}
+            elif kind == "alert":
+                a = db.get(Alert, ref_id)
+                if a:
+                    d["alert"] = {"id": a.id, "title": a.title, "severity": a.severity}
+    return d
 
 
 @router.get("")
@@ -106,13 +119,13 @@ def create_playbook(body: PlaybookIn, p: Principal = Depends(require("playbooks.
     db.flush()
     audit.record(db, "playbook.create", actor=p.label, actor_id=p.user.id, resource_type="playbook", resource_id=pb.id, client_id=pb.client_id, ip=p.ip)
     events.publish(db, "playbook.created", id=pb.id)
-    return playbook_out(pb, True)
+    return playbook_out(pb, True, db)
 
 
 @router.get("/{playbook_id}")
 def get_playbook(playbook_id: str, p: Principal = Depends(require("playbooks.read")), db: Session = Depends(get_db)) -> dict[str, Any]:
     pb = scoped_get(db, Playbook, playbook_id, p)
-    return playbook_out(pb, True)
+    return playbook_out(pb, True, db)
 
 
 class PlaybookUpdate(BaseModel):
@@ -149,7 +162,7 @@ def update_playbook(playbook_id: str, body: PlaybookUpdate, p: Principal = Depen
         pb.version += 1
     pb.updated_at = utcnow()
     audit.record(db, "playbook.update", actor=p.label, actor_id=p.user.id, resource_type="playbook", resource_id=pb.id, client_id=pb.client_id, ip=p.ip)
-    return playbook_out(pb, True)
+    return playbook_out(pb, True, db)
 
 
 @router.delete("/{playbook_id}", status_code=204)
@@ -182,7 +195,7 @@ def execute_playbook(playbook_id: str, body: ExecuteIn = ExecuteIn(), p: Princip
     run = playbooks_engine.start_run(db, pb, trigger_ref, alert=alert, case=case)
     audit.record(db, "playbook.execute", actor=p.label, actor_id=p.user.id, resource_type="playbook", resource_id=pb.id, client_id=pb.client_id, ip=p.ip, meta={"run_id": run.id})
     events.publish(db, "playbook.executed", id=pb.id, run_id=run.id)
-    return run_out(run)
+    return run_out(run, db)
 
 
 class ResumeIn(BaseModel):
@@ -203,7 +216,7 @@ def resume_run(playbook_id: str, run_id: str, body: ResumeIn, p: Principal = Dep
         raise HTTPException(409, str(e)) from e
     audit.record(db, "playbook.resume", actor=p.label, actor_id=p.user.id, resource_type="playbook_run", resource_id=run.id, client_id=pb.client_id, ip=p.ip, meta={"approved": body.approved, "reason": body.reason})
     events.publish(db, "playbook.executed", id=pb.id, run_id=run.id)
-    return run_out(run)
+    return run_out(run, db)
 
 
 @router.get("/{playbook_id}/runs")
@@ -211,4 +224,4 @@ def list_runs(playbook_id: str, p: Principal = Depends(require("playbooks.read")
     pb = scoped_get(db, Playbook, playbook_id, p)
     qy = select(PlaybookRun).where(PlaybookRun.playbook_id == pb.id).order_by(PlaybookRun.started_at.desc())
     rows, total = paginate(db, qy, page, limit)
-    return page_out([run_out(r) for r in rows], total, page, limit)
+    return page_out([run_out(r, db) for r in rows], total, page, limit)
