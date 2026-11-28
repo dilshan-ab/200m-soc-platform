@@ -89,7 +89,7 @@ Limits: `KC_SUPERADMIN_PASSWORD` in `.env` is only the initial password; it stop
 2. In `.env` set `SOC_PUBLIC_URL`, `KC_PUBLIC_URL` to the HTTPS hostnames, `SOC_COOKIE_SECURE=true`, `SOC_ENVIRONMENT=production`, and your egress allow-list.
 3. The realm import only runs when the realm does not exist yet. If the public URLs change later, edit the client's redirect URIs in the Keycloak console.
 4. Production refuses to start unless: OIDC auth, secure cookies, a secrets key (or Vault), PostgreSQL, and HTTP connectors disabled.
-5. First run: use the one-time `SOC_BOOTSTRAP_TOKEN` with `/api/setup/*` (API only; there is no setup screen yet), then add Wazuh and TheHive under **Integrations**.
+5. First run: use the one-time `SOC_BOOTSTRAP_TOKEN` with `/api/setup/*` (API only; there is no setup screen yet), then connect Wazuh under **Integrations → Add integrations**. Manage investigations in **Cases** and automation in **Playbooks**. Existing TheHive, Shuffle, and Keycloak connector records remain available under **Connected**.
 
 
 ## Attack simulation (Caldera)
