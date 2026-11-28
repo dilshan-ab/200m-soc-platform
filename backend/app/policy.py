@@ -24,6 +24,7 @@ CAPABILITIES: dict[str, str] = {
     "cases.read": "viewer",
     "cases.write": "l1",
     "cases.close": "l2",
+    "cases.delete": "l2",
     "assets.read": "viewer",
     "assets.write": "l2",
     "servers.read": "viewer",
@@ -95,7 +96,7 @@ CAPABILITIES: dict[str, str] = {
 ROLE_DENIED: dict[str, set[str]] = {
     "admin": {
         "alerts.triage", "alerts.tune", "alerts.delete",
-        "cases.write", "cases.close",
+        "cases.write", "cases.close", "cases.delete",
     },
 }
 

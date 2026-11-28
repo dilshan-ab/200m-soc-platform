@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from .. import audit
 from ..db import get_db
 from ..deps import Principal, require, scoped_get
-from ..models import Alert, Case, CaseEvidence, CaseObservable, CaseTask, CaseTemplate, CaseTicket, utcnow
+from ..models import Alert, Case, CaseEvidence, CaseObservable, CaseTask, CaseTemplate, CaseTicket, Playbook, PlaybookRun, utcnow
 from ..services import cases as svc
 from ..services import events
 from .alerts import alert_out
@@ -262,3 +262,34 @@ def add_custody_entry(cid: str, eid: str, body: CustodyIn, p: Principal = Depend
     e.chain_of_custody = chain
     db.flush()
     return _evidence_out(e)
+
+
+@router.delete("/{cid}", status_code=204)
+def delete_case(cid: str, p: Principal = Depends(require("cases.delete")), db: Session = Depends(get_db)) -> None:
+    c = scoped_get(db, Case, cid, p)
+    db.execute(select(Alert).where(Alert.case_id == c.id))
+    for a in db.execute(select(Alert).where(Alert.case_id == c.id)).scalars():
+        a.case_id = None
+    db.execute(select(CaseEvidence).where(CaseEvidence.case_id == c.id))
+    for e in db.execute(select(CaseEvidence).where(CaseEvidence.case_id == c.id)).scalars():
+        db.delete(e)
+    audit.record(db, "case.delete", actor=p.label, actor_id=p.user.id, resource_type="case", resource_id=c.id, client_id=c.client_id, ip=p.ip)
+    db.delete(c)
+
+
+@router.get("/{cid}/playbook-runs")
+def case_playbook_runs(cid: str, p: Principal = Depends(require("cases.read")), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    c = scoped_get(db, Case, cid, p)
+    ref = f"case:{c.id}"
+    runs = db.execute(
+        select(PlaybookRun).where(PlaybookRun.trigger_ref == ref).order_by(PlaybookRun.started_at.desc())
+    ).scalars().all()
+    out = []
+    for r in runs:
+        pb = db.get(Playbook, r.playbook_id)
+        out.append({
+            "id": r.id, "playbook_id": r.playbook_id, "playbook_name": pb.name if pb else "deleted",
+            "status": r.status, "started_at": iso(r.started_at), "finished_at": iso(r.finished_at),
+            "error": r.error, "execution_log": r.execution_log or [],
+        })
+    return out

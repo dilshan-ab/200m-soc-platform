@@ -1,12 +1,12 @@
 import { LiveTimer, Skeleton, TaskProgress } from '../components/Interactive';
 import { SavedViews } from '../components/SavedViews';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle2, Clock, FileText, Link2, Package, Shield } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { AlertTriangle, CheckCircle2, Clock, FileText, Link2, Package, Play, Shield, Trash2 } from 'lucide-react';
+import { Fragment, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Chips } from '../components/manage';
 import { Drawer, Empty, ErrorBox, Field, Loading, Modal, PageHead, Pager, SearchBox, Sev, Status } from '../components/ui';
-import { get, patch, post, type Page } from '../lib/api';
+import { del, get, patch, post, type Page } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { SEVERITIES, ago, when } from '../lib/format';
 import { useAct } from '../lib/mut';
@@ -85,6 +85,9 @@ function CreateCase({ onClose, onCreated }: { onClose: () => void; onCreated: (i
   );
 }
 
+type PBSummary = { id: string; name: string; status: string };
+type PBRun = { id: string; playbook_id: string; playbook_name: string; status: string; started_at: string; finished_at: string | null; error: string; execution_log: any[] };
+
 const KIND_ICONS: Record<string, typeof Shield> = { created: Shield, note: FileText, status: AlertTriangle, task: CheckCircle2, evidence: Package };
 const KIND_COLORS: Record<string, string> = { created: 'var(--info)', note: 'var(--muted)', status: 'var(--warn)', task: 'var(--ok)', evidence: 'var(--accent)' };
 const EVIDENCE_TYPES = ['file', 'screenshot', 'pcap', 'log', 'artifact', 'note'] as const;
@@ -96,9 +99,10 @@ function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const [task, setTask] = useState('');
   const [obs, setObs] = useState({ type: 'ip', value: '' });
   const [resolve, setResolve] = useState<null | { status: string; resolution: string }>(null);
-  const [section, setSection] = useState<'timeline' | 'evidence' | 'tasks' | 'observables'>('timeline');
+  const [section, setSection] = useState<'timeline' | 'evidence' | 'tasks' | 'observables' | 'playbooks'>('timeline');
   const [addEvidence, setAddEvidence] = useState(false);
   const [custodyView, setCustodyView] = useState<any>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const keys = ['case', 'cases'];
   const addNote = useAct(() => post(`/api/cases/${id}/notes`, { text: note }), keys, 'Note added', () => setNote(''));
   const addTask = useAct(() => post(`/api/cases/${id}/tasks`, { title: task }), keys, undefined, () => setTask(''));
@@ -106,6 +110,8 @@ function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const addObs = useAct(() => post(`/api/cases/${id}/observables`, obs), keys, 'Observable added', () => setObs({ ...obs, value: '' }));
   const enrich = useAct((value: string) => post('/api/intel/enrich', { indicator: value, case_id: id }), ['case', 'intel-jobs'], 'Enrichment queued');
   const setStatus = useAct((a: { status: string; resolution?: string }) => patch(`/api/cases/${id}`, { version: q.data.version, status: a.status, resolution: a.resolution ?? '' }), [...keys, 'dashboard'], 'Case updated', () => setResolve(null));
+  const removeCase = useAct(() => del(`/api/cases/${id}`), keys, 'Case deleted', onClose);
+  const pbRuns = useQuery({ queryKey: ['case-pb-runs', id], queryFn: () => get<PBRun[]>(`/api/cases/${id}/playbook-runs`), enabled: section === 'playbooks' });
   if (q.isLoading) return <Drawer title="Case" onClose={onClose}><Loading /></Drawer>;
   if (q.error) return <Drawer title="Case" onClose={onClose}><ErrorBox error={q.error} onRetry={() => void q.refetch()} retrying={q.isFetching} /></Drawer>;
   const c = q.data;
@@ -115,13 +121,12 @@ function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
       <div className="row" style={{ marginBottom: 10 }}><Sev v={c.severity} /><Status v={c.status} /><span>TLP:{c.tlp}</span><span className="spacer" /><LiveTimer deadline={c.resolve_due} done={c.status === 'closed' || c.status === 'resolved'} /></div>
       {c.description && <p style={{ whiteSpace: 'pre-wrap' }}>{c.description}</p>}
       {c.sync_status === 'failed' && <div className="error">Ticket sync failed: {c.sync_error}</div>}
-      {write && (
-        <div className="row" style={{ margin: '10px 0' }}>
-          {c.status === 'open' && <button className="btn small" onClick={() => setStatus.mutate({ status: 'in_progress' })}>Start work</button>}
-          {can('cases.close') && c.status !== 'resolved' && <button className="btn small" onClick={() => setResolve({ status: 'resolved', resolution: 'true_positive' })}>Resolve</button>}
-          {can('cases.close') && c.status === 'resolved' && <button className="btn small" onClick={() => setStatus.mutate({ status: 'closed' })}>Close</button>}
-        </div>
-      )}
+      <div className="row" style={{ margin: '10px 0', flexWrap: 'wrap', gap: 6 }}>
+        {write && c.status === 'open' && <button className="btn small" onClick={() => setStatus.mutate({ status: 'in_progress' })}>Start work</button>}
+        {write && can('cases.close') && c.status !== 'resolved' && <button className="btn small" onClick={() => setResolve({ status: 'resolved', resolution: 'true_positive' })}>Resolve</button>}
+        {write && can('cases.close') && c.status === 'resolved' && <button className="btn small" onClick={() => setStatus.mutate({ status: 'closed' })}>Close</button>}
+        {can('cases.delete') && <button className="btn small danger" onClick={() => setConfirmDelete(true)}><Trash2 size={13} style={{ verticalAlign: -2 }} /> Delete</button>}
+      </div>
 
       {c.tasks?.length > 0 && <TaskProgress tasks={c.tasks} />}
       <div className="tabs" role="tablist" style={{ marginBottom: 12, marginTop: 12 }}>
@@ -129,6 +134,7 @@ function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
         <button type="button" role="tab" aria-selected={section === 'evidence'} className={section === 'evidence' ? 'active' : ''} onClick={() => setSection('evidence')}>Evidence ({c.evidence?.length ?? 0})</button>
         <button type="button" role="tab" aria-selected={section === 'tasks'} className={section === 'tasks' ? 'active' : ''} onClick={() => setSection('tasks')}>Tasks ({c.tasks?.length ?? 0})</button>
         <button type="button" role="tab" aria-selected={section === 'observables'} className={section === 'observables' ? 'active' : ''} onClick={() => setSection('observables')}>Observables ({c.observables?.length ?? 0})</button>
+        {can('playbooks.read') && <button type="button" role="tab" aria-selected={section === 'playbooks'} className={section === 'playbooks' ? 'active' : ''} onClick={() => setSection('playbooks')}>Playbooks</button>}
       </div>
 
       {section === 'timeline' && (
@@ -228,6 +234,10 @@ function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
         </>
       )}
 
+      {section === 'playbooks' && can('playbooks.read') && (
+        <CasePlaybooks caseId={id} runs={pbRuns.data ?? []} loading={pbRuns.isLoading} error={pbRuns.error} />
+      )}
+
       {addEvidence && <AddEvidenceModal caseId={id} onClose={() => setAddEvidence(false)} />}
       {custodyView && <CustodyModal evidence={custodyView} caseId={id} onClose={() => setCustodyView(null)} />}
       {resolve && (
@@ -235,6 +245,16 @@ function CaseDrawer({ id, onClose }: { id: string; onClose: () => void }) {
           <Field label="Resolution" id="res"><select id="res" value={resolve.resolution} onChange={(e) => setResolve({ ...resolve, resolution: e.target.value })}>{['true_positive', 'false_positive', 'benign', 'duplicate', 'other'].map((r) => <option key={r}>{r}</option>)}</select></Field>
           {setStatus.error && <ErrorBox error={setStatus.error} />}
           <button className="btn primary" onClick={() => setStatus.mutate(resolve)}>Resolve</button>
+        </Modal>
+      )}
+      {confirmDelete && (
+        <Modal title="Delete case" onClose={() => setConfirmDelete(false)}>
+          <p>Permanently delete case <strong>#{c.number} {c.title}</strong>? Linked alerts will be unlinked but not deleted. This cannot be undone.</p>
+          {removeCase.error && <ErrorBox error={removeCase.error} />}
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn danger" disabled={removeCase.isPending} onClick={() => removeCase.mutate(undefined)}>Delete case</button>
+            <button className="btn" onClick={() => setConfirmDelete(false)}>Cancel</button>
+          </div>
         </Modal>
       )}
     </Drawer>
@@ -296,5 +316,76 @@ function CustodyModal({ evidence, caseId, onClose }: { evidence: any; caseId: st
       </div>}
       {addCustody.error && <ErrorBox error={addCustody.error} />}
     </Modal>
+  );
+}
+
+function CasePlaybooks({ caseId, runs, loading, error }: { caseId: string; runs: PBRun[]; loading: boolean; error: unknown }) {
+  const { can } = useAuth();
+  const playbooks = useQuery({ queryKey: ['playbooks-list'], queryFn: () => get<{ items: PBSummary[] }>('/api/playbooks', { limit: 100 }), enabled: can('playbooks.read') });
+  const published = playbooks.data?.items.filter((p) => p.status === 'published') ?? [];
+  const [selected, setSelected] = useState('');
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const execute = useAct(
+    () => post(`/api/playbooks/${selected}/execute`, { case_id: caseId }),
+    ['case-pb-runs', 'playbooks', 'playbook'],
+    'Playbook started',
+    () => setSelected(''),
+  );
+
+  return (
+    <>
+      {can('playbooks.execute') && published.length > 0 && (
+        <div className="row" style={{ marginBottom: 12, gap: 6 }}>
+          <select aria-label="Select playbook" value={selected} onChange={(e) => setSelected(e.target.value)} style={{ flex: 1 }}>
+            <option value="">Select a playbook to run…</option>
+            {published.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <button className="btn small primary" disabled={!selected || execute.isPending} onClick={() => execute.mutate(undefined)}>
+            <Play size={13} style={{ verticalAlign: -2 }} /> Run
+          </button>
+        </div>
+      )}
+      {execute.error && <ErrorBox error={execute.error} />}
+      {loading ? <Loading /> : error ? <ErrorBox error={error} /> : runs.length === 0 ? (
+        <Empty>No playbooks have been run for this case yet.{can('playbooks.execute') && published.length > 0 ? ' Select one above to start.' : ''}</Empty>
+      ) : (
+        <table className="table">
+          <thead><tr><th>Playbook</th><th>Status</th><th>Started</th><th>Duration</th><th /></tr></thead>
+          <tbody>
+            {runs.map((r) => (
+              <Fragment key={r.id}>
+                <tr>
+                  <td>{r.playbook_name}</td>
+                  <td><Status v={r.status} /></td>
+                  <td>{ago(r.started_at)}</td>
+                  <td>{r.finished_at ? `${((new Date(r.finished_at).getTime() - new Date(r.started_at).getTime()) / 1000).toFixed(1)}s` : '—'}</td>
+                  <td><button className="btn small" onClick={() => setExpanded(expanded === r.id ? null : r.id)}>{expanded === r.id ? 'Hide' : 'Details'}</button></td>
+                </tr>
+                {expanded === r.id && (
+                  <tr>
+                    <td colSpan={5}>
+                      {r.error && <div style={{ color: 'var(--danger)', marginBottom: 6 }}>{r.error}</div>}
+                      {r.execution_log.length > 0 ? (
+                        <table className="table">
+                          <thead><tr><th>Node</th><th>Type</th><th>Status</th><th>Result</th></tr></thead>
+                          <tbody>
+                            {r.execution_log.map((l: any, i: number) => (
+                              <tr key={i}>
+                                <td>{l.node_id}</td><td>{l.type}</td><td><Status v={l.status} /></td>
+                                <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{JSON.stringify(l.result)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : <p style={{ color: 'var(--muted)' }}>No execution log available.</p>}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </>
   );
 }
