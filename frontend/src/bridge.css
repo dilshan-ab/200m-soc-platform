@@ -999,3 +999,5 @@ tr:has(.hover-actions) { position: relative; }
 .triage-sla { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 
 .alert-volume-overview { margin-bottom: 16px; }
+
+.integration-wizard { margin-top: 12px; padding: 16px; }

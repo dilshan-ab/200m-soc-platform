@@ -25,17 +25,17 @@ def _add_alerts(n, client_id=None, prefix='p'):
                           last_seen=now, dedup_key=f'{prefix}-{i}', client_id=client_id) for i in range(n)])
 
 
-def test_background_purge_deletes_everything_in_scope_in_batches(admin, monkeypatch):
+def test_background_purge_deletes_everything_in_scope_in_batches(superadmin, monkeypatch):
     from app.api import alerts as alerts_api
 
     monkeypatch.setattr(alerts_api, 'DELETE_ALL_BATCH', 40)
     _add_alerts(100)
-    started = admin.post('/api/alerts/delete-all/background', {})
+    started = superadmin.post('/api/alerts/delete-all/background', {})
     assert started.status_code == 202 and started.json()['status'] == 'running' and started.json()['remaining'] == 100
     # A second start while running returns the same job instead of starting another.
-    assert admin.post('/api/alerts/delete-all/background', {}).json()['started_at'] == started.json()['started_at']
+    assert superadmin.post('/api/alerts/delete-all/background', {}).json()['started_at'] == started.json()['started_at']
     _drain()
-    status = admin.get('/api/alerts/delete-all/status').json()
+    status = superadmin.get('/api/alerts/delete-all/status').json()
     assert status['status'] == 'done' and status['deleted'] == 100 and status['remaining'] == 0
     with dbmod.session_scope() as db:
         assert db.execute(select(func.count()).select_from(Alert)).scalar_one() == 0
@@ -45,19 +45,19 @@ def test_background_purge_deletes_everything_in_scope_in_batches(admin, monkeypa
         assert audit.verify_chain(db)['ok'] is True
 
 
-def test_background_purge_respects_scope_capability_and_legal_hold(admin, make_session, clients):
+def test_background_purge_respects_scope_capability_and_legal_hold(superadmin, make_session, clients):
     _add_alerts(3, client_id=clients[0], prefix='a')
     _add_alerts(2, client_id=clients[1], prefix='b')
     analyst = make_session('purge-analyst@t.local', 'l2')
     assert analyst.post('/api/alerts/delete-all/background', {}).status_code == 403
-    scoped = make_session('purge-scoped@t.local', 'admin', all_clients=False, client_ids=[clients[0]])
+    scoped = make_session('purge-scoped@t.local', 'superadmin', all_clients=False, client_ids=[clients[0]])
     assert scoped.post('/api/alerts/delete-all/background', {}).json()['remaining'] == 3
     _drain()
     with dbmod.session_scope() as db:
         left = db.execute(select(Alert.client_id)).scalars().all()
         assert sorted(left) == [clients[1], clients[1]]
         db.execute(select(RetentionPolicy).where(RetentionPolicy.dataset == 'alerts')).scalar_one().legal_hold = True
-    assert admin.post('/api/alerts/delete-all/background', {}).status_code == 409
+    assert superadmin.post('/api/alerts/delete-all/background', {}).status_code == 409
 
 
 def test_maintenance_prunes_old_receipts_and_finished_outbox_rows():
@@ -80,7 +80,7 @@ def test_maintenance_prunes_old_receipts_and_finished_outbox_rows():
         assert db.execute(select(func.count()).select_from(Outbox).where(Outbox.status == 'pending')).scalar_one() >= 1
 
 
-def test_delete_all_skips_alerts_a_racing_batch_already_removed(admin):
+def test_delete_all_skips_alerts_a_racing_batch_already_removed(superadmin):
     """After a proxy timeout the earlier batch can still be finishing; the retry must not fail on the alerts it took."""
     from app.api.alerts import _delete_alerts
     from app.deps import Principal

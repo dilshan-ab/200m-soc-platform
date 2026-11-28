@@ -10,8 +10,8 @@ def test_alert_search_ignores_case(admin, clients):
         assert admin.get("/api/alerts", params={"q": q, "severity": ["high"]}).json()["total"] == 1, q
 
 
-def test_case_and_global_search_ignore_case(admin, clients):
-    created = admin.post("/api/cases", {"title": "Ransomware on FileServer", "severity": "high", "client_id": clients[0]})
+def test_case_and_global_search_ignore_case(superadmin, clients):
+    created = superadmin.post("/api/cases", {"title": "Ransomware on FileServer", "severity": "high", "client_id": clients[0]})
     assert created.status_code in (200, 201), created.text
-    assert admin.get("/api/cases", params={"q": "ransomware"}).json()["total"] == 1
-    assert admin.get("/api/cases", params={"q": "FILESERVER"}).json()["total"] == 1
+    assert superadmin.get("/api/cases", params={"q": "ransomware"}).json()["total"] == 1
+    assert superadmin.get("/api/cases", params={"q": "FILESERVER"}).json()["total"] == 1

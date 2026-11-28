@@ -295,8 +295,9 @@ def test_permissions_are_mirrored_as_client_roles_on_each_group(kcg):
     assert mapped["viewer"] == set(role_capabilities("viewer"))
     assert mapped["analysts"] == mapped["l1"] == set(role_capabilities("l1"))  # the L1 subgroup lists the full L1 set too
     assert mapped["l2"] == set(role_capabilities("l2")) - set(role_capabilities("l1"))  # L2 lists only what it adds over Analysts
-    assert mapped["admin"] == set(CAPABILITIES) == mapped["superadmin"]
-    assert "alerts.delete" not in mapped["l2"] and "alerts.delete" in mapped["admin"]
+    assert mapped["admin"] == set(role_capabilities("admin"))
+    assert mapped["superadmin"] == set(CAPABILITIES)
+    assert all("alerts.delete" not in mapped[role] for role in ("l2", "admin"))
     again = kc.sync_acl(_client(kcg), ids)
     assert again == {"permissions_created": 0, "permissions_updated": 0, "mappings_added": 0, "mappings_removed": 0}  # idempotent
 
@@ -307,9 +308,9 @@ def test_mirror_follows_changes_to_the_soc_permission_matrix(kcg):
     base = set(role_capabilities("viewer"))
     set_role_overrides({"viewer": sorted(base - {"alerts.read"}) + ["cases.close"]})
     out = kc.sync_acl(_client(kcg), ids)
-    assert out["mappings_added"] >= 1 and out["mappings_removed"] >= 1
+    assert out["mappings_added"] >= 1 and out["mappings_removed"] == 0
     viewer = kcg.groups[ids["viewer"]]["client_roles"]
-    assert "alerts.read" not in viewer and "cases.close" in viewer
+    assert "alerts.read" in viewer and "cases.close" in viewer
 
 
 def test_mirror_reports_missing_service_account_permission(kcg):
@@ -445,12 +446,12 @@ def test_sync_fails_clearly_rather_than_misreading_roles_when_groups_cannot_be_r
 
 def test_saving_the_permission_matrix_updates_keycloak(superadmin, kcg):
     matrix = {r: sorted(role_capabilities(r)) for r in ("viewer", "l1", "l2", "admin")}
-    matrix["viewer"] = [c for c in matrix["viewer"] if c != "alerts.read"]
+    matrix["viewer"] = ["cases.close"]
     r = superadmin.put("/api/admin/permissions", {"matrix": matrix})
     assert r.status_code == 200 and r.json()["keycloak_acl"] == "synced (roles)", r.text
-    assert "alerts.read" not in kcg.groups[kcg.gid("SOC Viewers")]["client_roles"]
+    assert {"alerts.read", "cases.close"} <= kcg.groups[kcg.gid("SOC Viewers")]["client_roles"]
     kcg.deny_groups = True
-    matrix["viewer"].append("alerts.read")
+    matrix["viewer"] = []
     r = superadmin.put("/api/admin/permissions", {"matrix": matrix})
     assert r.status_code == 200 and r.json()["keycloak_acl"].startswith("not synced")  # saving the matrix never fails because of Keycloak
 

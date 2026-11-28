@@ -63,7 +63,8 @@ def test_admin_can_view_but_not_edit_role_permission_matrix(admin):
 
 
 def test_superadmin_can_edit_role_permission_matrix(superadmin):
-    r = superadmin.put("/api/admin/permissions", {"matrix": {"l1": ["alerts.read", "cases.read"]}})
+    baseline = set(superadmin.get("/api/admin/permissions").json()["matrix"]["l1"])
+    r = superadmin.put("/api/admin/permissions", {"matrix": {"l1": ["cases.close"]}})
     assert r.status_code == 200
     matrix = superadmin.get("/api/admin/permissions").json()["matrix"]
-    assert matrix["l1"] == ["alerts.read", "cases.read"]
+    assert set(matrix["l1"]) == baseline | {"cases.close"}

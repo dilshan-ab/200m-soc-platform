@@ -120,6 +120,10 @@
           "description": "Cases: close (default minimum role: l2)"
         },
         {
+          "name": "cases.delete",
+          "description": "Cases: delete (default minimum role: l2)"
+        },
+        {
           "name": "cases.read",
           "description": "Cases: read (default minimum role: viewer)"
         },
@@ -376,6 +380,7 @@
           "automation.read",
           "automation.write",
           "cases.close",
+          "cases.delete",
           "cases.read",
           "cases.write",
           "clients.manage_members",
@@ -449,17 +454,12 @@
           "admin.settings",
           "admin.tokens",
           "admin.users",
-          "alerts.delete",
           "alerts.read",
-          "alerts.triage",
-          "alerts.tune",
           "assets.read",
           "assets.write",
           "automation.read",
           "automation.write",
-          "cases.close",
           "cases.read",
-          "cases.write",
           "clients.manage_members",
           "clients.read",
           "clients.write",
@@ -622,6 +622,7 @@
               "assets.write",
               "automation.read",
               "cases.close",
+              "cases.delete",
               "compliance.write",
               "copilot.write",
               "correlation.write",

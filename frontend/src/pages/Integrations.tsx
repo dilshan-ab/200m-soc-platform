@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Fragment, useState } from 'react';
-import { CheckCircle, XCircle, Loader, RotateCw, Zap, ArrowLeft, ArrowRight, Play, Pause, RefreshCw, Trash2, Settings, Map, Key, Power, Shield, Eye, EyeOff } from 'lucide-react';
+import { CheckCircle, XCircle, Loader, RotateCw, Zap, ArrowLeft, ArrowRight, Play, Pause, RefreshCw, Trash2, Settings, Map as MapIcon, Key, Power, Shield, Eye, EyeOff } from 'lucide-react';
 import { Summary } from '../components/manage';
 import { Drawer, Empty, ErrorBox, Field, Loading, Modal, PageHead, SearchBox, Status, useToast } from '../components/ui';
 import { del, get, post, put } from '../lib/api';
@@ -12,7 +12,12 @@ import { REFRESH_MS } from '../lib/refresh';
 type FieldSpec = { name: string; label: string; type: string; required: boolean; secret: boolean; help: string; default: unknown };
 type Manifest = { type: string; label: string; category: string; link_method: string; direction: string; auth: string; capabilities: string[]; test_checks: string[]; webhook: boolean; setup_hint: string; fields: FieldSpec[] };
 
-const STEPS = ['Choose tool', 'Configure', 'Verify'];
+const STEPS = ['Choose integration', 'Configure', 'Verify'];
+const BUILT_IN_WORKFLOWS = new Map([
+  ['thehive', 'Use Cases to manage investigations.'],
+  ['shuffle', 'Use Playbooks to automate response workflows.'],
+  ['keycloak', 'Company SSO is configured in the deployment settings.'],
+]);
 
 function StepIndicator({ current }: { current: number }) {
   return (
@@ -35,6 +40,8 @@ export default function Integrations() {
   const { can } = useAuth();
   const [sel, setSel] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const canAdd = can('integrations.write');
+  const showAdd = canAdd && adding;
   const [fq, setFq] = useState('');
   const [fs, setFs] = useState('');
   const all = tools.data ?? [];
@@ -44,23 +51,39 @@ export default function Integrations() {
   const rows = all.filter((t) => (!fq || `${t.name} ${t.label}`.toLowerCase().includes(fq.trim().toLowerCase())) && (!fs || (fs === 'failing' ? failing.includes(t) : paused.includes(t))));
   return (
     <>
-      <PageHead title="Integrations" sub="Link, test and manage every tool. Secrets are stored encrypted and are never shown again.">
-        {can('integrations.write') && <button className="btn primary" onClick={() => setAdding(true)}><Zap size={15} /> Add tool</button>}
-      </PageHead>
-      {all.length > 0 && <Summary items={[
-        { label: 'Tools linked', value: all.length, onClick: () => setFs(''), active: !fs },
-        { label: 'Healthy', value: healthy.length, tone: 'ok' },
-        { label: 'Needs attention', value: failing.length, tone: failing.length ? 'bad' : 'ok', onClick: () => setFs(fs === 'failing' ? '' : 'failing'), active: fs === 'failing' },
-        { label: 'Paused', value: paused.length, tone: paused.length ? 'warn' : 'ok', onClick: () => setFs(fs === 'paused' ? '' : 'paused'), active: fs === 'paused' },
-      ]} />}
-      {all.length > 0 && <div className="filters"><SearchBox value={fq} onChange={setFq} placeholder="Search tools…" label="Search tools" />{(fq || fs) && <button className="btn" onClick={() => { setFq(''); setFs(''); }}>Clear filters</button>}</div>}
-      {tools.isLoading ? <Loading /> : tools.error ? <ErrorBox error={tools.error} /> : tools.data!.length === 0 ? <Empty>No tools linked yet. Use "Add tool" to start with Wazuh and TheHive.</Empty> : rows.length === 0 ? <Empty>No tools match these filters.</Empty> : (
-        <div className="table-wrap"><table><thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Last sync</th><th>Lag</th><th>Today</th><th>Errors</th></tr></thead>
-          <tbody>{rows.map((t) => <tr key={t.id} tabIndex={0} className="clickable" onClick={() => setSel(t.id)} onKeyDown={(e) => e.key === 'Enter' && setSel(t.id)}>
-            <td><strong>{t.name}</strong></td><td>{t.label}</td><td><Status v={t.status} /></td><td>{ago(t.health?.last_success_at)}</td><td>{t.health?.lag_seconds != null ? `${Math.round(t.health.lag_seconds)}s` : '—'}</td><td>{t.health?.items_today ?? 0}</td><td>{t.health?.error_count ? <span className="text-bad">{t.health.error_count}</span> : 0}</td></tr>)}</tbody></table></div>
+      <PageHead title="Integrations" sub="Connect external data sources, services, and tools." />
+      {canAdd && (
+        <div className="tabs" role="tablist" aria-label="Integrations" onKeyDown={(event) => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+          event.preventDefault();
+          const next = event.key === 'Home' ? false : event.key === 'End' ? true : !showAdd;
+          setAdding(next);
+          event.currentTarget.querySelector<HTMLButtonElement>(next ? '#integrations-add-tab' : '#integrations-connected-tab')?.focus();
+        }}>
+          <button type="button" role="tab" className={`tab${!showAdd ? ' active' : ''}`} id="integrations-connected-tab"
+            aria-controls="integrations-connected" aria-selected={!showAdd} tabIndex={showAdd ? -1 : 0} onClick={() => setAdding(false)}>Connected</button>
+          <button type="button" role="tab" className={`tab${showAdd ? ' active' : ''}`} id="integrations-add-tab"
+            aria-controls="integrations-add" aria-selected={showAdd} tabIndex={showAdd ? 0 : -1} onClick={() => setAdding(true)}>Add integrations</button>
+        </div>
       )}
+      <div id="integrations-connected" role={canAdd ? 'tabpanel' : undefined} aria-labelledby={canAdd ? 'integrations-connected-tab' : undefined} hidden={showAdd}>
+        {all.length > 0 && <Summary items={[
+          { label: 'Tools linked', value: all.length, onClick: () => setFs(''), active: !fs },
+          { label: 'Healthy', value: healthy.length, tone: 'ok' },
+          { label: 'Needs attention', value: failing.length, tone: failing.length ? 'bad' : 'ok', onClick: () => setFs(fs === 'failing' ? '' : 'failing'), active: fs === 'failing' },
+          { label: 'Paused', value: paused.length, tone: paused.length ? 'warn' : 'ok', onClick: () => setFs(fs === 'paused' ? '' : 'paused'), active: fs === 'paused' },
+        ]} />}
+        {all.length > 0 && <div className="filters"><SearchBox value={fq} onChange={setFq} placeholder="Search tools…" label="Search tools" />{(fq || fs) && <button className="btn" onClick={() => { setFq(''); setFs(''); }}>Clear filters</button>}</div>}
+        {tools.isLoading ? <Loading /> : tools.error ? <ErrorBox error={tools.error} /> : tools.data!.length === 0 ? <Empty>{canAdd ? 'No integrations connected yet. Open Add integrations to connect a tool.' : 'No integrations connected yet.'}</Empty> : rows.length === 0 ? <Empty>No tools match these filters.</Empty> : (
+          <div className="table-wrap"><table><thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Last sync</th><th>Lag</th><th>Today</th><th>Errors</th></tr></thead>
+            <tbody>{rows.map((t) => <tr key={t.id} tabIndex={0} className="clickable" onClick={() => setSel(t.id)} onKeyDown={(e) => e.key === 'Enter' && setSel(t.id)}>
+              <td><strong>{t.name}</strong></td><td>{t.label}</td><td><Status v={t.status} /></td><td>{ago(t.health?.last_success_at)}</td><td>{t.health?.lag_seconds != null ? `${Math.round(t.health.lag_seconds)}s` : '—'}</td><td>{t.health?.items_today ?? 0}</td><td>{t.health?.error_count ? <span className="text-bad">{t.health.error_count}</span> : 0}</td></tr>)}</tbody></table></div>
+        )}
+      </div>
+      {canAdd && <div id="integrations-add" role="tabpanel" aria-labelledby="integrations-add-tab" hidden={!showAdd}>
+        {showAdd && <Wizard onDone={(id) => { setAdding(false); setSel(id); }} />}
+      </div>}
       {sel && <ToolDrawer id={sel} onClose={() => setSel(null)} />}
-      {adding && <Wizard onClose={() => setAdding(false)} onDone={(id) => { setAdding(false); setSel(id); }} />}
     </>
   );
 }
@@ -94,7 +117,7 @@ function pickTool(c: Manifest, name: string, setM: (m: Manifest) => void, setVal
   setStep(1);
 }
 
-function Wizard({ onClose, onDone }: { onClose: () => void; onDone: (id: string) => void }) {
+function Wizard({ onDone }: { onDone: (id: string) => void }) {
   const cat = useQuery({ queryKey: ['catalogue'], queryFn: () => get<Manifest[]>('/api/integrations/catalogue') });
   const servers = useQuery({ queryKey: ['servers'], queryFn: () => get<any[]>('/api/servers') });
   const [step, setStep] = useState(0);
@@ -108,10 +131,11 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: (id: string)
   const create = useAct(() => post('/api/integrations/tools', { type: m!.type, name, server_id: server || null, values: cleanValues(m!, vals), poll_interval: interval }), ['tools'], 'Tool created', (r) => { setCreated(r); setStep(2); });
   const missing = m ? m.fields.filter((f) => f.required && (vals[f.name] === undefined || vals[f.name] === '')).map((f) => f.label) : [];
   const term = q.trim().toLowerCase();
-  const matches = cat.data?.filter((c) => !term || c.label.toLowerCase().includes(term)) ?? [];
+  const matches = cat.data?.filter((c) => !BUILT_IN_WORKFLOWS.has(c.type) && (!term || c.label.toLowerCase().includes(term))) ?? [];
+  const builtInMatch = cat.data?.find((c) => BUILT_IN_WORKFLOWS.has(c.type) && c.label.toLowerCase() === term);
   const custom = cat.data?.find((c) => c.type === 'custom');
   return (
-    <Modal title="Add tool" onClose={onClose} wide>
+    <section className="panel integration-wizard" aria-label="Connect an integration">
       <StepIndicator current={step} />
       {step === 0 && (cat.isLoading ? <Loading /> : cat.error ? <ErrorBox error={cat.error} /> : (
         <>
@@ -121,7 +145,8 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: (id: string)
               <Shield size={18} />
               <span>{c.label}</span>
             </button>))}</div>
-          {term && matches.length === 0 && custom && (
+          {builtInMatch && matches.length === 0 && <Empty>{BUILT_IN_WORKFLOWS.get(builtInMatch.type)}</Empty>}
+          {term && matches.length === 0 && custom && !builtInMatch && (
             <div className="notice wizard-custom-notice">
               <b>No built-in connector for "{q.trim()}".</b>
               <button type="button" className="btn primary" onClick={() => pickTool(custom, q.trim(), setM, setVals, setName, setStep)}>Add "{q.trim()}" as a custom tool <ArrowRight size={14} /></button>
@@ -153,7 +178,7 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: (id: string)
         </>
       )}
       {step === 2 && created && <PostCreate tool={created} manifest={m!} onDone={() => onDone(created.id)} />}
-    </Modal>
+    </section>
   );
 }
 
@@ -287,7 +312,7 @@ function ToolDrawer({ id, onClose }: { id: string; onClose: () => void }) {
           {t.enabled && <button className="btn small" onClick={() => resync.mutate(undefined)}><RefreshCw size={13} /> Re-sync</button>}
           {t.webhook.enabled && <button className="btn small" onClick={() => { if (confirm('Rotate the webhook secret? The sender must be updated.')) rotate.mutate(undefined); }}><RotateCw size={13} /> Rotate</button>}
           {manifest && <button className="btn small" onClick={() => setEdit(true)}><Settings size={13} /> Edit</button>}
-          <button className="btn small" onClick={() => setMap(true)}><Map size={13} /> Mapping</button>
+          <button className="btn small" onClick={() => setMap(true)}><MapIcon size={13} /> Mapping</button>
           {t.status !== 'disabled' && <button className="btn small danger" onClick={() => { if (confirm('Disable this tool? History is kept.')) disable.mutate(undefined); }}><Power size={13} /> Disable</button>}
           <button className="btn small danger" disabled={purge.isPending} onClick={() => { if (confirm(`Permanently delete "${t.name}"? Its configuration and secrets cannot be recovered. Alerts already ingested are kept.`) && prompt(`Type the tool's name to confirm: ${t.name}`) === t.name) purge.mutate(undefined); }}><Trash2 size={13} /> Delete</button>
         </div>
